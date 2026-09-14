@@ -1,0 +1,23 @@
+[Unit]
+Description=Koba MCP Bridge deployment webhook
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=koba-deploy
+Group=koba-deploy
+Environment=DEPLOY_LISTEN_HOST=192.168.1.5
+Environment=DEPLOY_LISTEN_PORT=9010
+Environment=DEPLOY_WEBHOOK_SECRET_FILE=/etc/koba-mcp-deploy/secret
+ExecStart=/usr/bin/python3 /opt/koba-mcp-deploy/deploy_webhook.py
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/etc/koba-mcp-deploy
+
+[Install]
+WantedBy=multi-user.target
