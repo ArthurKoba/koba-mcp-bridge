@@ -13,9 +13,8 @@ Environment=DEPLOY_WEBHOOK_SECRET_FILE=/etc/koba-mcp-deploy/secret
 ExecStart=/usr/bin/python3 /opt/koba-mcp-deploy/deploy_webhook.py
 Restart=on-failure
 RestartSec=2
-NoNewPrivileges=true
 PrivateTmp=true
-ProtectSystem=strict
+ProtectSystem=full
 ProtectHome=true
 ReadOnlyPaths=/etc/koba-mcp-deploy
 
