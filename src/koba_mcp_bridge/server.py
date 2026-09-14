@@ -38,19 +38,21 @@ def bridge_capabilities() -> dict[str, object]:
     }
 
 
-def _transport_security() -> TransportSecuritySettings | None:
-    raw_hosts = os.getenv("MCP_ALLOWED_HOSTS", "").strip()
-    raw_origins = os.getenv("MCP_ALLOWED_ORIGINS", "").strip()
+def _split_env(name: str, default: str) -> list[str]:
+    value = os.getenv(name, default)
+    return [item.strip() for item in value.split(",") if item.strip()]
 
-    if not raw_hosts:
-        return None
 
-    hosts = [item.strip() for item in raw_hosts.split(",") if item.strip()]
-    origins = [item.strip() for item in raw_origins.split(",") if item.strip()]
-
+def _transport_security() -> TransportSecuritySettings:
     return TransportSecuritySettings(
-        allowed_hosts=hosts,
-        allowed_origins=origins,
+        allowed_hosts=_split_env(
+            "MCP_ALLOWED_HOSTS",
+            "localhost:*,127.0.0.1:*,[::1]:*",
+        ),
+        allowed_origins=_split_env(
+            "MCP_ALLOWED_ORIGINS",
+            "http://localhost:*,http://127.0.0.1:*,http://[::1]:*",
+        ),
     )
 
 
