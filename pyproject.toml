@@ -7,6 +7,7 @@ requires-python = ">=3.13"
 license = { text = "MIT" }
 authors = [{ name = "ArthurKoba" }]
 dependencies = [
+  "fastmcp==4.0.3",
   "mcp[cli]>=2,<3",
   "uvicorn>=0.35,<1",
   "opentelemetry-distro>=0.58b0,<1",
