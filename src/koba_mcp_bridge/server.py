@@ -6,10 +6,15 @@ from datetime import UTC, datetime
 
 from mcp.server import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
+from mcp.types import ToolAnnotations
 
 from . import __version__
 
 _STARTED_AT = datetime.now(UTC).isoformat()
+_READ_ONLY_LOCAL = ToolAnnotations(
+    read_only_hint=True,
+    open_world_hint=False,
+)
 
 mcp = MCPServer(
     "koba-mcp-bridge",
@@ -21,7 +26,10 @@ mcp = MCPServer(
 )
 
 
-@mcp.tool()
+@mcp.tool(
+    title="Bridge ping",
+    annotations=_READ_ONLY_LOCAL,
+)
 def bridge_ping() -> dict[str, str]:
     """Check that the bridge is alive and reachable."""
     return {
@@ -32,7 +40,10 @@ def bridge_ping() -> dict[str, str]:
     }
 
 
-@mcp.tool()
+@mcp.tool(
+    title="Bridge build info",
+    annotations=_READ_ONLY_LOCAL,
+)
 def bridge_build_info() -> dict[str, str]:
     """Return build metadata for the currently running bridge instance."""
     return {
@@ -45,7 +56,10 @@ def bridge_build_info() -> dict[str, str]:
     }
 
 
-@mcp.tool()
+@mcp.tool(
+    title="Bridge capabilities",
+    annotations=_READ_ONLY_LOCAL,
+)
 def bridge_capabilities() -> dict[str, object]:
     """Return the currently enabled high-level bridge capabilities."""
     return {
