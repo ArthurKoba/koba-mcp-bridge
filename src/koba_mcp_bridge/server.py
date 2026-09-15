@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import os
+import platform
 from datetime import UTC, datetime
 
 from mcp.server import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 
 from . import __version__
+
+_STARTED_AT = datetime.now(UTC).isoformat()
 
 mcp = MCPServer(
     "koba-mcp-bridge",
@@ -26,6 +29,19 @@ def bridge_ping() -> dict[str, str]:
         "service": "koba-mcp-bridge",
         "version": __version__,
         "time": datetime.now(UTC).isoformat(),
+    }
+
+
+@mcp.tool()
+def bridge_build_info() -> dict[str, str]:
+    """Return build metadata for the currently running bridge instance."""
+    return {
+        "service": "koba-mcp-bridge",
+        "version": __version__,
+        "commit": os.getenv("KOBA_BUILD_SHA", "unknown"),
+        "built_at": os.getenv("KOBA_BUILD_TIME", "unknown"),
+        "started_at": _STARTED_AT,
+        "python": platform.python_version(),
     }
 
 
