@@ -12,7 +12,8 @@ mcp = MCPServer(
     "koba-mcp-bridge",
     version=__version__,
     instructions=(
-        "Koba MCP Bridge exposes controlled local tools and long-running worker tasks to MCP clients."
+        "Koba MCP Bridge exposes controlled local tools and long-running "
+        "worker tasks to MCP clients."
     ),
 )
 
