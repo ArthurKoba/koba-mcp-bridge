@@ -1,8 +1,9 @@
 name: CD
 
 on:
-  push:
-    branches: [main]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
 
 permissions:
   contents: read
@@ -15,14 +16,21 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  COOLIFY_DEPLOY_WEBHOOK: https://coolify.koba-nexus.ru/api/v1/deploy?uuid=zrz6vt5ehhocswhv0kx8pboh&force=false
 
 jobs:
   publish:
+    if: >-
+      ${{
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main'
+      }}
     runs-on: ubuntu-latest
-    outputs:
-      image: ${{ steps.image.outputs.name }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - uses: docker/setup-buildx-action@v3
 
@@ -42,7 +50,7 @@ jobs:
           images: ${{ steps.image.outputs.name }}
           tags: |
             type=raw,value=latest
-            type=sha,prefix=sha-
+            type=raw,value=sha-${{ github.event.workflow_run.head_sha }}
 
       - uses: docker/build-push-action@v6
         with:
@@ -56,49 +64,14 @@ jobs:
   deploy:
     needs: publish
     runs-on: ubuntu-latest
-    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
     steps:
-      - name: Trigger signed deployment
+      - name: Deploy with Coolify
         env:
-          DEPLOY_WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
-          DEPLOY_WEBHOOK_SECRET: ${{ secrets.DEPLOY_WEBHOOK_SECRET }}
-          IMAGE: ${{ needs.publish.outputs.image }}
-          REVISION: ${{ github.sha }}
-          REPOSITORY: ${{ github.repository }}
-          REF: ${{ github.ref }}
+          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
         shell: bash
         run: |
-          python - <<'PY'
-          import hashlib
-          import hmac
-          import json
-          import os
-          import urllib.request
-
-          payload = json.dumps(
-              {
-                  "repository": os.environ["REPOSITORY"],
-                  "ref": os.environ["REF"],
-                  "sha": os.environ["REVISION"],
-                  "image": os.environ["IMAGE"],
-              },
-              separators=(",", ":"),
-          ).encode()
-          secret = os.environ["DEPLOY_WEBHOOK_SECRET"].encode()
-          signature = "sha256=" + hmac.new(secret, payload, hashlib.sha256).hexdigest()
-          request = urllib.request.Request(
-              os.environ["DEPLOY_WEBHOOK_URL"],
-              data=payload,
-              method="POST",
-              headers={
-                  "Content-Type": "application/json",
-                  "X-Hub-Signature-256": signature,
-                  "User-Agent": "koba-mcp-bridge-github-actions",
-              },
-          )
-          with urllib.request.urlopen(request, timeout=330) as response:
-              body = response.read().decode()
-              print(body)
-              if response.status != 200:
-                  raise SystemExit(f"deployment failed with HTTP {response.status}")
-          PY
+          curl --fail-with-body --silent --show-error \
+            --request GET \
+            --header "Authorization: Bearer ${COOLIFY_API_TOKEN}" \
+            --header "Accept: application/json" \
+            "${COOLIFY_DEPLOY_WEBHOOK}"
