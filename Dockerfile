@@ -1,9 +1,14 @@
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
 
+ARG KOBA_BUILD_SHA=unknown
+ARG KOBA_BUILD_TIME=unknown
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy
+    UV_LINK_MODE=copy \
+    KOBA_BUILD_SHA=${KOBA_BUILD_SHA} \
+    KOBA_BUILD_TIME=${KOBA_BUILD_TIME}
 
 WORKDIR /app
 
