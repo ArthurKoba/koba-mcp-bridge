@@ -41,7 +41,28 @@ koba-mcp-bridge
               +-- future integrations
 ```
 
-The initial implementation is expected to use Python, MCP, FastAPI for management endpoints where useful, and Docker Compose for deployment and worker isolation.
+The initial implementation uses Python and MCP. FastMCP is used for HTTP OAuth integration and can proxy GitHub OAuth into an MCP-compatible authorization flow.
+
+## GitHub OAuth
+
+OAuth is disabled by default so a deployment can be upgraded before credentials are configured. When `KOBA_OAUTH_ENABLED=true`, the bridge requires all of the following runtime environment variables:
+
+- `KOBA_OAUTH_GITHUB_CLIENT_ID`
+- `KOBA_OAUTH_GITHUB_CLIENT_SECRET`
+- `KOBA_OAUTH_JWT_SIGNING_KEY`
+- `KOBA_OAUTH_ALLOWED_GITHUB_USERS`
+
+The public OAuth base URL defaults to `https://mcp-bridge.koba-nexus.ru` and can be changed with `KOBA_OAUTH_BASE_URL`.
+
+The GitHub OAuth application callback URL is:
+
+```text
+https://mcp-bridge.koba-nexus.ru/auth/callback
+```
+
+OAuth client registrations and token state are stored below `FASTMCP_HOME`, which defaults to `/data/fastmcp` in the container. Production deployments should mount `/data/fastmcp` as persistent storage before enabling OAuth.
+
+Secrets belong in runtime environment variables or the deployment secret store. They must not be committed to the repository or injected at image build time.
 
 ## Project status
 
