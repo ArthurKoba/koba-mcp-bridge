@@ -7,6 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
+    FASTMCP_HOME=/data/fastmcp \
     KOBA_BUILD_SHA=${KOBA_BUILD_SHA} \
     KOBA_BUILD_TIME=${KOBA_BUILD_TIME}
 
@@ -15,7 +16,8 @@ WORKDIR /app
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
 
-RUN uv sync --no-dev
+RUN uv sync --no-dev \
+    && mkdir -p /data/fastmcp
 
 EXPOSE 8000
 
