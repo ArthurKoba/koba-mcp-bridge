@@ -17,6 +17,7 @@ _READ_ONLY_LOCAL = ToolAnnotations(
     read_only_hint=True,
     open_world_hint=False,
 )
+_CHATGPT_OAUTH_REDIRECT = "https://chatgpt.com/connector_platform_oauth_redirect"
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -55,7 +56,9 @@ def _build_auth() -> tuple[GitHubProvider | None, list[AuthMiddleware]]:
         base_url=os.getenv("OAUTH_BASE_URL", "https://mcp-bridge.koba-nexus.ru"),
         required_scopes=["read:user"],
         jwt_signing_key=_required_env("OAUTH_JWT_SIGNING_KEY"),
-        require_authorization_consent=True,
+        allowed_client_redirect_uris=[_CHATGPT_OAUTH_REDIRECT],
+        require_authorization_consent="external",
+        enable_cimd=False,
         fallback_refresh_token_expiry_seconds=30 * 24 * 60 * 60,
         fastmcp_access_token_expiry_seconds=30 * 60,
     )
