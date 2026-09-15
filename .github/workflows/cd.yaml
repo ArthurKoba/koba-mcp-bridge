@@ -63,8 +63,8 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            KOBA_BUILD_SHA=${{ github.event.workflow_run.head_sha }}
-            KOBA_BUILD_TIME=${{ steps.buildmeta.outputs.built_at }}
+            BUILD_SHA=${{ github.event.workflow_run.head_sha }}
+            BUILD_TIME=${{ steps.buildmeta.outputs.built_at }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

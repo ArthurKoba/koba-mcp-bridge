@@ -45,14 +45,14 @@ The initial implementation uses Python and MCP. FastMCP is used for HTTP OAuth i
 
 ## GitHub OAuth
 
-OAuth is disabled by default so a deployment can be upgraded before credentials are configured. When `KOBA_OAUTH_ENABLED=true`, the bridge requires all of the following runtime environment variables:
+OAuth is disabled by default so a deployment can be upgraded before credentials are configured. When `OAUTH_ENABLED=true`, the bridge requires all of the following runtime environment variables:
 
-- `KOBA_OAUTH_GITHUB_CLIENT_ID`
-- `KOBA_OAUTH_GITHUB_CLIENT_SECRET`
-- `KOBA_OAUTH_JWT_SIGNING_KEY`
-- `KOBA_OAUTH_ALLOWED_GITHUB_USERS`
+- `OAUTH_GITHUB_CLIENT_ID`
+- `OAUTH_GITHUB_CLIENT_SECRET`
+- `OAUTH_JWT_SIGNING_KEY`
+- `OAUTH_ALLOWED_GITHUB_USERS`
 
-The public OAuth base URL defaults to `https://mcp-bridge.koba-nexus.ru` and can be changed with `KOBA_OAUTH_BASE_URL`.
+The public OAuth base URL defaults to `https://mcp-bridge.koba-nexus.ru` and can be changed with `OAUTH_BASE_URL`.
 
 The GitHub OAuth application callback URL is:
 
