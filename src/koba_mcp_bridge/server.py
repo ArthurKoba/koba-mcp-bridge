@@ -34,7 +34,7 @@ def _required_env(name: str) -> str:
 
 
 def _allowed_github_users() -> set[str]:
-    raw = _required_env("KOBA_OAUTH_ALLOWED_GITHUB_USERS")
+    raw = _required_env("OAUTH_ALLOWED_GITHUB_USERS")
     return {item.strip().casefold() for item in raw.split(",") if item.strip()}
 
 
@@ -46,15 +46,15 @@ def _github_user_allowed(ctx: AuthContext) -> bool:
 
 
 def _build_auth() -> tuple[GitHubProvider | None, list[AuthMiddleware]]:
-    if not _env_bool("KOBA_OAUTH_ENABLED"):
+    if not _env_bool("OAUTH_ENABLED"):
         return None, []
 
     provider = GitHubProvider(
-        client_id=_required_env("KOBA_OAUTH_GITHUB_CLIENT_ID"),
-        client_secret=_required_env("KOBA_OAUTH_GITHUB_CLIENT_SECRET"),
-        base_url=os.getenv("KOBA_OAUTH_BASE_URL", "https://mcp-bridge.koba-nexus.ru"),
+        client_id=_required_env("OAUTH_GITHUB_CLIENT_ID"),
+        client_secret=_required_env("OAUTH_GITHUB_CLIENT_SECRET"),
+        base_url=os.getenv("OAUTH_BASE_URL", "https://mcp-bridge.koba-nexus.ru"),
         required_scopes=["read:user"],
-        jwt_signing_key=_required_env("KOBA_OAUTH_JWT_SIGNING_KEY"),
+        jwt_signing_key=_required_env("OAUTH_JWT_SIGNING_KEY"),
         require_authorization_consent=True,
         fallback_refresh_token_expiry_seconds=30 * 24 * 60 * 60,
         fastmcp_access_token_expiry_seconds=30 * 60,
@@ -99,8 +99,8 @@ def bridge_build_info() -> dict[str, str]:
     return {
         "service": "koba-mcp-bridge",
         "version": __version__,
-        "commit": os.getenv("KOBA_BUILD_SHA", "unknown"),
-        "built_at": os.getenv("KOBA_BUILD_TIME", "unknown"),
+        "commit": os.getenv("BUILD_SHA", "unknown"),
+        "built_at": os.getenv("BUILD_TIME", "unknown"),
         "started_at": _STARTED_AT,
         "python": platform.python_version(),
     }
