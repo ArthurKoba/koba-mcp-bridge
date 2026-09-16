@@ -70,6 +70,24 @@ OAuth client registrations and token state are stored below `FASTMCP_HOME`, whic
 
 Secrets belong in runtime environment variables or the deployment secret store. They must not be committed to the repository or injected at image build time.
 
+## Browser MCP GitHub write probe
+
+The bridge includes a deliberately narrow `github_write_probe` mutation tool for testing whether browser ChatGPT is allowed to invoke a custom MCP action that performs an external write.
+
+The tool creates one unique text file under `.mcp-write-probes/` in a server-configured repository and branch. The caller cannot choose the repository, branch, path, token, or commit message.
+
+Runtime variables:
+
+```text
+GITHUB_WRITE_PROBE_TOKEN=<fine-grained token with Contents: Read and write>
+GITHUB_WRITE_PROBE_REPOSITORY=ArthurKoba/koba-mcp-bridge
+GITHUB_WRITE_PROBE_BRANCH=mcp-write-probe
+```
+
+`GITHUB_WRITE_PROBE_TOKEN` is required to execute the tool. The repository and branch variables are optional and default to the values shown above. Keep the token in the deployment secret store and restrict it to the probe repository.
+
+The `mcp-write-probe` branch should exist before invoking the tool. A successful call returns the created path and GitHub commit/content SHAs, making it possible to distinguish a real browser-initiated write from a simulated response.
+
 ## Project status
 
 The bridge is operational as an authenticated MCP gateway. Backend integrations and worker interfaces are still evolving.
