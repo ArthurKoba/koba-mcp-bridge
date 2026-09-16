@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import os
+from functools import lru_cache
 
 from .github_agent import GitHubAgentError
 from .github_collab import GitHubCollabClient
@@ -45,6 +46,7 @@ def _reviewer_allowed_repositories_from_env() -> set[str]:
     return repositories
 
 
+@lru_cache(maxsize=1)
 def github_reviewer_client_from_env() -> GitHubCollabClient:
     app_id = os.getenv("GITHUB_REVIEWER_APP_ID", "").strip()
     if not app_id:
