@@ -43,16 +43,16 @@ class RecordingCollabClient(GitHubCollabClient):
                     "pullRequest": {"number": 7, "isDraft": False}
                 }
             }
-        if "resolveReviewThread" in query:
-            return {
-                "resolveReviewThread": {
-                    "thread": {"id": "THREAD_1", "isResolved": True}
-                }
-            }
         if "unresolveReviewThread" in query:
             return {
                 "unresolveReviewThread": {
                     "thread": {"id": "THREAD_1", "isResolved": False}
+                }
+            }
+        if "resolveReviewThread" in query:
+            return {
+                "resolveReviewThread": {
+                    "thread": {"id": "THREAD_1", "isResolved": True}
                 }
             }
         raise AssertionError("unexpected GraphQL query")
