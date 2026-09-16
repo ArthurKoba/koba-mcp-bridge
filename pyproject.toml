@@ -9,6 +9,7 @@ authors = [{ name = "ArthurKoba" }]
 dependencies = [
   "fastmcp==4.0.3",
   "mcp[cli]>=2,<3",
+  "PyJWT[crypto]>=2.10,<3",
   "uvicorn>=0.35,<1",
   "opentelemetry-distro>=0.58b0,<1",
   "opentelemetry-exporter-otlp-proto-grpc>=1.37,<2",
