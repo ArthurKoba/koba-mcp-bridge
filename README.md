@@ -71,9 +71,9 @@ OAuth client registrations and token state are stored below `FASTMCP_HOME`, whic
 
 Secrets belong in runtime environment variables or the deployment secret store. They must not be committed to the repository or injected at image build time.
 
-## GitHub App agent backend
+## GitHub App development backend
 
-The `github_agent_*` tools authenticate as a GitHub App installation. This keeps automated repository activity separate from the human account used to log into the MCP bridge.
+The `github_agent_*` tools authenticate as a GitHub App installation. Automated repository activity is therefore attributed to the app identity rather than the human account used to log into the MCP bridge.
 
 Required runtime variables:
 
@@ -85,42 +85,86 @@ GITHUB_AGENT_ALLOWED_REPOSITORIES=ArthurKoba/koba-mcp-bridge,ArthurKoba/anjia-aj
 
 `GITHUB_AGENT_PRIVATE_KEY` can be used instead of the base64 form when the deployment system can safely store multiline PEM values. The allowlist is mandatory and intentionally does not support `*`.
 
-The bridge discovers the installation ID for each allowlisted repository, creates short-lived GitHub App installation tokens, and caches them until shortly before expiry. Repository access is therefore gated twice: by the GitHub App installation itself and by `GITHUB_AGENT_ALLOWED_REPOSITORIES`.
+Repository access is gated twice: the GitHub App installation must include the repository and the repository must also appear in `GITHUB_AGENT_ALLOWED_REPOSITORIES`.
 
-Exposed tools:
+### Workflow policy
 
-- `github_agent_status` verifies installation access;
-- `github_agent_get_file` reads one UTF-8 file;
-- `github_agent_list_branches` lists branches;
-- `github_agent_create_branch` creates a branch from another branch;
-- `github_agent_put_file` creates or replaces one UTF-8 file and commits it;
-- `github_agent_delete_file` deletes one file and commits the deletion;
-- `github_agent_compare` compares two refs;
-- `github_agent_fast_forward` fast-forwards a branch without force updates.
+The bridge has an additional development policy layer:
 
-For normal development automation, grant the GitHub App only the repository permissions it needs. `Contents: Read and write` is required for file and ref mutations. Add `Pull requests: Read and write` only when PR tooling is added, and add workflow-related permission only if the agent must edit files under `.github/workflows/`.
+```text
+GITHUB_AGENT_PROTECTED_BRANCHES=main,master
+GITHUB_AGENT_REQUIRED_CHECKS=test,docker
+```
+
+Both variables are optional; the values above are the defaults.
+
+Direct file writes, deletes, atomic commits, fast-forwards, branch deletion, and branch renames are rejected for protected branches. Work is expected to happen on feature branches and reach a protected branch through a pull request.
+
+Pull requests are restricted to branches inside the same allowlisted repository. `owner:branch` / fork heads are rejected by the bridge, so the agent cannot use this backend for external contribution PRs.
+
+PR merge supports `merge`, `squash`, and `rebase`. Before merging, every name in `GITHUB_AGENT_REQUIRED_CHECKS` must have a completed successful check-run on the PR head SHA.
+
+### Development surface
+
+Core repository/files:
+
+- repository installation/status checks;
+- UTF-8 file read/write/delete;
+- directory listing;
+- binary file read/write using base64;
+- repository-scoped code search;
+- atomic multi-file commits through Git Data blobs/trees/commits;
+- optimistic branch-head verification with `expected_head_sha`.
+
+Branches, commits, and tags:
+
+- branch list/create/delete/rename;
+- non-force fast-forward of non-protected branches;
+- ref comparison;
+- commit history filtered by ref/path;
+- individual commit metadata, patches, and changed-file statistics;
+- lightweight and annotated tag creation;
+- tag list/delete.
+
+Pull requests and review:
+
+- list/read/create/update same-repository PRs;
+- changed-file patches;
+- conversation comments;
+- submitted review list;
+- review submission (`COMMENT`, `APPROVE`, `REQUEST_CHANGES`);
+- update a PR branch from its base;
+- check-run inspection and required-check validation;
+- merge with `merge`, `squash`, or `rebase` after required checks pass.
+
+Issues and CI:
+
+- list/read/create/update issues;
+- issue comments;
+- GitHub Actions workflow-run listing;
+- workflow job listing.
+
+### GitHub App permissions
+
+For the full workflow, configure the GitHub App with only the repositories that agents are allowed to modify and grant:
+
+- **Contents: Read and write** — files, Git Data objects, refs, tags;
+- **Pull requests: Read and write** — PR lifecycle, reviews, merge;
+- **Issues: Read and write** — issue lifecycle and comments;
+- **Actions: Read-only** — workflow runs/jobs;
+- **Checks: Read-only** — required-check gating.
+
+Do not grant organization/administration permissions to the app unless a later feature explicitly requires them. Branch/ruleset administration should remain a human-controlled GitHub setting.
+
+A review submitted by the same GitHub App identity is not an independent reviewer identity. If branch protection is configured to require an independent approving review, use a separate reviewer GitHub App or a human reviewer identity; a separate ChatGPT conversation alone does not change the GitHub actor identity.
 
 ## Browser MCP GitHub write probe
 
-The bridge includes a deliberately narrow `github_write_probe` mutation tool for testing whether browser ChatGPT is allowed to invoke a custom MCP action that performs an external write.
-
-The tool creates one unique text file under `.mcp-write-probes/` in a server-configured repository and branch. The caller cannot choose the repository, branch, path, token, or commit message.
-
-Runtime variables:
-
-```text
-GITHUB_WRITE_PROBE_TOKEN=<fine-grained token with Contents: Read and write>
-GITHUB_WRITE_PROBE_REPOSITORY=ArthurKoba/koba-mcp-bridge
-GITHUB_WRITE_PROBE_BRANCH=mcp-write-probe
-```
-
-`GITHUB_WRITE_PROBE_TOKEN` is required to execute the tool. The repository and branch variables are optional and default to the values shown above. Keep the token in the deployment secret store and restrict it to the probe repository.
-
-The `mcp-write-probe` branch should exist before invoking the tool. A successful call returns the created path and GitHub commit/content SHAs, making it possible to distinguish a real browser-initiated write from a simulated response.
+The bridge still contains the narrow `github_write_probe` mutation tool that was used to verify browser ChatGPT write-action support. It writes only to a server-configured probe repository/branch. Once the GitHub App backend has been fully validated in production, remove `GITHUB_WRITE_PROBE_TOKEN` and retire this temporary tool.
 
 ## Project status
 
-The bridge is operational as an authenticated MCP gateway. Backend integrations and worker interfaces are still evolving.
+The bridge is operational as an authenticated MCP gateway with Ghidra and GitHub App development workflows.
 
 ## License
 
