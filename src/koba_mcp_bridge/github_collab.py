@@ -1,11 +1,81 @@
 from __future__ import annotations
 
+import os
+
 from .github_agent import GitHubAgentError
 from .github_review import GitHubReviewClient
 
 
+def required_reviewer_logins_from_env() -> list[str]:
+    raw = os.getenv("GITHUB_AGENT_REQUIRED_REVIEWERS", "")
+    return [item.strip().casefold() for item in raw.split(",") if item.strip()]
+
+
 class GitHubCollabClient(GitHubReviewClient):
     """Collaboration operations for branch/PR review loops."""
+
+    def assert_required_reviews(
+        self,
+        repository: str,
+        number: int,
+    ) -> dict[str, object]:
+        repository = self._assert_allowed(repository)
+        required = required_reviewer_logins_from_env()
+        if not required:
+            return {
+                "repository": repository,
+                "number": number,
+                "required_reviewers": [],
+                "status": "not_configured",
+            }
+
+        _, result = self._repo_request(
+            repository,
+            "GET",
+            f"/repos/{repository}/pulls/{number}/reviews?per_page=100",
+        )
+        if not isinstance(result, list):
+            raise GitHubAgentError("unexpected pull request review response")
+
+        decisive_state: dict[str, str] = {}
+        for item in result:
+            if not isinstance(item, dict):
+                continue
+            user = item.get("user") if isinstance(item.get("user"), dict) else {}
+            login = str(user.get("login", "")).casefold()
+            state = str(item.get("state", "")).upper()
+            if login and state in {"APPROVED", "CHANGES_REQUESTED", "DISMISSED"}:
+                decisive_state[login] = state
+
+        missing = [login for login in required if decisive_state.get(login) != "APPROVED"]
+        if missing:
+            states = {login: decisive_state.get(login, "MISSING") for login in required}
+            raise GitHubAgentError(
+                f"required independent reviews not satisfied; missing={missing}, states={states}"
+            )
+        return {
+            "repository": repository,
+            "number": number,
+            "required_reviewers": required,
+            "status": "ok",
+        }
+
+    def merge_pull_request(
+        self,
+        repository: str,
+        number: int,
+        merge_method: str = "squash",
+        commit_title: str | None = None,
+        commit_message: str | None = None,
+    ) -> dict[str, object]:
+        self.assert_required_reviews(repository, number)
+        return super().merge_pull_request(
+            repository,
+            number,
+            merge_method,
+            commit_title,
+            commit_message,
+        )
 
     def merge_branch(
         self,
