@@ -64,7 +64,7 @@ def test_job_log_returns_tail() -> None:
     result = client.get_workflow_job_log(
         "ArthurKoba/koba-mcp-bridge",
         42,
-        max_chars=12,
+        max_chars=11,
     )
     assert result["log"] == "last-error\n"
     assert result["truncated"] is True
