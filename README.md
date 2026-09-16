@@ -25,6 +25,7 @@ AI client / MCP client
 koba-mcp-bridge
         |
         +-- local bridge_* tools
+        +-- github_agent_* -> GitHub App installation API
         +-- ghidra_* -> optional Ghidra MCP backend
         +-- future mounted MCP backends
         +-- task/state management
@@ -69,6 +70,35 @@ https://mcp.koba-nexus.ru/auth/callback
 OAuth client registrations and token state are stored below `FASTMCP_HOME`, which defaults to `/data/fastmcp` in the container. Production deployments should mount `/data/fastmcp` as persistent storage before enabling OAuth.
 
 Secrets belong in runtime environment variables or the deployment secret store. They must not be committed to the repository or injected at image build time.
+
+## GitHub App agent backend
+
+The `github_agent_*` tools authenticate as a GitHub App installation. This keeps automated repository activity separate from the human account used to log into the MCP bridge.
+
+Required runtime variables:
+
+```text
+GITHUB_AGENT_APP_ID=<GitHub App numeric App ID>
+GITHUB_AGENT_PRIVATE_KEY_B64=<base64-encoded GitHub App private key PEM>
+GITHUB_AGENT_ALLOWED_REPOSITORIES=ArthurKoba/koba-mcp-bridge,ArthurKoba/anjia-ajl33pq0866-fh8626v100-reverse
+```
+
+`GITHUB_AGENT_PRIVATE_KEY` can be used instead of the base64 form when the deployment system can safely store multiline PEM values. The allowlist is mandatory and intentionally does not support `*`.
+
+The bridge discovers the installation ID for each allowlisted repository, creates short-lived GitHub App installation tokens, and caches them until shortly before expiry. Repository access is therefore gated twice: by the GitHub App installation itself and by `GITHUB_AGENT_ALLOWED_REPOSITORIES`.
+
+Exposed tools:
+
+- `github_agent_status` verifies installation access;
+- `github_agent_get_file` reads one UTF-8 file;
+- `github_agent_list_branches` lists branches;
+- `github_agent_create_branch` creates a branch from another branch;
+- `github_agent_put_file` creates or replaces one UTF-8 file and commits it;
+- `github_agent_delete_file` deletes one file and commits the deletion;
+- `github_agent_compare` compares two refs;
+- `github_agent_fast_forward` fast-forwards a branch without force updates.
+
+For normal development automation, grant the GitHub App only the repository permissions it needs. `Contents: Read and write` is required for file and ref mutations. Add `Pull requests: Read and write` only when PR tooling is added, and add workflow-related permission only if the agent must edit files under `.github/workflows/`.
 
 ## Browser MCP GitHub write probe
 
