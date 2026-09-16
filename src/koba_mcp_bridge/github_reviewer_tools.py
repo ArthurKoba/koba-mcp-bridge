@@ -49,6 +49,20 @@ def register_github_reviewer_tools(
         """List a directory for review."""
         return client_factory().list_directory(repository, path, ref)
 
+    @mcp.tool(title="GitHub reviewer list branches", annotations=read_annotations)
+    def github_reviewer_list_branches(repository: str) -> dict[str, object]:
+        """List branches without exposing branch mutation."""
+        return client_factory().list_branches(repository)
+
+    @mcp.tool(title="GitHub reviewer list tags", annotations=read_annotations)
+    def github_reviewer_list_tags(
+        repository: str,
+        per_page: int = 100,
+        page: int = 1,
+    ) -> dict[str, object]:
+        """List repository tags without exposing tag mutation."""
+        return client_factory().list_tags(repository, per_page, page)
+
     @mcp.tool(title="GitHub reviewer compare refs", annotations=read_annotations)
     def github_reviewer_compare(
         repository: str,
@@ -83,6 +97,16 @@ def register_github_reviewer_tools(
     ) -> dict[str, object]:
         """Search code only inside one reviewer-allowlisted repository."""
         return client_factory().search_code(repository, query, per_page, page)
+
+    @mcp.tool(title="GitHub reviewer list pull requests", annotations=read_annotations)
+    def github_reviewer_list_pull_requests(
+        repository: str,
+        state: str = "open",
+        per_page: int = 50,
+        page: int = 1,
+    ) -> dict[str, object]:
+        """List pull requests available for review."""
+        return client_factory().list_pull_requests(repository, state, per_page, page)
 
     @mcp.tool(title="GitHub reviewer get pull request", annotations=read_annotations)
     def github_reviewer_get_pull_request(
@@ -144,6 +168,31 @@ def register_github_reviewer_tools(
     ) -> dict[str, object]:
         """Verify configured required checks before approval."""
         return client_factory().assert_required_checks(repository, ref)
+
+    @mcp.tool(title="GitHub reviewer workflow runs", annotations=read_annotations)
+    def github_reviewer_workflow_runs(
+        repository: str,
+        branch: str | None = None,
+        status: str | None = None,
+        per_page: int = 30,
+        page: int = 1,
+    ) -> dict[str, object]:
+        """List Actions workflow runs for review diagnostics."""
+        return client_factory().list_workflow_runs(
+            repository,
+            branch,
+            status,
+            per_page,
+            page,
+        )
+
+    @mcp.tool(title="GitHub reviewer workflow jobs", annotations=read_annotations)
+    def github_reviewer_workflow_jobs(
+        repository: str,
+        run_id: int,
+    ) -> dict[str, object]:
+        """List jobs for one Actions workflow run."""
+        return client_factory().list_workflow_jobs(repository, run_id)
 
     @mcp.tool(title="GitHub reviewer rich review", annotations=write_annotations)
     def github_reviewer_create_review(
