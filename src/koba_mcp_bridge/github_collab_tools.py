@@ -6,6 +6,8 @@ from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 from .github_collab import GitHubCollabClient
+from .github_reviewer import github_reviewer_client_from_env, github_reviewer_configured
+from .github_reviewer_tools import register_github_reviewer_tools
 
 
 def register_github_collab_tools(
@@ -108,3 +110,19 @@ def register_github_collab_tools(
     ) -> dict[str, object]:
         """Mark a draft pull request ready for review."""
         return client_factory().mark_pull_ready_for_review(repository, number)
+
+    @mcp.tool(title="GitHub agent required reviews", annotations=read_annotations)
+    def github_agent_required_reviews(
+        repository: str,
+        number: int,
+    ) -> dict[str, object]:
+        """Verify configured independent reviewer approvals before merge."""
+        return client_factory().assert_required_reviews(repository, number)
+
+    if github_reviewer_configured():
+        register_github_reviewer_tools(
+            mcp,
+            github_reviewer_client_from_env,
+            read_annotations,
+            write_annotations,
+        )
