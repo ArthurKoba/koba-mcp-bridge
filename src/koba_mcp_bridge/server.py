@@ -19,8 +19,9 @@ from mcp.types import ToolAnnotations
 
 from . import __version__
 from .github_agent import github_agent_configured
+from .github_review import GitHubReviewClient
+from .github_review_tools import register_github_review_tools
 from .github_tools import register_github_workflow_tools
-from .github_workflow import GitHubDevClient
 
 _STARTED_AT = datetime.now(UTC).isoformat()
 _READ_ONLY_LOCAL = ToolAnnotations(
@@ -169,8 +170,8 @@ def _github_write_probe_request(token: str, repository: str, branch: str) -> dic
 
 
 @lru_cache(maxsize=1)
-def _github_agent_client() -> GitHubDevClient:
-    return GitHubDevClient.from_env()
+def _github_agent_client() -> GitHubReviewClient:
+    return GitHubReviewClient.from_env()
 
 
 _auth, _auth_middleware = _build_auth()
@@ -229,7 +230,13 @@ def bridge_capabilities() -> dict[str, object]:
     if os.getenv("GITHUB_WRITE_PROBE_TOKEN", "").strip():
         features.append("github-write-probe")
     if github_agent_configured():
-        features.extend(["github-app-agent", "github-development-workflow"])
+        features.extend(
+            [
+                "github-app-agent",
+                "github-development-workflow",
+                "github-rebase-review",
+            ]
+        )
     return {
         "backends": sorted(_MOUNTED_BACKENDS),
         "workers": [],
@@ -329,6 +336,12 @@ register_github_workflow_tools(
     _READ_EXTERNAL,
     _WRITE_EXTERNAL,
     _DESTRUCTIVE_EXTERNAL,
+)
+register_github_review_tools(
+    mcp,
+    _github_agent_client,
+    _READ_EXTERNAL,
+    _WRITE_EXTERNAL,
 )
 
 
