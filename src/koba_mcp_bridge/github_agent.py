@@ -8,7 +8,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 
 import jwt
 
@@ -41,7 +41,9 @@ def _private_key_from_env() -> str:
         try:
             return base64.b64decode(encoded).decode("utf-8")
         except Exception as exc:  # pragma: no cover - defensive configuration error path
-            raise GitHubAgentError("GITHUB_AGENT_PRIVATE_KEY_B64 is not valid base64 UTF-8") from exc
+            raise GitHubAgentError(
+                "GITHUB_AGENT_PRIVATE_KEY_B64 is not valid base64 UTF-8"
+            ) from exc
 
     raise GitHubAgentError("GitHub agent private key is not configured")
 
@@ -328,7 +330,13 @@ class GitHubAppClient:
             "content_sha": str(saved.get("sha", "")),
         }
 
-    def delete_file(self, repository: str, path: str, message: str, branch: str) -> dict[str, object]:
+    def delete_file(
+        self,
+        repository: str,
+        path: str,
+        message: str,
+        branch: str,
+    ) -> dict[str, object]:
         repository = self._assert_allowed(repository)
         quoted_path = urllib.parse.quote(path.strip("/"), safe="/")
         ref = urllib.parse.quote(branch, safe="")
