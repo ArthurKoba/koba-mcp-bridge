@@ -5,6 +5,7 @@ import platform
 from datetime import UTC, datetime
 
 from fastmcp import FastMCP
+from fastmcp.server import create_proxy
 from fastmcp.server.auth import AuthContext
 from fastmcp.server.auth.providers.github import GitHubProvider
 from fastmcp.server.middleware import AuthMiddleware
@@ -53,7 +54,7 @@ def _build_auth() -> tuple[GitHubProvider | None, list[AuthMiddleware]]:
     provider = GitHubProvider(
         client_id=_required_env("OAUTH_GITHUB_CLIENT_ID"),
         client_secret=_required_env("OAUTH_GITHUB_CLIENT_SECRET"),
-        base_url=os.getenv("OAUTH_BASE_URL", "https://mcp-bridge.koba-nexus.ru"),
+        base_url=os.getenv("OAUTH_BASE_URL", "https://mcp.koba-nexus.ru"),
         required_scopes=["read:user"],
         jwt_signing_key=_required_env("OAUTH_JWT_SIGNING_KEY"),
         allowed_client_redirect_uris=[_CHATGPT_OAUTH_REDIRECT],
@@ -65,14 +66,30 @@ def _build_auth() -> tuple[GitHubProvider | None, list[AuthMiddleware]]:
     return provider, [AuthMiddleware(auth=_github_user_allowed)]
 
 
+def _configured_backends() -> dict[str, str]:
+    backends: dict[str, str] = {}
+    ghidra_url = os.getenv("GHIDRA_MCP_URL", "").strip()
+    if ghidra_url:
+        backends["ghidra"] = ghidra_url
+    return backends
+
+
+def _mount_backends(server: FastMCP) -> dict[str, str]:
+    backends = _configured_backends()
+    for namespace, url in backends.items():
+        proxy = create_proxy(url, name=f"{namespace}-backend")
+        server.mount(server=proxy, namespace=namespace)
+    return backends
+
+
 _auth, _auth_middleware = _build_auth()
 
 mcp = FastMCP(
     "koba-mcp-bridge",
     version=__version__,
     instructions=(
-        "Koba MCP Bridge exposes controlled local tools and long-running "
-        "worker tasks to MCP clients."
+        "Koba MCP Bridge is the authenticated gateway for Koba infrastructure, "
+        "local tools, and mounted MCP backends."
     ),
     auth=_auth,
     middleware=_auth_middleware,
@@ -115,13 +132,14 @@ def bridge_build_info() -> dict[str, str]:
 )
 def bridge_capabilities() -> dict[str, object]:
     """Return the currently enabled high-level bridge capabilities."""
-    features = ["mcp", "streamable-http", "opentelemetry"]
+    features = ["mcp", "streamable-http", "opentelemetry", "gateway"]
     if _auth is not None:
         features.append("github-oauth")
     return {
+        "backends": sorted(_MOUNTED_BACKENDS),
         "workers": [],
         "features": features,
-        "status": "bootstrap",
+        "status": "active",
     }
 
 
@@ -129,6 +147,8 @@ def _split_env(name: str, default: str) -> list[str]:
     value = os.getenv(name, default)
     return [item.strip() for item in value.split(",") if item.strip()]
 
+
+_MOUNTED_BACKENDS = _mount_backends(mcp)
 
 app = mcp.http_app(
     path="/mcp",

@@ -1,47 +1,47 @@
 # koba-mcp-bridge
 
-Extensible MCP bridge for AI agents, local tools, isolated compute workers, development automation, and reverse-engineering workflows.
+Extensible MCP gateway for AI agents, local tools, isolated compute workers, development automation, and reverse-engineering workflows.
 
 ## Purpose
 
-`koba-mcp-bridge` provides AI agents with a controlled interface to tools and workloads running on user-owned infrastructure.
+`koba-mcp-bridge` is the single authenticated MCP entry point for tools and workloads running on user-owned infrastructure.
 
 The project is designed around a few core ideas:
 
-- expose local and self-hosted tools through MCP;
+- expose local and self-hosted tools through one MCP endpoint;
+- aggregate other MCP servers behind a single OAuth boundary;
 - keep long-running or compute-heavy work outside the chat process;
 - persist task state, logs, artifacts, and errors so work can survive interrupted sessions;
 - isolate workers and constrain CPU, memory, storage, network, and filesystem access;
-- support interactive workflows where a task can pause when user input or intervention is required;
 - make integrations modular so new development and analysis tools can be added over time.
 
-## Initial direction
-
-The first major integration is planned around reverse engineering with Ghidra. The bridge should eventually allow an agent to inspect program state, request decompilation and cross-references, run analysis scripts, manage longer analysis jobs, and persist useful findings without moving large project data into the chat context.
-
-The architecture is not Ghidra-specific. Future integrations may include build systems, firmware tooling, Git workflows, device tooling, isolated command execution, and other local development services.
-
-## Planned architecture
+## Architecture
 
 ```text
 AI client / MCP client
         |
-        | MCP
+        | OAuth + MCP
         v
 koba-mcp-bridge
         |
+        +-- local bridge_* tools
+        +-- ghidra_* -> optional Ghidra MCP backend
+        +-- future mounted MCP backends
         +-- task/state management
-        +-- logs and artifacts
-        +-- policy / resource limits
-        |
-        +-- isolated workers
-              |
-              +-- Ghidra
-              +-- executors
-              +-- future integrations
+        +-- workers / artifacts / automation
 ```
 
-The initial implementation uses Python and MCP. FastMCP is used for HTTP OAuth integration and can proxy GitHub OAuth into an MCP-compatible authorization flow.
+Mounted MCP backends are optional. The public bridge starts normally when none are configured. FastMCP proxy providers connect lazily, so a temporarily unavailable backend does not prevent the gateway itself from starting.
+
+## Ghidra backend
+
+Set the runtime variable below to mount an internal Ghidra MCP server:
+
+```text
+GHIDRA_MCP_URL=http://ghidra-mcp:8081/mcp
+```
+
+The mounted backend is namespaced as `ghidra`, so its tools are exposed through the public gateway with `ghidra_` prefixes. Ghidra itself does not need to be exposed publicly; it should share a private Docker network with this bridge.
 
 ## GitHub OAuth
 
@@ -52,12 +52,18 @@ OAuth is disabled by default so a deployment can be upgraded before credentials 
 - `OAUTH_JWT_SIGNING_KEY`
 - `OAUTH_ALLOWED_GITHUB_USERS`
 
-The public OAuth base URL defaults to `https://mcp-bridge.koba-nexus.ru` and can be changed with `OAUTH_BASE_URL`.
+The public OAuth base URL defaults to:
+
+```text
+https://mcp.koba-nexus.ru
+```
+
+and can be changed with `OAUTH_BASE_URL`.
 
 The GitHub OAuth application callback URL is:
 
 ```text
-https://mcp-bridge.koba-nexus.ru/auth/callback
+https://mcp.koba-nexus.ru/auth/callback
 ```
 
 OAuth client registrations and token state are stored below `FASTMCP_HOME`, which defaults to `/data/fastmcp` in the container. Production deployments should mount `/data/fastmcp` as persistent storage before enabling OAuth.
@@ -66,7 +72,7 @@ Secrets belong in runtime environment variables or the deployment secret store. 
 
 ## Project status
 
-Early design and bootstrap stage. APIs, storage layout, and worker interfaces are not stable yet.
+The bridge is operational as an authenticated MCP gateway. Backend integrations and worker interfaces are still evolving.
 
 ## License
 
