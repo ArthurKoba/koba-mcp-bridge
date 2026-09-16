@@ -13,8 +13,9 @@ from fastmcp.server.middleware import AuthMiddleware
 from mcp.types import ToolAnnotations
 
 from . import __version__
+from .github_actions import GitHubActionsClient
+from .github_actions_tools import register_github_actions_tools
 from .github_agent import github_agent_configured
-from .github_collab import GitHubCollabClient
 from .github_collab_tools import register_github_collab_tools
 from .github_review_tools import register_github_review_tools
 from .github_reviewer import github_reviewer_configured
@@ -106,8 +107,8 @@ def _mount_backends(server: FastMCP) -> dict[str, str]:
 
 
 @lru_cache(maxsize=1)
-def _github_agent_client() -> GitHubCollabClient:
-    return GitHubCollabClient.from_env()
+def _github_agent_client() -> GitHubActionsClient:
+    return GitHubActionsClient.from_env()
 
 
 _auth, _auth_middleware = _build_auth()
@@ -170,6 +171,7 @@ def bridge_capabilities() -> dict[str, object]:
                 "github-development-workflow",
                 "github-rebase-review",
                 "github-review-threads",
+                "github-actions-diagnostics",
             ]
         )
     if github_reviewer_configured():
@@ -267,6 +269,13 @@ register_github_collab_tools(
     _github_agent_client,
     _READ_EXTERNAL,
     _WRITE_EXTERNAL,
+)
+register_github_actions_tools(
+    mcp,
+    _github_agent_client,
+    _READ_EXTERNAL,
+    _WRITE_EXTERNAL,
+    _DESTRUCTIVE_EXTERNAL,
 )
 
 
