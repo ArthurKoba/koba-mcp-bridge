@@ -123,7 +123,11 @@ class GitHubReviewClient(GitHubDevClient):
                 if not comment.get("path") or not comment.get("body"):
                     raise GitHubAgentError("each review comment requires path and body")
                 normalized.append(
-                    {key: value for key, value in comment.items() if key in allowed and value is not None}
+                    {
+                        key: value
+                        for key, value in comment.items()
+                        if key in allowed and value is not None
+                    }
                 )
             payload["comments"] = normalized
         _, result = self._repo_request(
