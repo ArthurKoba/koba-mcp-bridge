@@ -7,6 +7,7 @@ import platform
 import urllib.error
 import urllib.request
 from datetime import UTC, datetime
+from functools import lru_cache
 from uuid import uuid4
 
 from fastmcp import FastMCP
@@ -17,15 +18,26 @@ from fastmcp.server.middleware import AuthMiddleware
 from mcp.types import ToolAnnotations
 
 from . import __version__
+from .github_agent import GitHubAppClient, github_agent_configured
 
 _STARTED_AT = datetime.now(UTC).isoformat()
 _READ_ONLY_LOCAL = ToolAnnotations(
     read_only_hint=True,
     open_world_hint=False,
 )
+_READ_EXTERNAL = ToolAnnotations(
+    read_only_hint=True,
+    open_world_hint=True,
+)
 _WRITE_EXTERNAL = ToolAnnotations(
     read_only_hint=False,
     destructive_hint=False,
+    idempotent_hint=False,
+    open_world_hint=True,
+)
+_DESTRUCTIVE_EXTERNAL = ToolAnnotations(
+    read_only_hint=False,
+    destructive_hint=True,
     idempotent_hint=False,
     open_world_hint=True,
 )
@@ -154,6 +166,11 @@ def _github_write_probe_request(token: str, repository: str, branch: str) -> dic
         raise RuntimeError(f"GitHub write probe failed with HTTP {exc.code}: {detail}") from exc
 
 
+@lru_cache(maxsize=1)
+def _github_agent_client() -> GitHubAppClient:
+    return GitHubAppClient.from_env()
+
+
 _auth, _auth_middleware = _build_auth()
 
 mcp = FastMCP(
@@ -209,6 +226,8 @@ def bridge_capabilities() -> dict[str, object]:
         features.append("github-oauth")
     if os.getenv("GITHUB_WRITE_PROBE_TOKEN", "").strip():
         features.append("github-write-probe")
+    if github_agent_configured():
+        features.append("github-app-agent")
     return {
         "backends": sorted(_MOUNTED_BACKENDS),
         "workers": [],
@@ -233,6 +252,73 @@ def github_write_probe() -> dict[str, object]:
         raise RuntimeError("GITHUB_WRITE_PROBE_TOKEN is not configured")
     repository, branch = _github_write_probe_target()
     return _github_write_probe_request(token, repository, branch)
+
+
+@mcp.tool(title="GitHub agent status", annotations=_READ_EXTERNAL)
+def github_agent_status(repository: str) -> dict[str, object]:
+    """Verify GitHub App installation access to one allowlisted repository."""
+    return _github_agent_client().status(repository)
+
+
+@mcp.tool(title="GitHub agent get file", annotations=_READ_EXTERNAL)
+def github_agent_get_file(repository: str, path: str, ref: str | None = None) -> dict[str, object]:
+    """Read one UTF-8 repository file from an allowlisted GitHub repository."""
+    return _github_agent_client().get_file(repository, path, ref)
+
+
+@mcp.tool(title="GitHub agent list branches", annotations=_READ_EXTERNAL)
+def github_agent_list_branches(repository: str) -> dict[str, object]:
+    """List branches in one allowlisted GitHub repository."""
+    return _github_agent_client().list_branches(repository)
+
+
+@mcp.tool(title="GitHub agent create branch", annotations=_WRITE_EXTERNAL)
+def github_agent_create_branch(
+    repository: str,
+    branch: str,
+    from_branch: str = "main",
+) -> dict[str, object]:
+    """Create a new branch from an existing branch in an allowlisted repository."""
+    return _github_agent_client().create_branch(repository, branch, from_branch)
+
+
+@mcp.tool(title="GitHub agent put file", annotations=_WRITE_EXTERNAL)
+def github_agent_put_file(
+    repository: str,
+    path: str,
+    content: str,
+    message: str,
+    branch: str,
+) -> dict[str, object]:
+    """Create or fully replace one UTF-8 file and commit it to an allowlisted repository."""
+    return _github_agent_client().put_file(repository, path, content, message, branch)
+
+
+@mcp.tool(title="GitHub agent delete file", annotations=_DESTRUCTIVE_EXTERNAL)
+def github_agent_delete_file(
+    repository: str,
+    path: str,
+    message: str,
+    branch: str,
+) -> dict[str, object]:
+    """Delete one file and commit the deletion in an allowlisted repository."""
+    return _github_agent_client().delete_file(repository, path, message, branch)
+
+
+@mcp.tool(title="GitHub agent compare refs", annotations=_READ_EXTERNAL)
+def github_agent_compare(repository: str, base: str, head: str) -> dict[str, object]:
+    """Compare two branches, tags, or commit refs in an allowlisted repository."""
+    return _github_agent_client().compare(repository, base, head)
+
+
+@mcp.tool(title="GitHub agent fast-forward branch", annotations=_WRITE_EXTERNAL)
+def github_agent_fast_forward(
+    repository: str,
+    branch: str,
+    to_ref: str,
+) -> dict[str, object]:
+    """Fast-forward a branch to another ref; force updates are never used."""
+    return _github_agent_client().fast_forward(repository, branch, to_ref)
 
 
 def _split_env(name: str, default: str) -> list[str]:
