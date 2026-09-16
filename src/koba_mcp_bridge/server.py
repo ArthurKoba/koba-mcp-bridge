@@ -19,7 +19,8 @@ from mcp.types import ToolAnnotations
 
 from . import __version__
 from .github_agent import github_agent_configured
-from .github_review import GitHubReviewClient
+from .github_collab import GitHubCollabClient
+from .github_collab_tools import register_github_collab_tools
 from .github_review_tools import register_github_review_tools
 from .github_tools import register_github_workflow_tools
 
@@ -170,8 +171,8 @@ def _github_write_probe_request(token: str, repository: str, branch: str) -> dic
 
 
 @lru_cache(maxsize=1)
-def _github_agent_client() -> GitHubReviewClient:
-    return GitHubReviewClient.from_env()
+def _github_agent_client() -> GitHubCollabClient:
+    return GitHubCollabClient.from_env()
 
 
 _auth, _auth_middleware = _build_auth()
@@ -235,6 +236,7 @@ def bridge_capabilities() -> dict[str, object]:
                 "github-app-agent",
                 "github-development-workflow",
                 "github-rebase-review",
+                "github-review-threads",
             ]
         )
     return {
@@ -338,6 +340,12 @@ register_github_workflow_tools(
     _DESTRUCTIVE_EXTERNAL,
 )
 register_github_review_tools(
+    mcp,
+    _github_agent_client,
+    _READ_EXTERNAL,
+    _WRITE_EXTERNAL,
+)
+register_github_collab_tools(
     mcp,
     _github_agent_client,
     _READ_EXTERNAL,
