@@ -180,9 +180,9 @@ When these variables are absent, no `github_reviewer_*` tools are registered. Wh
 
 - status and installation validation;
 - UTF-8 and base64 file reads;
-- directory, code-search, commit-history, commit and ref comparison reads;
-- PR metadata, changed files, comments, reviews and review-thread reads;
-- check-run/required-check reads;
+- directory, branches, tags, code-search, commit-history, commit and ref comparison reads;
+- PR list/metadata, changed files, comments, reviews and review-thread reads;
+- check-run, workflow-run/job and required-check reads;
 - rich review submission with inline comments;
 - review-thread replies and resolve/unresolve operations.
 
@@ -193,7 +193,7 @@ Recommended reviewer App permissions:
 - **Contents: Read-only**;
 - **Pull requests: Read and write**;
 - **Checks: Read-only**;
-- **Actions: Read-only** if the reviewer should inspect workflow runs/jobs through future reviewer-specific CI tools;
+- **Actions: Read-only**;
 - **Issues: Read-only** if PR conversation/issue-style metadata access requires it for the repository policy in use.
 
 A separate ChatGPT conversation by itself is not an independent GitHub identity. The second GitHub App is what makes the review actor distinct at GitHub level. A practical workflow is: development chat creates/updates the PR through `github_agent_*`; review chat inspects the diff and CI through `github_reviewer_*`; reviewer App submits `REQUEST_CHANGES` or `APPROVE`; the development App merge gate verifies the required reviewer bot login before allowing merge.
@@ -209,10 +209,6 @@ Bridge policy protects `main`/`master` from direct agent mutations, but GitHub i
 - conversation resolution before merge, if desired.
 
 Keep ruleset/branch-protection administration human-controlled rather than granting repository administration permission to either GitHub App.
-
-## Browser MCP GitHub write probe
-
-The bridge still contains the narrow `github_write_probe` mutation tool that was used to verify browser ChatGPT write-action support. It writes only to a server-configured probe repository/branch. Once the GitHub App backend has been fully validated in production, remove `GITHUB_WRITE_PROBE_TOKEN` and retire this temporary tool.
 
 ## Project status
 

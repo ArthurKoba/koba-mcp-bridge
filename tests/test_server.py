@@ -29,6 +29,15 @@ async def test_bridge_build_info() -> None:
     assert result.data["python"]
 
 
+@pytest.mark.asyncio
+async def test_browser_write_probe_is_retired() -> None:
+    async with Client(mcp) as client:
+        tools = await client.list_tools()
+
+    names = {tool.name for tool in tools}
+    assert "github_write_probe" not in names
+
+
 def test_configured_backends_empty(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("GHIDRA_MCP_URL", raising=False)
     assert _configured_backends() == {}
