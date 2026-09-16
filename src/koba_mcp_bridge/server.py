@@ -77,7 +77,7 @@ def _configured_backends() -> dict[str, str]:
 def _mount_backends(server: FastMCP) -> dict[str, str]:
     backends = _configured_backends()
     for namespace, url in backends.items():
-        proxy = create_proxy(url, name=f"{namespace}-backend")
+        proxy = create_proxy(url, name=f"{namespace}-backend", mode="auto")
         server.mount(server=proxy, namespace=namespace)
     return backends
 
