@@ -1,14 +1,9 @@
 from __future__ import annotations
 
-import base64
-import json
 import os
 import platform
-import urllib.error
-import urllib.request
 from datetime import UTC, datetime
 from functools import lru_cache
-from uuid import uuid4
 
 from fastmcp import FastMCP
 from fastmcp.server import create_proxy
@@ -22,6 +17,7 @@ from .github_agent import github_agent_configured
 from .github_collab import GitHubCollabClient
 from .github_collab_tools import register_github_collab_tools
 from .github_review_tools import register_github_review_tools
+from .github_reviewer import github_reviewer_configured
 from .github_tools import register_github_workflow_tools
 
 _STARTED_AT = datetime.now(UTC).isoformat()
@@ -46,8 +42,6 @@ _DESTRUCTIVE_EXTERNAL = ToolAnnotations(
     open_world_hint=True,
 )
 _CHATGPT_OAUTH_REDIRECT = "https://chatgpt.com/connector_platform_oauth_redirect"
-_DEFAULT_GITHUB_PROBE_REPOSITORY = "ArthurKoba/koba-mcp-bridge"
-_DEFAULT_GITHUB_PROBE_BRANCH = "mcp-write-probe"
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -111,65 +105,6 @@ def _mount_backends(server: FastMCP) -> dict[str, str]:
     return backends
 
 
-def _github_write_probe_target() -> tuple[str, str]:
-    repository = os.getenv(
-        "GITHUB_WRITE_PROBE_REPOSITORY",
-        _DEFAULT_GITHUB_PROBE_REPOSITORY,
-    ).strip()
-    branch = os.getenv("GITHUB_WRITE_PROBE_BRANCH", _DEFAULT_GITHUB_PROBE_BRANCH).strip()
-    if not repository or "/" not in repository:
-        raise RuntimeError("GITHUB_WRITE_PROBE_REPOSITORY must be owner/repository")
-    if not branch:
-        raise RuntimeError("GITHUB_WRITE_PROBE_BRANCH must not be empty")
-    return repository, branch
-
-
-def _github_write_probe_request(token: str, repository: str, branch: str) -> dict[str, object]:
-    now = datetime.now(UTC)
-    stamp = now.strftime("%Y%m%dT%H%M%SZ")
-    path = f".mcp-write-probes/{stamp}-{uuid4().hex}.txt"
-    text = (
-        "Koba MCP Bridge browser write probe\n"
-        f"created_at={now.isoformat()}\n"
-        f"repository={repository}\n"
-        f"branch={branch}\n"
-    )
-    payload = json.dumps(
-        {
-            "message": f"test: browser MCP write probe {stamp}",
-            "content": base64.b64encode(text.encode()).decode(),
-            "branch": branch,
-        }
-    ).encode()
-    request = urllib.request.Request(
-        f"https://api.github.com/repos/{repository}/contents/{path}",
-        data=payload,
-        method="PUT",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-            "User-Agent": "koba-mcp-bridge",
-            "X-GitHub-Api-Version": "2022-11-28",
-        },
-    )
-
-    try:
-        with urllib.request.urlopen(request, timeout=20) as response:
-            result = json.loads(response.read().decode())
-            return {
-                "status": response.status,
-                "repository": repository,
-                "branch": branch,
-                "path": path,
-                "commit_sha": str(result.get("commit", {}).get("sha", "")),
-                "content_sha": str(result.get("content", {}).get("sha", "")),
-            }
-    except urllib.error.HTTPError as exc:
-        detail = exc.read(1024).decode("utf-8", "replace")
-        raise RuntimeError(f"GitHub write probe failed with HTTP {exc.code}: {detail}") from exc
-
-
 @lru_cache(maxsize=1)
 def _github_agent_client() -> GitHubCollabClient:
     return GitHubCollabClient.from_env()
@@ -228,8 +163,6 @@ def bridge_capabilities() -> dict[str, object]:
     features = ["mcp", "streamable-http", "opentelemetry", "gateway"]
     if _auth is not None:
         features.append("github-oauth")
-    if os.getenv("GITHUB_WRITE_PROBE_TOKEN", "").strip():
-        features.append("github-write-probe")
     if github_agent_configured():
         features.extend(
             [
@@ -239,30 +172,14 @@ def bridge_capabilities() -> dict[str, object]:
                 "github-review-threads",
             ]
         )
+    if github_reviewer_configured():
+        features.append("github-independent-reviewer")
     return {
         "backends": sorted(_MOUNTED_BACKENDS),
         "workers": [],
         "features": features,
         "status": "active",
     }
-
-
-@mcp.tool(
-    title="GitHub browser write probe",
-    annotations=_WRITE_EXTERNAL,
-)
-def github_write_probe() -> dict[str, object]:
-    """Create one unique test file in the configured GitHub probe branch.
-
-    This is intentionally a write/mutation tool for testing whether browser ChatGPT is allowed
-    to invoke a custom MCP action with external side effects. The target repository and branch
-    are controlled only by server-side environment variables; callers cannot choose them.
-    """
-    token = os.getenv("GITHUB_WRITE_PROBE_TOKEN", "").strip()
-    if not token:
-        raise RuntimeError("GITHUB_WRITE_PROBE_TOKEN is not configured")
-    repository, branch = _github_write_probe_target()
-    return _github_write_probe_request(token, repository, branch)
 
 
 @mcp.tool(title="GitHub agent status", annotations=_READ_EXTERNAL)
