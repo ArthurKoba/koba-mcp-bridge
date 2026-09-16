@@ -18,7 +18,9 @@ from fastmcp.server.middleware import AuthMiddleware
 from mcp.types import ToolAnnotations
 
 from . import __version__
-from .github_agent import GitHubAppClient, github_agent_configured
+from .github_agent import github_agent_configured
+from .github_tools import register_github_workflow_tools
+from .github_workflow import GitHubDevClient
 
 _STARTED_AT = datetime.now(UTC).isoformat()
 _READ_ONLY_LOCAL = ToolAnnotations(
@@ -167,8 +169,8 @@ def _github_write_probe_request(token: str, repository: str, branch: str) -> dic
 
 
 @lru_cache(maxsize=1)
-def _github_agent_client() -> GitHubAppClient:
-    return GitHubAppClient.from_env()
+def _github_agent_client() -> GitHubDevClient:
+    return GitHubDevClient.from_env()
 
 
 _auth, _auth_middleware = _build_auth()
@@ -227,7 +229,7 @@ def bridge_capabilities() -> dict[str, object]:
     if os.getenv("GITHUB_WRITE_PROBE_TOKEN", "").strip():
         features.append("github-write-probe")
     if github_agent_configured():
-        features.append("github-app-agent")
+        features.extend(["github-app-agent", "github-development-workflow"])
     return {
         "backends": sorted(_MOUNTED_BACKENDS),
         "workers": [],
@@ -290,7 +292,7 @@ def github_agent_put_file(
     message: str,
     branch: str,
 ) -> dict[str, object]:
-    """Create or fully replace one UTF-8 file and commit it to an allowlisted repository."""
+    """Create or fully replace one UTF-8 file on a non-protected branch."""
     return _github_agent_client().put_file(repository, path, content, message, branch)
 
 
@@ -301,7 +303,7 @@ def github_agent_delete_file(
     message: str,
     branch: str,
 ) -> dict[str, object]:
-    """Delete one file and commit the deletion in an allowlisted repository."""
+    """Delete one file and commit the deletion on a non-protected branch."""
     return _github_agent_client().delete_file(repository, path, message, branch)
 
 
@@ -317,8 +319,17 @@ def github_agent_fast_forward(
     branch: str,
     to_ref: str,
 ) -> dict[str, object]:
-    """Fast-forward a branch to another ref; force updates are never used."""
+    """Fast-forward a non-protected branch to another ref without force updates."""
     return _github_agent_client().fast_forward(repository, branch, to_ref)
+
+
+register_github_workflow_tools(
+    mcp,
+    _github_agent_client,
+    _READ_EXTERNAL,
+    _WRITE_EXTERNAL,
+    _DESTRUCTIVE_EXTERNAL,
+)
 
 
 def _split_env(name: str, default: str) -> list[str]:

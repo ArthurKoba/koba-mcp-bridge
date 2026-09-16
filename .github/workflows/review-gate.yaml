@@ -1,0 +1,16 @@
+name: Review Gate
+
+on:
+  pull_request_review:
+    types: [submitted, dismissed]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  review-context:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Record review gate context
+        run: |
+          echo "Review approval policy is enforced by GitHub branch/ruleset settings."
+          echo "This workflow exists as a stable check context for future policy expansion."
