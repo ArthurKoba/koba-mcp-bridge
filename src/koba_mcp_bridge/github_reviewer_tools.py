@@ -15,7 +15,7 @@ def register_github_reviewer_tools(
     read_annotations: ToolAnnotations,
     write_annotations: ToolAnnotations,
 ) -> None:
-    """Register a narrow surface for an independent reviewer GitHub App."""
+    """Register a narrow read/review surface for an independent reviewer GitHub App."""
 
     @mcp.tool(title="GitHub reviewer status", annotations=read_annotations)
     def github_reviewer_status(repository: str) -> dict[str, object]:
@@ -30,6 +30,15 @@ def register_github_reviewer_tools(
     ) -> dict[str, object]:
         """Read one UTF-8 file for review."""
         return client_factory().get_file(repository, path, ref)
+
+    @mcp.tool(title="GitHub reviewer get binary file", annotations=read_annotations)
+    def github_reviewer_get_binary_file(
+        repository: str,
+        path: str,
+        ref: str | None = None,
+    ) -> dict[str, object]:
+        """Read one file as base64 for binary review."""
+        return client_factory().get_binary_file(repository, path, ref)
 
     @mcp.tool(title="GitHub reviewer list directory", annotations=read_annotations)
     def github_reviewer_list_directory(
@@ -49,10 +58,31 @@ def register_github_reviewer_tools(
         """Compare two refs for review."""
         return client_factory().compare(repository, base, head)
 
+    @mcp.tool(title="GitHub reviewer list commits", annotations=read_annotations)
+    def github_reviewer_list_commits(
+        repository: str,
+        ref: str | None = None,
+        path: str | None = None,
+        per_page: int = 50,
+        page: int = 1,
+    ) -> dict[str, object]:
+        """Read commit history for independent review."""
+        return client_factory().list_commits(repository, ref, path, per_page, page)
+
     @mcp.tool(title="GitHub reviewer get commit", annotations=read_annotations)
     def github_reviewer_get_commit(repository: str, ref: str) -> dict[str, object]:
         """Read one commit and changed-file patches."""
         return client_factory().get_commit(repository, ref)
+
+    @mcp.tool(title="GitHub reviewer search code", annotations=read_annotations)
+    def github_reviewer_search_code(
+        repository: str,
+        query: str,
+        per_page: int = 30,
+        page: int = 1,
+    ) -> dict[str, object]:
+        """Search code only inside one reviewer-allowlisted repository."""
+        return client_factory().search_code(repository, query, per_page, page)
 
     @mcp.tool(title="GitHub reviewer get pull request", annotations=read_annotations)
     def github_reviewer_get_pull_request(
@@ -85,6 +115,14 @@ def register_github_reviewer_tools(
     ) -> dict[str, object]:
         """List inline review threads and resolution state."""
         return client_factory().list_review_threads(repository, number)
+
+    @mcp.tool(title="GitHub reviewer inline comments", annotations=read_annotations)
+    def github_reviewer_list_review_comments(
+        repository: str,
+        number: int,
+    ) -> dict[str, object]:
+        """List flat inline review comments for a pull request."""
+        return client_factory().list_review_comments(repository, number)
 
     @mcp.tool(title="GitHub reviewer conversation comments", annotations=read_annotations)
     def github_reviewer_list_conversation_comments(
