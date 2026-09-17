@@ -15,7 +15,6 @@ def github_reviewer_configured() -> bool:
             os.getenv("GITHUB_REVIEWER_PRIVATE_KEY", "").strip()
             or os.getenv("GITHUB_REVIEWER_PRIVATE_KEY_B64", "").strip()
         )
-        and os.getenv("GITHUB_REVIEWER_ALLOWED_REPOSITORIES", "").strip()
     )
 
 
@@ -36,16 +35,6 @@ def _reviewer_private_key_from_env() -> str:
     raise GitHubAgentError("GitHub reviewer private key is not configured")
 
 
-def _reviewer_allowed_repositories_from_env() -> set[str]:
-    raw = os.getenv("GITHUB_REVIEWER_ALLOWED_REPOSITORIES", "")
-    repositories = {item.strip().casefold() for item in raw.split(",") if item.strip()}
-    if not repositories:
-        raise GitHubAgentError("GITHUB_REVIEWER_ALLOWED_REPOSITORIES is empty")
-    if "*" in repositories:
-        raise GitHubAgentError("wildcard reviewer repository access is intentionally unsupported")
-    return repositories
-
-
 @lru_cache(maxsize=1)
 def github_reviewer_client_from_env() -> GitHubActionsClient:
     app_id = os.getenv("GITHUB_REVIEWER_APP_ID", "").strip()
@@ -54,5 +43,4 @@ def github_reviewer_client_from_env() -> GitHubActionsClient:
     return GitHubActionsClient(
         app_id=app_id,
         private_key=_reviewer_private_key_from_env(),
-        allowed_repositories=_reviewer_allowed_repositories_from_env(),
     )

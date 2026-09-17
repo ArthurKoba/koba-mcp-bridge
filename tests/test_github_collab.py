@@ -11,7 +11,6 @@ class RecordingCollabClient(GitHubCollabClient):
         super().__init__(
             app_id="123",
             private_key="key-material",
-            allowed_repositories={"arthurkoba/koba-mcp-bridge"},
         )
         self.graphql_calls: list[tuple[str, dict[str, object]]] = []
 
