@@ -17,9 +17,14 @@ def register_github_reviewer_tools(
 ) -> None:
     """Register a narrow read/review surface for an independent reviewer GitHub App."""
 
+    @mcp.tool(title="GitHub reviewer list repositories", annotations=read_annotations)
+    def github_reviewer_list_repositories() -> dict[str, object]:
+        """List repositories currently granted to the reviewer GitHub App installation."""
+        return client_factory().list_repositories()
+
     @mcp.tool(title="GitHub reviewer status", annotations=read_annotations)
     def github_reviewer_status(repository: str) -> dict[str, object]:
-        """Verify the independent reviewer App installation."""
+        """Verify the independent reviewer App installation for one repository."""
         return client_factory().status(repository)
 
     @mcp.tool(title="GitHub reviewer get file", annotations=read_annotations)
@@ -95,7 +100,7 @@ def register_github_reviewer_tools(
         per_page: int = 30,
         page: int = 1,
     ) -> dict[str, object]:
-        """Search code only inside one reviewer-allowlisted repository."""
+        """Search code inside one repository installed for the reviewer App."""
         return client_factory().search_code(repository, query, per_page, page)
 
     @mcp.tool(title="GitHub reviewer list pull requests", annotations=read_annotations)
