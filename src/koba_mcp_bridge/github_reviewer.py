@@ -4,8 +4,8 @@ import base64
 import os
 from functools import lru_cache
 
-from .github_actions import GitHubActionsClient
 from .github_agent import GitHubAgentError
+from .github_identity import GitHubPrettyIdentityClient
 
 
 def github_reviewer_configured() -> bool:
@@ -36,11 +36,11 @@ def _reviewer_private_key_from_env() -> str:
 
 
 @lru_cache(maxsize=1)
-def github_reviewer_client_from_env() -> GitHubActionsClient:
+def github_reviewer_client_from_env() -> GitHubPrettyIdentityClient:
     app_id = os.getenv("GITHUB_REVIEWER_APP_ID", "").strip()
     if not app_id:
         raise GitHubAgentError("GITHUB_REVIEWER_APP_ID is not configured")
-    return GitHubActionsClient(
+    return GitHubPrettyIdentityClient(
         app_id=app_id,
         private_key=_reviewer_private_key_from_env(),
     )
