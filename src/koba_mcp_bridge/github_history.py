@@ -54,24 +54,27 @@ class GitHubHistoryMixin:
         branch = branch.strip()
         if not branch:
             raise GitHubAgentError("branch must not be empty")
+
         status, result = self._repo_request(  # type: ignore[attr-defined]
             repository,
             "GET",
             f"/repos/{repository}/branches/{urllib.parse.quote(branch, safe='')}",
             allowed_errors={404},
         )
-        github_protected = False
         exists = status != 404
+        github_protected = False
         if exists:
             if not isinstance(result, dict):
                 raise GitHubAgentError("unexpected branch response")
             github_protected = bool(result.get("protected", False))
+
         bridge_reserved = branch.casefold() in protected_branches_from_env()
         denial_reason: str | None = None
         if bridge_reserved:
             denial_reason = "branch is reserved by bridge mutation policy"
         elif github_protected:
             denial_reason = "branch is protected by GitHub"
+
         return {
             "repository": repository,
             "branch": branch,
@@ -98,6 +101,7 @@ class GitHubHistoryMixin:
         )
         if not isinstance(result, list):
             raise GitHubAgentError("unexpected branch list response")
+
         reserved = protected_branches_from_env()
         branches = []
         for item in result:
@@ -107,11 +111,11 @@ class GitHubHistoryMixin:
             name = str(item.get("name", ""))
             github_protected = bool(item.get("protected", False))
             bridge_reserved = name.casefold() in reserved
-            reason = None
+            denial_reason = None
             if bridge_reserved:
-                reason = "branch is reserved by bridge mutation policy"
+                denial_reason = "branch is reserved by bridge mutation policy"
             elif github_protected:
-                reason = "branch is protected by GitHub"
+                denial_reason = "branch is protected by GitHub"
             branches.append(
                 {
                     "name": name,
@@ -119,8 +123,8 @@ class GitHubHistoryMixin:
                     "protected": github_protected,
                     "github_protected": github_protected,
                     "bridge_reserved": bridge_reserved,
-                    "mutation_allowed": reason is None,
-                    "mutation_denial_reason": reason,
+                    "mutation_allowed": denial_reason is None,
+                    "mutation_denial_reason": denial_reason,
                 }
             )
         return {"repository": repository, "branches": branches}
@@ -150,6 +154,7 @@ class GitHubHistoryMixin:
         )
         if not isinstance(result, list):
             raise GitHubAgentError("unexpected commit list response")
+
         commits = []
         for item in result:
             if not isinstance(item, dict):
@@ -160,8 +165,14 @@ class GitHubHistoryMixin:
                     "sha": str(item.get("sha", "")),
                     "message": str(details.get("message", "")),
                     "author": _git_identity(details.get("author"), item.get("author")),
-                    "committer": _git_identity(details.get("committer"), item.get("committer")),
-                    "verification": _verification(details.get("verification"), include_material=False),
+                    "committer": _git_identity(
+                        details.get("committer"),
+                        item.get("committer"),
+                    ),
+                    "verification": _verification(
+                        details.get("verification"),
+                        include_material=False,
+                    ),
                     "parents": [
                         str(parent.get("sha", ""))
                         for parent in item.get("parents", [])
@@ -180,6 +191,7 @@ class GitHubHistoryMixin:
         )
         if not isinstance(result, dict):
             raise GitHubAgentError("unexpected commit response")
+
         details = result.get("commit") if isinstance(result.get("commit"), dict) else {}
         tree = details.get("tree") if isinstance(details.get("tree"), dict) else {}
         files = result.get("files") if isinstance(result.get("files"), list) else []
@@ -189,8 +201,14 @@ class GitHubHistoryMixin:
             "message": str(details.get("message", "")),
             "tree_sha": str(tree.get("sha", "")),
             "author": _git_identity(details.get("author"), result.get("author")),
-            "committer": _git_identity(details.get("committer"), result.get("committer")),
-            "verification": _verification(details.get("verification"), include_material=True),
+            "committer": _git_identity(
+                details.get("committer"),
+                result.get("committer"),
+            ),
+            "verification": _verification(
+                details.get("verification"),
+                include_material=True,
+            ),
             "parents": [
                 str(item.get("sha", ""))
                 for item in result.get("parents", [])
@@ -230,11 +248,11 @@ class GitHubHistoryMixin:
         slug = str(app.get("slug", ""))
         if not slug:
             raise GitHubAgentError("GitHub App response has no slug")
+
         login = f"{slug}[bot]"
         _, bot = self._request(  # type: ignore[attr-defined]
             "GET",
             f"{_GITHUB_API}/users/{urllib.parse.quote(login, safe='')}",
-            token=self._app_jwt(),  # type: ignore[attr-defined]
         )
         if not isinstance(bot, dict) or not isinstance(bot.get("id"), int):
             raise GitHubAgentError("unable to resolve GitHub App bot identity")
@@ -277,6 +295,7 @@ class GitHubHistoryMixin:
         )
         if not isinstance(repo, dict):
             raise GitHubAgentError("unexpected repository response")
+
         permissions = self._installation_permissions(repository)
         contents_write = permissions.get("contents") == "write"
         return {
@@ -320,6 +339,19 @@ class GitHubHistoryMixin:
             raise GitHubAgentError("unexpected git commit response")
         return result
 
+    @staticmethod
+    def _identity_matches(commit: dict[str, object], name: str, email: str) -> bool:
+        author = commit.get("author") if isinstance(commit.get("author"), dict) else {}
+        committer = (
+            commit.get("committer") if isinstance(commit.get("committer"), dict) else {}
+        )
+        return (
+            str(author.get("name", "")) == name
+            and str(author.get("email", "")) == email
+            and str(committer.get("name", "")) == name
+            and str(committer.get("email", "")) == email
+        )
+
     def rewrite_branch_identity(
         self,
         repository: str,
@@ -342,8 +374,10 @@ class GitHubHistoryMixin:
             raise GitHubAgentError("expected_head_sha is required")
         if not preserve_messages or not preserve_trees:
             raise GitHubAgentError(
-                "identity rewrite is identity-only; preserve_messages and preserve_trees must be true"
+                "identity rewrite is identity-only; preserve_messages and "
+                "preserve_trees must be true"
             )
+
         max_commits = max(1, min(max_commits, 500))
         branch_q = urllib.parse.quote(branch, safe="")
         _, ref = self._repo_request(  # type: ignore[attr-defined]
@@ -382,8 +416,10 @@ class GitHubHistoryMixin:
                 raise GitHubAgentError("git commit parent has no sha")
         else:
             raise GitHubAgentError(
-                f"rewrite range exceeds max_commits={max_commits}; provide base_sha or raise the limit"
+                f"rewrite range exceeds max_commits={max_commits}; "
+                "provide base_sha or raise the limit"
             )
+
         if base_sha is not None and not reached_base:
             raise GitHubAgentError("base_sha is not a first-parent ancestor of branch head")
         if not chain_newest_first:
@@ -395,7 +431,7 @@ class GitHubHistoryMixin:
         git_email = str(identity["email"])
         parent_sha = base_sha
         mapping: dict[str, str] = {}
-        planned: list[dict[str, object]] = []
+        plan: list[dict[str, object]] = []
 
         for original in chain:
             old_sha = str(original.get("sha", ""))
@@ -403,23 +439,26 @@ class GitHubHistoryMixin:
             tree_sha = str(tree.get("sha", ""))
             message = str(original.get("message", ""))
             author = original.get("author") if isinstance(original.get("author"), dict) else {}
-            planned.append(
-                {
-                    "old_sha": old_sha,
-                    "tree_sha": tree_sha,
-                    "message": message,
-                    "old_author_date": str(author.get("date", "")),
-                    "new_parent_sha": parent_sha,
-                }
+            committer = (
+                original.get("committer")
+                if isinstance(original.get("committer"), dict)
+                else {}
             )
-            if dry_run:
-                parent_sha = f"<rewritten:{old_sha}>"
-                continue
 
-            author_payload: dict[str, object] = {"name": git_name, "email": git_email}
-            committer_payload: dict[str, object] = {"name": git_name, "email": git_email}
-            if preserve_author_dates and author.get("date"):
-                author_payload["date"] = str(author["date"])
+            author_payload: dict[str, object] = {
+                "name": git_name,
+                "email": git_email,
+            }
+            committer_payload: dict[str, object] = {
+                "name": git_name,
+                "email": git_email,
+            }
+            if preserve_author_dates:
+                if author.get("date"):
+                    author_payload["date"] = str(author["date"])
+                if committer.get("date"):
+                    committer_payload["date"] = str(committer["date"])
+
             payload: dict[str, object] = {
                 "message": message,
                 "tree": tree_sha,
@@ -435,38 +474,38 @@ class GitHubHistoryMixin:
             )
             if not isinstance(created, dict) or not created.get("sha"):
                 raise GitHubAgentError("GitHub did not return rewritten commit sha")
+
             created_tree = created.get("tree") if isinstance(created.get("tree"), dict) else {}
             if str(created_tree.get("sha", "")) != tree_sha:
                 raise GitHubAgentError(
                     f"rewritten commit tree mismatch for {old_sha}: "
                     f"expected {tree_sha}, found {created_tree.get('sha', '')}"
                 )
+            if str(created.get("message", "")) != message:
+                raise GitHubAgentError(f"rewritten commit message mismatch for {old_sha}")
+            if not self._identity_matches(created, git_name, git_email):
+                raise GitHubAgentError(
+                    f"rewritten commit identity mismatch for {old_sha}"
+                )
+
             new_sha = str(created["sha"])
             mapping[old_sha] = new_sha
+            plan.append(
+                {
+                    "old_sha": old_sha,
+                    "new_sha": new_sha,
+                    "tree_sha": tree_sha,
+                    "message": message,
+                    "old_author_date": str(author.get("date", "")),
+                    "old_committer_date": str(committer.get("date", "")),
+                    "new_parent_sha": parent_sha,
+                }
+            )
             parent_sha = new_sha
-
-        result: dict[str, object] = {
-            "repository": repository,
-            "branch": branch,
-            "dry_run": dry_run,
-            "identity_source": identity_source,
-            "identity": identity,
-            "old_head_sha": old_head,
-            "base_sha": base_sha,
-            "commit_count": len(chain),
-            "preserve_messages": preserve_messages,
-            "preserve_trees": preserve_trees,
-            "preserve_author_dates": preserve_author_dates,
-            "plan": planned,
-            "mapping": mapping,
-        }
-        if dry_run:
-            result["new_head_sha"] = None
-            result["ref_updated"] = False
-            return result
 
         if len(mapping) != len(chain):
             raise GitHubAgentError("rewritten commit count does not match source commit count")
+
         new_head = parent_sha or ""
         old_head_tree_obj = (
             chain_newest_first[0].get("tree")
@@ -476,7 +515,9 @@ class GitHubHistoryMixin:
         old_head_tree = str(old_head_tree_obj.get("sha", ""))
         new_head_commit = self._git_commit_object(repository, new_head)
         new_head_tree_obj = (
-            new_head_commit.get("tree") if isinstance(new_head_commit.get("tree"), dict) else {}
+            new_head_commit.get("tree")
+            if isinstance(new_head_commit.get("tree"), dict)
+            else {}
         )
         new_head_tree = str(new_head_tree_obj.get("sha", ""))
         if not old_head_tree or new_head_tree != old_head_tree:
@@ -484,19 +525,44 @@ class GitHubHistoryMixin:
                 f"final tree mismatch: expected {old_head_tree}, found {new_head_tree}"
             )
 
+        result: dict[str, object] = {
+            "repository": repository,
+            "branch": branch,
+            "dry_run": dry_run,
+            "dry_run_creates_unreferenced_commit_objects": dry_run,
+            "identity_source": identity_source,
+            "identity": identity,
+            "old_head_sha": old_head,
+            "new_head_sha": new_head,
+            "base_sha": base_sha,
+            "commit_count": len(chain),
+            "preserve_messages": preserve_messages,
+            "preserve_trees": preserve_trees,
+            "preserve_author_dates": preserve_author_dates,
+            "final_tree_sha": new_head_tree,
+            "mapping": mapping,
+            "plan": plan,
+            "old_shas_reachable_from_new_head": False,
+            "ref_updated": False,
+        }
+        if dry_run:
+            return result
+
         _, ref_before_update = self._repo_request(  # type: ignore[attr-defined]
             repository,
             "GET",
             f"/repos/{repository}/git/ref/heads/{branch_q}",
         )
         if not isinstance(ref_before_update, dict) or not isinstance(
-            ref_before_update.get("object"), dict
+            ref_before_update.get("object"),
+            dict,
         ):
             raise GitHubAgentError("unable to re-check branch head before rewrite")
         current_head = str(ref_before_update["object"].get("sha", ""))
         if current_head != expected_head_sha:
             raise GitHubAgentError(
-                f"branch head changed during rewrite: expected {expected_head_sha}, found {current_head}"
+                "branch head changed during rewrite: "
+                f"expected {expected_head_sha}, found {current_head}"
             )
 
         self._repo_request(  # type: ignore[attr-defined]
@@ -505,7 +571,5 @@ class GitHubHistoryMixin:
             f"/repos/{repository}/git/refs/heads/{branch_q}",
             payload={"sha": new_head, "force": True},
         )
-        result["new_head_sha"] = new_head
-        result["final_tree_sha"] = new_head_tree
         result["ref_updated"] = True
         return result
