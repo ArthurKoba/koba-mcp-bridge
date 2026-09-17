@@ -27,7 +27,6 @@ def github_agent_configured() -> bool:
             os.getenv("GITHUB_AGENT_PRIVATE_KEY", "").strip()
             or os.getenv("GITHUB_AGENT_PRIVATE_KEY_B64", "").strip()
         )
-        and os.getenv("GITHUB_AGENT_ALLOWED_REPOSITORIES", "").strip()
     )
 
 
@@ -48,21 +47,10 @@ def _private_key_from_env() -> str:
     raise GitHubAgentError("GitHub agent private key is not configured")
 
 
-def _allowed_repositories_from_env() -> set[str]:
-    raw = os.getenv("GITHUB_AGENT_ALLOWED_REPOSITORIES", "")
-    repos = {item.strip().casefold() for item in raw.split(",") if item.strip()}
-    if not repos:
-        raise GitHubAgentError("GITHUB_AGENT_ALLOWED_REPOSITORIES is empty")
-    if "*" in repos:
-        raise GitHubAgentError("wildcard repository access is intentionally not supported")
-    return repos
-
-
 @dataclass
 class GitHubAppClient:
     app_id: str
     private_key: str
-    allowed_repositories: set[str]
     _installation_ids: dict[str, int] = field(default_factory=dict)
     _tokens: dict[int, tuple[str, float]] = field(default_factory=dict)
 
@@ -74,14 +62,13 @@ class GitHubAppClient:
         return cls(
             app_id=app_id,
             private_key=_private_key_from_env(),
-            allowed_repositories=_allowed_repositories_from_env(),
         )
 
     def _assert_allowed(self, repository: str) -> str:
+        """Validate a repository selector; GitHub installation scope is the access policy."""
         repository = repository.strip()
-        if repository.casefold() not in self.allowed_repositories:
-            raise GitHubAgentError(f"repository is not allowed: {repository}")
-        if "/" not in repository:
+        owner, separator, name = repository.partition("/")
+        if separator != "/" or not owner or not name or "/" in name:
             raise GitHubAgentError("repository must be owner/name")
         return repository
 
@@ -147,19 +134,23 @@ class GitHubAppClient:
         if cached is not None:
             return cached
 
-        _, result = self._request(
+        status, result = self._request(
             "GET",
             f"{_GITHUB_API}/repos/{repository}/installation",
             token=self._app_jwt(),
+            allowed_errors={404},
         )
+        if status == 404:
+            raise GitHubAgentError(
+                f"repository is not installed for GitHub App {self.app_id}: {repository}"
+            )
         if not isinstance(result, dict) or not isinstance(result.get("id"), int):
             raise GitHubAgentError("GitHub did not return an installation id")
         installation_id = int(result["id"])
         self._installation_ids[repository.casefold()] = installation_id
         return installation_id
 
-    def _installation_token(self, repository: str) -> str:
-        installation_id = self._installation_id(repository)
+    def _installation_token_for_id(self, installation_id: int) -> str:
         cached = self._tokens.get(installation_id)
         if cached is not None and cached[1] > time.time() + 120:
             return cached[0]
@@ -179,6 +170,9 @@ class GitHubAppClient:
         self._tokens[installation_id] = (token, expiry)
         return token
 
+    def _installation_token(self, repository: str) -> str:
+        return self._installation_token_for_id(self._installation_id(repository))
+
     def _repo_request(
         self,
         repository: str,
@@ -197,6 +191,77 @@ class GitHubAppClient:
             payload=payload,
             allowed_errors=allowed_errors,
         )
+
+    def _installation_ids_from_github(self) -> list[int]:
+        installation_ids: list[int] = []
+        page = 1
+        while True:
+            _, result = self._request(
+                "GET",
+                f"{_GITHUB_API}/app/installations?per_page=100&page={page}",
+                token=self._app_jwt(),
+            )
+            if not isinstance(result, list):
+                raise GitHubAgentError("unexpected GitHub App installation list response")
+            for item in result:
+                if isinstance(item, dict) and isinstance(item.get("id"), int):
+                    installation_ids.append(int(item["id"]))
+            if len(result) < 100:
+                break
+            page += 1
+        return installation_ids
+
+    def list_repositories(self) -> dict[str, object]:
+        """List every repository currently granted to this GitHub App installation."""
+        repositories: list[dict[str, object]] = []
+        seen: set[str] = set()
+        for installation_id in self._installation_ids_from_github():
+            token = self._installation_token_for_id(installation_id)
+            page = 1
+            while True:
+                _, result = self._request(
+                    "GET",
+                    f"{_GITHUB_API}/installation/repositories?per_page=100&page={page}",
+                    token=token,
+                )
+                if not isinstance(result, dict):
+                    raise GitHubAgentError("unexpected installation repository response")
+                items = result.get("repositories")
+                if not isinstance(items, list):
+                    raise GitHubAgentError("installation repository response has no repositories")
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    full_name = str(item.get("full_name", ""))
+                    if not full_name or full_name.casefold() in seen:
+                        continue
+                    seen.add(full_name.casefold())
+                    self._installation_ids[full_name.casefold()] = installation_id
+                    permissions = (
+                        item.get("permissions")
+                        if isinstance(item.get("permissions"), dict)
+                        else {}
+                    )
+                    repositories.append(
+                        {
+                            "full_name": full_name,
+                            "private": bool(item.get("private", False)),
+                            "default_branch": str(item.get("default_branch", "")),
+                            "archived": bool(item.get("archived", False)),
+                            "fork": bool(item.get("fork", False)),
+                            "permissions": permissions,
+                            "installation_id": installation_id,
+                        }
+                    )
+                if len(items) < 100:
+                    break
+                page += 1
+        repositories.sort(key=lambda item: str(item["full_name"]).casefold())
+        return {
+            "app_id": self.app_id,
+            "count": len(repositories),
+            "repositories": repositories,
+        }
 
     def status(self, repository: str) -> dict[str, object]:
         repository = self._assert_allowed(repository)
