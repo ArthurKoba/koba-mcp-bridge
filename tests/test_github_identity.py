@@ -98,7 +98,7 @@ def test_contents_commits_receive_pretty_author_and_committer() -> None:
         "README.md",
         "hello",
         "docs: update",
-        "main",
+        "feature/test",
     )
 
     assert result["commit_sha"] == "commit-1"
