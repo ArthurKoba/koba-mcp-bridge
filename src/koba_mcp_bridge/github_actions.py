@@ -8,6 +8,7 @@ import urllib.request
 
 from .github_agent import GitHubAgentError
 from .github_collab import GitHubCollabClient, required_reviewer_logins_from_env
+from .github_workflow import protected_branches_from_env
 
 _GITHUB_API = "https://api.github.com"
 _MAX_LOG_BYTES = 8 * 1024 * 1024
@@ -102,6 +103,38 @@ class GitHubActionsClient(GitHubCollabClient):
             "required_reviewers": required,
             "status": "ok",
         }
+
+    def merge_pull_request(
+        self,
+        repository: str,
+        number: int,
+        merge_method: str = "squash",
+        commit_title: str | None = None,
+        commit_message: str | None = None,
+    ) -> dict[str, object]:
+        repository = self._assert_allowed(repository)
+        _, pull = self._repo_request(
+            repository,
+            "GET",
+            f"/repos/{repository}/pulls/{number}",
+        )
+        if not isinstance(pull, dict):
+            raise GitHubAgentError("unexpected pull request response")
+        base = pull.get("base") if isinstance(pull.get("base"), dict) else {}
+        base_ref = str(base.get("ref", ""))
+        if not base_ref:
+            raise GitHubAgentError("pull request base has no ref")
+        if base_ref.casefold() in protected_branches_from_env():
+            raise GitHubAgentError(
+                f"protected branch merge requires administrator: {base_ref}"
+            )
+        return super().merge_pull_request(
+            repository,
+            number,
+            merge_method,
+            commit_title,
+            commit_message,
+        )
 
     def _download_redirect_bytes(
         self,
