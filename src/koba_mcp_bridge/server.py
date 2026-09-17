@@ -13,10 +13,10 @@ from fastmcp.server.middleware import AuthMiddleware
 from mcp.types import ToolAnnotations
 
 from . import __version__
-from .github_actions import GitHubActionsClient
 from .github_actions_tools import register_github_actions_tools
 from .github_agent import github_agent_configured
 from .github_collab_tools import register_github_collab_tools
+from .github_identity import GitHubPrettyIdentityClient
 from .github_review_tools import register_github_review_tools
 from .github_reviewer import github_reviewer_client_from_env, github_reviewer_configured
 from .github_reviewer_tools import register_github_reviewer_tools
@@ -108,8 +108,8 @@ def _mount_backends(server: FastMCP) -> dict[str, str]:
 
 
 @lru_cache(maxsize=1)
-def _github_agent_client() -> GitHubActionsClient:
-    return GitHubActionsClient.from_env()
+def _github_agent_client() -> GitHubPrettyIdentityClient:
+    return GitHubPrettyIdentityClient.from_env()
 
 
 _auth, _auth_middleware = _build_auth()
