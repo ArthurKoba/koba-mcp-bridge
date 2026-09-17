@@ -58,7 +58,7 @@ class GitHubPrettyIdentityClient(GitHubActionsClient):
             "name": display_name,
             "email": f"{bot_id}+{login}@users.noreply.github.com",
         }
-        setattr(self, "_koba_app_identity_cache", dict(identity))
+        self._koba_app_identity_cache = dict(identity)
         return identity
 
     def _agent_app_identity(self) -> dict[str, object]:
@@ -91,14 +91,12 @@ class GitHubPrettyIdentityClient(GitHubActionsClient):
         contents_prefix = f"/repos/{repository}/contents/"
         commit_path = f"/repos/{repository}/git/commits"
         tag_path = f"/repos/{repository}/git/tags"
+        is_direct_commit = updated is not None and (
+            (method in {"PUT", "DELETE"} and path.startswith(contents_prefix))
+            or (method == "POST" and path == commit_path)
+        )
 
-        if updated is not None and method in {"PUT", "DELETE"} and path.startswith(
-            contents_prefix
-        ):
-            signature = self._git_signature()
-            updated.setdefault("author", dict(signature))
-            updated.setdefault("committer", dict(signature))
-        elif updated is not None and method == "POST" and path == commit_path:
+        if is_direct_commit:
             signature = self._git_signature()
             updated.setdefault("author", dict(signature))
             updated.setdefault("committer", dict(signature))
