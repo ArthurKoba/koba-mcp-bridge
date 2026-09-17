@@ -6,6 +6,7 @@ from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 from .github_actions import GitHubActionsClient
+from .github_admin import repoint_reserved_branch
 from .github_reviewer import github_reviewer_client_from_env, github_reviewer_configured
 
 
@@ -59,6 +60,35 @@ def register_github_actions_tools(
             preserve_author_dates=preserve_author_dates,
             base_sha=base_sha,
             max_commits=max_commits,
+            dry_run=dry_run,
+        )
+
+    @mcp.tool(
+        title="GitHub admin repoint reserved branch",
+        annotations=destructive_annotations,
+    )
+    def github_admin_repoint_reserved_branch(
+        repository: str,
+        branch: str,
+        expected_head_sha: str,
+        target_sha: str,
+        dry_run: bool = True,
+    ) -> dict[str, object]:
+        """Repoint a Bridge-reserved branch without changing its repository tree.
+
+        This is a narrow maintenance primitive, not a general force-ref operation.
+        The target commit must have the same tree as the current reserved branch,
+        must already use the current Agent App identity, and the branch must not be
+        the repository default branch or GitHub-protected. The operation requires an
+        expected head SHA, re-checks it immediately before the forced ref update, and
+        defaults to dry-run.
+        """
+        return repoint_reserved_branch(
+            client_factory(),
+            repository,
+            branch,
+            expected_head_sha,
+            target_sha,
             dry_run=dry_run,
         )
 
