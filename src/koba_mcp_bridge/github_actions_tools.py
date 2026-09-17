@@ -7,6 +7,7 @@ from mcp.types import ToolAnnotations
 
 from .github_actions import GitHubActionsClient
 from .github_admin import repoint_reserved_branch
+from .github_history_graph import rewrite_branch_identity_graph
 from .github_reviewer import github_reviewer_client_from_env, github_reviewer_configured
 
 
@@ -64,6 +65,42 @@ def register_github_actions_tools(
         )
 
     @mcp.tool(
+        title="GitHub agent rewrite branch identity graph",
+        annotations=destructive_annotations,
+    )
+    def github_agent_rewrite_branch_identity_graph(
+        repository: str,
+        branch: str,
+        expected_head_sha: str,
+        identity_source: str = "current_agent_app",
+        preserve_messages: bool = True,
+        preserve_trees: bool = True,
+        preserve_author_dates: bool = True,
+        max_commits: int = 500,
+        dry_run: bool = True,
+    ) -> dict[str, object]:
+        """Rewrite a reachable merge DAG to the current Agent App Git identity.
+
+        Parent ordering/topology, commit trees, messages, and optional original Git
+        dates are preserved. The operation requires an expected branch head, validates
+        the reconstructed DAG and final tree, performs one CAS-style head re-check,
+        and only then force-replaces the branch ref. Dry-run creates unreachable Git
+        commit objects so the returned old->new mapping is exact.
+        """
+        return rewrite_branch_identity_graph(
+            client_factory(),
+            repository,
+            branch,
+            expected_head_sha,
+            identity_source=identity_source,
+            preserve_messages=preserve_messages,
+            preserve_trees=preserve_trees,
+            preserve_author_dates=preserve_author_dates,
+            max_commits=max_commits,
+            dry_run=dry_run,
+        )
+
+    @mcp.tool(
         title="GitHub admin repoint reserved branch",
         annotations=destructive_annotations,
     )
@@ -108,7 +145,7 @@ def register_github_actions_tools(
         per_page: int = 100,
         page: int = 1,
     ) -> dict[str, object]:
-        """List artifacts produced by one workflow run."""
+        """List artifacts produced by one GitHub Actions workflow run."""
         return client_factory().list_workflow_artifacts(
             repository,
             run_id,
