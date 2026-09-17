@@ -81,12 +81,13 @@ Required runtime variables:
 ```text
 GITHUB_AGENT_APP_ID=<GitHub App numeric App ID>
 GITHUB_AGENT_PRIVATE_KEY_B64=<base64-encoded GitHub App private key PEM>
-GITHUB_AGENT_ALLOWED_REPOSITORIES=ArthurKoba/koba-mcp-bridge,ArthurKoba/anjia-ajl33pq0866-fh8626v100-reverse
 ```
 
-`GITHUB_AGENT_PRIVATE_KEY` can be used instead of the base64 form when the deployment system can safely store multiline PEM values. The allowlist is mandatory and intentionally does not support `*`.
+`GITHUB_AGENT_PRIVATE_KEY` can be used instead of the base64 form when the deployment system can safely store multiline PEM values.
 
-Repository access is gated twice: the GitHub App installation must include the repository and the repository must also appear in `GITHUB_AGENT_ALLOWED_REPOSITORIES`.
+The GitHub App installation is the single source of truth for repository access. There is no duplicated bridge-side repository allowlist. Adding or removing repositories in the GitHub App installation immediately changes the repository set visible to the bridge without changing Coolify environment variables.
+
+`github_agent_list_repositories` discovers the repositories directly from GitHub App installations and returns repository metadata and effective installation permissions. A direct operation against a repository that is not installed for the App is rejected by GitHub installation lookup.
 
 ### Workflow policy
 
@@ -98,11 +99,11 @@ GITHUB_AGENT_REQUIRED_CHECKS=test,docker
 GITHUB_AGENT_REQUIRED_REVIEWERS=koba-ai-reviewer[bot]
 ```
 
-The protected-branch and required-check variables are optional and default to the values shown. `GITHUB_AGENT_REQUIRED_REVIEWERS` is optional and defaults to no identity-specific approval requirement; production PR-only workflows should set it once the independent reviewer App is installed.
+The protected-branch and required-check variables are optional and default to the values shown. `GITHUB_AGENT_REQUIRED_REVIEWERS` is optional and defaults to no identity-specific approval requirement; production PR-only workflows can set it once the independent reviewer App is installed and validated.
 
 Direct file writes, deletes, atomic commits, fast-forwards, branch deletion, and branch renames are rejected for protected branches. Work is expected to happen on feature branches and reach a protected branch through a pull request.
 
-Pull requests are restricted to branches inside the same allowlisted repository. `owner:branch` / fork heads are rejected by the bridge, so the agent cannot use this backend for external contribution PRs.
+Pull requests are restricted to branches inside the same repository. `owner:branch` / fork heads are rejected by the bridge, so the agent cannot use this backend for external contribution PRs.
 
 PR merge supports `merge`, `squash`, and `rebase`. Before merging, every name in `GITHUB_AGENT_REQUIRED_CHECKS` must have a completed successful check-run on the PR head SHA. When `GITHUB_AGENT_REQUIRED_REVIEWERS` is configured, the latest decisive review state for every listed login must also be `APPROVED`. A later `CHANGES_REQUESTED` or dismissed review blocks the merge again.
 
@@ -110,7 +111,7 @@ PR merge supports `merge`, `squash`, and `rebase`. Before merging, every name in
 
 Core repository/files:
 
-- repository installation/status checks;
+- installation-backed repository discovery and repository status checks;
 - UTF-8 file read/write/delete;
 - directory listing;
 - binary file read/write using base64;
@@ -147,17 +148,19 @@ Issues and CI:
 
 - list/read/create/update issues;
 - issue comments;
-- GitHub Actions workflow-run listing;
-- workflow job listing.
+- GitHub Actions workflow-run and job listing;
+- job-log diagnostics;
+- workflow artifact listing/download;
+- rerun one job, rerun failed jobs, rerun a workflow run, and cancel a workflow run.
 
 ### Development GitHub App permissions
 
-For the full workflow, configure the development GitHub App with only the repositories that agents are allowed to modify and grant:
+Configure the development GitHub App with only the repositories that agents are allowed to modify and grant:
 
 - **Contents: Read and write** — files, Git Data objects, refs, tags;
 - **Pull requests: Read and write** — PR lifecycle, reviews, merge;
 - **Issues: Read and write** — issue lifecycle and comments;
-- **Actions: Read-only** — workflow runs/jobs;
+- **Actions: Read and write** — workflow diagnostics plus rerun/cancel controls;
 - **Checks: Read-only** — required-check gating.
 
 Do not grant organization/administration permissions to the app unless a later feature explicitly requires them. Branch/ruleset administration should remain a human-controlled GitHub setting.
@@ -171,18 +174,20 @@ Reviewer runtime variables:
 ```text
 GITHUB_REVIEWER_APP_ID=<reviewer GitHub App numeric App ID>
 GITHUB_REVIEWER_PRIVATE_KEY_B64=<base64-encoded reviewer private key PEM>
-GITHUB_REVIEWER_ALLOWED_REPOSITORIES=ArthurKoba/koba-mcp-bridge,ArthurKoba/anjia-ajl33pq0866-fh8626v100-reverse
 ```
 
-`GITHUB_REVIEWER_PRIVATE_KEY` is also supported for multiline PEM storage. The reviewer allowlist is mandatory and does not support `*`.
+`GITHUB_REVIEWER_PRIVATE_KEY` is also supported for multiline PEM storage.
 
-When these variables are absent, no `github_reviewer_*` tools are registered. When configured, the reviewer surface intentionally exposes only read/review operations:
+The reviewer App installation is also the sole source of repository access. `github_reviewer_list_repositories` discovers its current installation repository set directly from GitHub. No reviewer repository list is duplicated in Coolify.
 
-- status and installation validation;
+When reviewer credentials are absent, no `github_reviewer_*` tools are registered. When configured, the reviewer surface intentionally exposes only read/review operations:
+
+- installation-backed repository discovery and status validation;
 - UTF-8 and base64 file reads;
 - directory, branches, tags, code-search, commit-history, commit and ref comparison reads;
 - PR list/metadata, changed files, comments, reviews and review-thread reads;
 - check-run, workflow-run/job and required-check reads;
+- job-log and workflow artifact diagnostics;
 - rich review submission with inline comments;
 - review-thread replies and resolve/unresolve operations.
 

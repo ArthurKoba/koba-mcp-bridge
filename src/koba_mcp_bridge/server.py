@@ -18,7 +18,8 @@ from .github_actions_tools import register_github_actions_tools
 from .github_agent import github_agent_configured
 from .github_collab_tools import register_github_collab_tools
 from .github_review_tools import register_github_review_tools
-from .github_reviewer import github_reviewer_configured
+from .github_reviewer import github_reviewer_client_from_env, github_reviewer_configured
+from .github_reviewer_tools import register_github_reviewer_tools
 from .github_tools import register_github_workflow_tools
 
 _STARTED_AT = datetime.now(UTC).isoformat()
@@ -172,6 +173,7 @@ def bridge_capabilities() -> dict[str, object]:
                 "github-rebase-review",
                 "github-review-threads",
                 "github-actions-diagnostics",
+                "github-installation-repository-discovery",
             ]
         )
     if github_reviewer_configured():
@@ -184,21 +186,27 @@ def bridge_capabilities() -> dict[str, object]:
     }
 
 
+@mcp.tool(title="GitHub agent list repositories", annotations=_READ_EXTERNAL)
+def github_agent_list_repositories() -> dict[str, object]:
+    """List repositories currently granted to the development GitHub App installation."""
+    return _github_agent_client().list_repositories()
+
+
 @mcp.tool(title="GitHub agent status", annotations=_READ_EXTERNAL)
 def github_agent_status(repository: str) -> dict[str, object]:
-    """Verify GitHub App installation access to one allowlisted repository."""
+    """Verify development GitHub App installation access to one repository."""
     return _github_agent_client().status(repository)
 
 
 @mcp.tool(title="GitHub agent get file", annotations=_READ_EXTERNAL)
 def github_agent_get_file(repository: str, path: str, ref: str | None = None) -> dict[str, object]:
-    """Read one UTF-8 repository file from an allowlisted GitHub repository."""
+    """Read one UTF-8 repository file through the development GitHub App."""
     return _github_agent_client().get_file(repository, path, ref)
 
 
 @mcp.tool(title="GitHub agent list branches", annotations=_READ_EXTERNAL)
 def github_agent_list_branches(repository: str) -> dict[str, object]:
-    """List branches in one allowlisted GitHub repository."""
+    """List branches in a repository installed for the development GitHub App."""
     return _github_agent_client().list_branches(repository)
 
 
@@ -208,7 +216,7 @@ def github_agent_create_branch(
     branch: str,
     from_branch: str = "main",
 ) -> dict[str, object]:
-    """Create a new branch from an existing branch in an allowlisted repository."""
+    """Create a new branch from an existing branch in an installed repository."""
     return _github_agent_client().create_branch(repository, branch, from_branch)
 
 
@@ -237,7 +245,7 @@ def github_agent_delete_file(
 
 @mcp.tool(title="GitHub agent compare refs", annotations=_READ_EXTERNAL)
 def github_agent_compare(repository: str, base: str, head: str) -> dict[str, object]:
-    """Compare two branches, tags, or commit refs in an allowlisted repository."""
+    """Compare two branches, tags, or commit refs in an installed repository."""
     return _github_agent_client().compare(repository, base, head)
 
 
@@ -277,6 +285,14 @@ register_github_actions_tools(
     _WRITE_EXTERNAL,
     _DESTRUCTIVE_EXTERNAL,
 )
+
+if github_reviewer_configured():
+    register_github_reviewer_tools(
+        mcp,
+        github_reviewer_client_from_env,
+        _READ_EXTERNAL,
+        _WRITE_EXTERNAL,
+    )
 
 
 def _split_env(name: str, default: str) -> list[str]:

@@ -12,7 +12,6 @@ def client() -> GitHubDevClient:
     return GitHubDevClient(
         app_id="123",
         private_key="key-material",
-        allowed_repositories={"arthurkoba/koba-mcp-bridge"},
     )
 
 

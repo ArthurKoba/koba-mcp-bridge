@@ -9,7 +9,6 @@ from mcp.types import ToolAnnotations
 from koba_mcp_bridge.github_agent import GitHubAgentError
 from koba_mcp_bridge.github_collab import GitHubCollabClient
 from koba_mcp_bridge.github_reviewer import (
-    _reviewer_allowed_repositories_from_env,
     _reviewer_private_key_from_env,
     github_reviewer_client_from_env,
     github_reviewer_configured,
@@ -22,7 +21,6 @@ class ReviewGateClient(GitHubCollabClient):
         super().__init__(
             app_id="123",
             private_key="key-material",
-            allowed_repositories={"arthurkoba/koba-mcp-bridge"},
         )
         self.reviews = reviews
 
@@ -45,11 +43,12 @@ def _unused_client() -> GitHubCollabClient:
     return GitHubCollabClient(
         app_id="123",
         private_key="key-material",
-        allowed_repositories={"arthurkoba/koba-mcp-bridge"},
     )
 
 
-def test_reviewer_config_requires_distinct_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_reviewer_config_requires_only_distinct_app_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     github_reviewer_client_from_env.cache_clear()
     for name in (
         "GITHUB_REVIEWER_APP_ID",
@@ -63,10 +62,6 @@ def test_reviewer_config_requires_distinct_credentials(monkeypatch: pytest.Monke
 
     monkeypatch.setenv("GITHUB_REVIEWER_APP_ID", "456")
     monkeypatch.setenv("GITHUB_REVIEWER_PRIVATE_KEY", "reviewer-key")
-    monkeypatch.setenv(
-        "GITHUB_REVIEWER_ALLOWED_REPOSITORIES",
-        "ArthurKoba/koba-mcp-bridge",
-    )
     assert github_reviewer_configured() is True
     client = github_reviewer_client_from_env()
     assert client.app_id == "456"
@@ -83,12 +78,6 @@ def test_reviewer_private_key_can_be_loaded_from_base64(
         base64.b64encode(material.encode()).decode(),
     )
     assert _reviewer_private_key_from_env() == material
-
-
-def test_reviewer_allowlist_rejects_wildcard(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GITHUB_REVIEWER_ALLOWED_REPOSITORIES", "*")
-    with pytest.raises(GitHubAgentError, match="wildcard"):
-        _reviewer_allowed_repositories_from_env()
 
 
 def test_required_independent_reviewer_approval_passes(
@@ -177,6 +166,7 @@ async def test_reviewer_tool_surface_excludes_development_mutations() -> None:
         tools = await client.list_tools()
 
     names = {tool.name for tool in tools}
+    assert "github_reviewer_list_repositories" in names
     assert "github_reviewer_create_review" in names
     assert "github_reviewer_get_file" in names
     assert "github_reviewer_workflow_runs" in names
