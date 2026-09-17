@@ -7,7 +7,7 @@ import urllib.parse
 import urllib.request
 
 from .github_agent import GitHubAgentError
-from .github_collab import GitHubCollabClient
+from .github_collab import GitHubCollabClient, required_reviewer_logins_from_env
 
 _GITHUB_API = "https://api.github.com"
 _MAX_LOG_BYTES = 8 * 1024 * 1024
@@ -30,6 +30,78 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 class GitHubActionsClient(GitHubCollabClient):
     """Adds GitHub Actions diagnostics and controlled run mutations."""
+
+    def assert_required_reviews(
+        self,
+        repository: str,
+        number: int,
+    ) -> dict[str, object]:
+        repository = self._assert_allowed(repository)
+        required = required_reviewer_logins_from_env()
+        if not required:
+            return {
+                "repository": repository,
+                "number": number,
+                "required_reviewers": [],
+                "status": "not_configured",
+            }
+
+        _, pull = self._repo_request(
+            repository,
+            "GET",
+            f"/repos/{repository}/pulls/{number}",
+        )
+        if not isinstance(pull, dict):
+            raise GitHubAgentError("unexpected pull request response")
+        head = pull.get("head") if isinstance(pull.get("head"), dict) else {}
+        head_sha = str(head.get("sha", ""))
+        if not head_sha:
+            raise GitHubAgentError("pull request head has no sha")
+
+        _, result = self._repo_request(
+            repository,
+            "GET",
+            f"/repos/{repository}/pulls/{number}/reviews?per_page=100",
+        )
+        if not isinstance(result, list):
+            raise GitHubAgentError("unexpected pull request review response")
+
+        decisive_state: dict[str, tuple[str, str]] = {}
+        for item in result:
+            if not isinstance(item, dict):
+                continue
+            user = item.get("user") if isinstance(item.get("user"), dict) else {}
+            login = str(user.get("login", "")).casefold()
+            state = str(item.get("state", "")).upper()
+            commit_id = str(item.get("commit_id", ""))
+            if login and state in {"APPROVED", "CHANGES_REQUESTED", "DISMISSED"}:
+                decisive_state[login] = (state, commit_id)
+
+        missing = []
+        states: dict[str, str] = {}
+        for login in required:
+            state, review_sha = decisive_state.get(login, ("MISSING", ""))
+            if state == "APPROVED" and review_sha == head_sha:
+                states[login] = f"APPROVED@{review_sha}"
+                continue
+            if state == "APPROVED" and review_sha:
+                states[login] = f"STALE_APPROVAL@{review_sha}"
+            else:
+                states[login] = state
+            missing.append(login)
+
+        if missing:
+            raise GitHubAgentError(
+                "required independent reviews not satisfied for current PR head; "
+                f"head={head_sha}, missing={missing}, states={states}"
+            )
+        return {
+            "repository": repository,
+            "number": number,
+            "head_sha": head_sha,
+            "required_reviewers": required,
+            "status": "ok",
+        }
 
     def _download_redirect_bytes(
         self,
