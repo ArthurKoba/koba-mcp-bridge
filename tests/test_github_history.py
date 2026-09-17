@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
 from fastmcp import Client, FastMCP
 from mcp.types import ToolAnnotations
