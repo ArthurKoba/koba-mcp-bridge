@@ -16,7 +16,51 @@ def register_github_actions_tools(
     write_annotations: ToolAnnotations,
     destructive_annotations: ToolAnnotations,
 ) -> None:
-    """Register CI diagnostics plus controlled Actions rerun/cancel tools."""
+    """Register GitHub capability/history controls plus Actions diagnostics."""
+
+    @mcp.tool(title="GitHub agent capabilities", annotations=read_annotations)
+    def github_agent_capabilities(repository: str) -> dict[str, object]:
+        """Inspect effective GitHub App permissions, identity, and bridge policy."""
+        return client_factory().capabilities(
+            repository,
+            reviewer_available=github_reviewer_configured(),
+        )
+
+    @mcp.tool(
+        title="GitHub agent rewrite branch identity",
+        annotations=destructive_annotations,
+    )
+    def github_agent_rewrite_branch_identity(
+        repository: str,
+        branch: str,
+        expected_head_sha: str,
+        identity_source: str = "current_agent_app",
+        preserve_messages: bool = True,
+        preserve_trees: bool = True,
+        preserve_author_dates: bool = True,
+        base_sha: str | None = None,
+        max_commits: int = 100,
+        dry_run: bool = True,
+    ) -> dict[str, object]:
+        """Rewrite linear branch history to the current Agent App Git identity.
+
+        The operation is identity-only: messages and trees must be preserved. It
+        requires an expected branch head, supports an exclusive base_sha boundary,
+        validates every rewritten tree and the final tree, re-checks the branch
+        head immediately before the single forced ref update, and defaults to dry-run.
+        """
+        return client_factory().rewrite_branch_identity(
+            repository,
+            branch,
+            expected_head_sha,
+            identity_source=identity_source,
+            preserve_messages=preserve_messages,
+            preserve_trees=preserve_trees,
+            preserve_author_dates=preserve_author_dates,
+            base_sha=base_sha,
+            max_commits=max_commits,
+            dry_run=dry_run,
+        )
 
     @mcp.tool(title="GitHub agent workflow job log", annotations=read_annotations)
     def github_agent_workflow_job_log(
