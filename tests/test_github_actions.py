@@ -18,6 +18,7 @@ class RecordingActionsClient(GitHubActionsClient):
         self.calls: list[tuple[str, str]] = []
         self.download_payload = b"line-1\nline-2\nlast-error\n"
         self.head_sha = "current-head"
+        self.base_ref = "main"
         self.reviews: list[dict[str, object]] = []
 
     def _repo_request(
@@ -32,7 +33,10 @@ class RecordingActionsClient(GitHubActionsClient):
         del repository, payload, allowed_errors
         self.calls.append((method, path))
         if method == "GET" and path.endswith("/pulls/7"):
-            return 200, {"head": {"sha": self.head_sha}}
+            return 200, {
+                "head": {"sha": self.head_sha},
+                "base": {"ref": self.base_ref},
+            }
         if method == "GET" and path.endswith("/pulls/7/reviews?per_page=100"):
             return 200, self.reviews
         if method == "GET" and "/artifacts?" in path:
@@ -178,3 +182,13 @@ def test_required_reviewer_changes_requested_blocks_current_head(
 
     with pytest.raises(GitHubAgentError, match="CHANGES_REQUESTED"):
         client.assert_required_reviews("ArthurKoba/koba-mcp-bridge", 7)
+
+
+def test_protected_pull_request_merge_requires_administrator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GITHUB_AGENT_PROTECTED_BRANCHES", raising=False)
+    client = RecordingActionsClient()
+
+    with pytest.raises(GitHubAgentError, match="requires administrator"):
+        client.merge_pull_request("ArthurKoba/koba-mcp-bridge", 7)
