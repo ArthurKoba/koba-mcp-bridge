@@ -11,7 +11,6 @@ class RecordingActionsClient(GitHubActionsClient):
         super().__init__(
             app_id="123",
             private_key="key-material",
-            allowed_repositories={"arthurkoba/koba-mcp-bridge"},
         )
         self.calls: list[tuple[str, str]] = []
         self.download_payload = b"line-1\nline-2\nlast-error\n"
