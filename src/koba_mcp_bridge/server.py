@@ -13,6 +13,7 @@ from fastmcp.server.middleware import AuthMiddleware
 from mcp.types import ToolAnnotations
 
 from . import __version__
+from .artifact_storage import register_artifact_tools
 from .github_actions_tools import register_github_actions_tools
 from .github_agent import github_agent_configured
 from .github_collab_tools import register_github_collab_tools
@@ -37,11 +38,23 @@ _WRITE_EXTERNAL = ToolAnnotations(
     idempotent_hint=False,
     open_world_hint=True,
 )
+_WRITE_LOCAL = ToolAnnotations(
+    read_only_hint=False,
+    destructive_hint=False,
+    idempotent_hint=False,
+    open_world_hint=False,
+)
 _DESTRUCTIVE_EXTERNAL = ToolAnnotations(
     read_only_hint=False,
     destructive_hint=True,
     idempotent_hint=False,
     open_world_hint=True,
+)
+_DESTRUCTIVE_LOCAL = ToolAnnotations(
+    read_only_hint=False,
+    destructive_hint=True,
+    idempotent_hint=False,
+    open_world_hint=False,
 )
 _CHATGPT_OAUTH_REDIRECT = "https://chatgpt.com/connector_platform_oauth_redirect"
 
@@ -162,7 +175,7 @@ def bridge_build_info() -> dict[str, str]:
 )
 def bridge_capabilities() -> dict[str, object]:
     """Return the currently enabled high-level bridge capabilities."""
-    features = ["mcp", "streamable-http", "opentelemetry", "gateway"]
+    features = ["mcp", "streamable-http", "opentelemetry", "gateway", "artifact-storage"]
     if _auth is not None:
         features.append("github-oauth")
     if github_agent_configured():
@@ -285,6 +298,7 @@ register_github_actions_tools(
     _WRITE_EXTERNAL,
     _DESTRUCTIVE_EXTERNAL,
 )
+register_artifact_tools(mcp, _READ_ONLY_LOCAL, _WRITE_LOCAL, _DESTRUCTIVE_LOCAL)
 
 if github_reviewer_configured():
     register_github_reviewer_tools(

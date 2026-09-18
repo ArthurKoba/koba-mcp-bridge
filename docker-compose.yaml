@@ -12,6 +12,8 @@ services:
       OTEL_METRICS_EXPORTER: otlp
       OTEL_LOGS_EXPORTER: otlp
       OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED: "true"
+    volumes:
+      - koba-artifacts:/artifacts
     depends_on:
       - otel-collector
 
@@ -21,3 +23,7 @@ services:
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     volumes:
       - ./deploy/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+
+volumes:
+  koba-artifacts:
+    name: koba-artifacts

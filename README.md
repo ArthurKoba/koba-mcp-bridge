@@ -35,6 +35,25 @@ koba-mcp-bridge
 
 Mounted MCP backends are optional. The public bridge starts normally when none are configured. FastMCP proxy providers connect lazily, so a temporarily unavailable backend does not prevent the gateway itself from starting.
 
+## Artifact storage
+
+The bridge owns a generic persistent artifact store. It is intentionally not
+Ghidra-specific: any backend or worker can consume staged inputs and publish
+outputs through the same transport.
+
+The public tools are:
+
+- `artifact_status`, `artifact_list`, `artifact_info`;
+- `artifact_mkdir`, `artifact_write_text`;
+- `artifact_upload_chunk`, `artifact_download_chunk`;
+- `artifact_delete`.
+
+Paths are always relative to `ARTIFACT_ROOT` and cannot escape it. The Docker
+deployment mounts the explicitly named `koba-artifacts` volume at
+`/artifacts`, with conventional `inbox/`, `exports/`, and `scripts/`
+directories. Binary transfers are sequential and chunked; use
+`artifact_info` to verify SHA-256 after upload/download.
+
 ## Ghidra backend
 
 Set the runtime variable below to mount an internal Ghidra MCP server:
