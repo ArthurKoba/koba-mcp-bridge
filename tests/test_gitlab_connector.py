@@ -9,6 +9,8 @@ from urllib.parse import urlsplit
 import pytest
 from fastmcp import Client
 
+import koba_mcp_bridge.gitlab_client as gitlab_module
+
 from koba_mcp_bridge.gitlab_client import (
     GitLabClient,
     GitLabError,
@@ -201,6 +203,13 @@ def gitlab_server():
 
 @pytest.fixture
 def configured_profiles(monkeypatch, gitlab_server):
+    for name in (
+        "INFISICAL_HOST",
+        "INFISICAL_PROJECT_ID",
+        "INFISICAL_CLIENT_ID",
+        "INFISICAL_CLIENT_SECRET",
+    ):
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("GITLAB_TOKEN_A", "token-a")
     monkeypatch.setenv("GITLAB_TOKEN_B", "token-b")
     monkeypatch.setenv(
@@ -226,6 +235,63 @@ def configured_profiles(monkeypatch, gitlab_server):
     )
     monkeypatch.setenv("GITLAB_PROFILES_FILE", "/nonexistent/gitlab-profiles.json")
 
+
+
+def test_registry_discovers_infisical_profiles_without_eager_token_read(
+    monkeypatch,
+    gitlab_server,
+) -> None:
+    monkeypatch.setenv("INFISICAL_HOST", "https://secrets.example.test")
+    monkeypatch.setenv("INFISICAL_PROJECT_ID", "project")
+    monkeypatch.setenv("INFISICAL_CLIENT_ID", "client-id")
+    monkeypatch.setenv("INFISICAL_CLIENT_SECRET", "client-secret")
+    monkeypatch.setenv("INFISICAL_ENVIRONMENT", "prod")
+    monkeypatch.setenv("INFISICAL_BASE_PATH", "/")
+    monkeypatch.setenv("GITLAB_PROFILES_FILE", "/nonexistent")
+    monkeypatch.delenv("GITLAB_PROFILES_JSON", raising=False)
+
+    monkeypatch.setattr(
+        gitlab_module,
+        "list_config_folders",
+        lambda path: [{"name": "local-alice"}]
+        if path == "gitlab/accounts"
+        else [],
+    )
+
+    reads = []
+
+    def fake_resolve(path: str, name: str) -> str:
+        reads.append((path, name))
+        values = {
+            ("gitlab/accounts/local-alice", "BASE_URL"): gitlab_server,
+            ("gitlab/accounts/local-alice", "AUTH_TYPE"): "private_token",
+            ("gitlab/accounts/local-alice", "LABEL"): "Local Alice",
+            ("gitlab/accounts/local-alice", "VERIFY_TLS"): "true",
+            ("gitlab/accounts/local-alice", "TOKEN"): "token-a",
+        }
+        if (path, name) in values:
+            return values[(path, name)]
+        raise gitlab_module.SecretError("missing optional secret")
+
+    monkeypatch.setattr(gitlab_module, "resolve_config_secret", fake_resolve)
+
+    registry = GitLabProfileRegistry.from_env()
+    result = registry.list()
+
+    assert result["count"] == 1
+    profile = registry.get("local-alice")
+    assert profile.base_url == gitlab_server
+    assert profile.auth_type == "private_token"
+    assert profile.label == "Local Alice"
+    assert profile.public()["credential_source"] == {
+        "type": "infisical_convention",
+        "path": "gitlab/accounts/local-alice",
+        "secret": "TOKEN",
+    }
+    assert ("gitlab/accounts/local-alice", "TOKEN") not in reads
+
+    assert profile.token() == "token-a"
+    assert ("gitlab/accounts/local-alice", "TOKEN") in reads
 
 def test_registry_lists_multiple_profiles_without_tokens(configured_profiles) -> None:
     result = GitLabProfileRegistry.from_env().list()
