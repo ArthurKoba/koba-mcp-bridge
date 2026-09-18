@@ -46,6 +46,7 @@ async def test_artifact_tools_are_registered() -> None:
         "artifact_create_text",
         "artifact_extract",
         "artifact_collection_list",
+        "artifact_collection_delete",
         "artifact_collection_resolve",
         "artifact_references",
         "artifact_release_reference",

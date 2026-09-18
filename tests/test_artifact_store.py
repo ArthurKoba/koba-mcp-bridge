@@ -109,3 +109,30 @@ def test_gc_only_selects_unreferenced_artifacts(store: ArtifactStore) -> None:
 
     assert unused["artifact_id"] in preview["candidates"]
     assert used["artifact_id"] not in preview["candidates"]
+
+
+def test_collection_delete_releases_members_for_gc(store: ArtifactStore, tmp_path) -> None:
+    archive_path = tmp_path / "workspace-delete.tgz"
+    with tarfile.open(archive_path, "w:gz") as archive:
+        payload = b"member-bytes"
+        info = tarfile.TarInfo("lib/libcamera.so")
+        info.size = len(payload)
+        archive.addfile(info, io.BytesIO(payload))
+
+    source = store.put_file(archive_path, name="workspace-delete.tgz")
+    extracted = store.extract(source["artifact_id"])
+    member = store.collection_resolve(
+        extracted["collection_id"],
+        "lib/libcamera.so",
+    )
+
+    before = store.gc(dry_run=True)
+    assert member["artifact_id"] not in before["candidates"]
+    assert source["artifact_id"] not in before["candidates"]
+
+    deleted = store.collection_delete(extracted["collection_id"])
+    assert deleted["deleted"] is True
+
+    after = store.gc(dry_run=True)
+    assert member["artifact_id"] in after["candidates"]
+    assert source["artifact_id"] in after["candidates"]
