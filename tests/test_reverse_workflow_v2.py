@@ -103,3 +103,34 @@ def test_decode_call_result_handles_structured_proxy_wrapper() -> None:
 
     assert decoded["has_project"] is True
     assert decoded["project_name"] == "camera"
+
+
+
+def test_decode_result_recursively_unwraps_json_result_envelopes() -> None:
+    raw = (
+        '{"result":"{\\\"has_project\\\":true,'
+        '\\\"project_name\\\":\\\"spezvision\\\"}"}'
+    )
+
+    decoded = _decode_result(raw)
+
+    assert decoded["has_project"] is True
+    assert decoded["project_name"] == "spezvision"
+
+
+def test_decode_call_result_prefers_structured_content_over_lossy_data() -> None:
+    result = SimpleNamespace(
+        data={"value": "lossy"},
+        structured_content={
+            "result": (
+                '{"has_project":true,"project_name":"spezvision",'
+                '"file_count":0,"program_count":0}'
+            )
+        },
+        content=[],
+    )
+
+    decoded = _decode_call_result(result)
+
+    assert decoded["has_project"] is True
+    assert decoded["project_name"] == "spezvision"

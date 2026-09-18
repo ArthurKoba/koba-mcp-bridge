@@ -19,21 +19,33 @@ def _ghidra_url() -> str:
 
 
 def _decode_result(data: Any) -> Any:
-    if isinstance(data, dict) and isinstance(data.get("result"), str):
-        data = data["result"]
-    if isinstance(data, str):
-        try:
-            return json.loads(data)
-        except json.JSONDecodeError:
-            return data
-    return data
+    """Recursively unwrap Ghidra/FastMCP result envelopes and JSON strings."""
+    value = data
+    for _ in range(8):
+        if isinstance(value, dict) and "result" in value:
+            nested = value["result"]
+            if nested is value:
+                return value
+            value = nested
+            continue
+        if isinstance(value, str):
+            try:
+                decoded = json.loads(value)
+            except json.JSONDecodeError:
+                return value
+            if decoded == value:
+                return value
+            value = decoded
+            continue
+        return value
+    return value
 
 
 def _decode_call_result(result: Any) -> Any:
     """Decode FastMCP results across structured and legacy content forms."""
     candidates = [
-        getattr(result, "data", None),
         getattr(result, "structured_content", None),
+        getattr(result, "data", None),
     ]
     for block in getattr(result, "content", None) or []:
         text = getattr(block, "text", None)
