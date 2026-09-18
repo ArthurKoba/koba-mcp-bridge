@@ -20,11 +20,12 @@ def _ghidra_url() -> str:
 
 def _decode_result(data: Any) -> Any:
     if isinstance(data, dict) and isinstance(data.get("result"), str):
-        text = data["result"]
+        data = data["result"]
+    if isinstance(data, str):
         try:
-            return json.loads(text)
+            return json.loads(data)
         except json.JSONDecodeError:
-            return text
+            return data
     return data
 
 
