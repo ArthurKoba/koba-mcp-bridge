@@ -134,10 +134,12 @@ mcp = FastMCP(
     instructions=(
         "Koba MCP Bridge is the authenticated gateway for Koba infrastructure, "
         "local tools, and mounted MCP backends. Files are first-class immutable "
-        "artifacts identified by artifact_id. Agents upload bytes through resumable "
-        "artifact_upload_* MCP tools, then use artifact_* operations or backend-specific "
-        "adapters such as ghidra_import_artifact. Filesystem paths are private server "
-        "implementation details and are never cross-service identifiers."
+        "artifacts identified by artifact_id. For client/chat attachments, prefer "
+        "artifact_ingest_file so the client can hand Koba an authorized file URL and "
+        "Koba can stream the bytes directly without model-visible base64. Use "
+        "artifact_upload_* only as the generic resumable fallback. Backend-specific "
+        "adapters such as ghidra_import_artifact consume artifact_id. Filesystem paths "
+        "are private server implementation details and are never cross-service identifiers."
     ),
     auth=_auth,
     middleware=_auth_middleware,
@@ -187,6 +189,7 @@ def bridge_capabilities() -> dict[str, object]:
         "gateway",
         "artifact-store-v2",
         "agent-resumable-upload",
+        "attachment-file-ingress",
         "artifact-collections",
         "artifact-references",
     ]

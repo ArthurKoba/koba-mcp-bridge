@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import ipaddress
 import os
+import socket
 import sqlite3
+import urllib.parse
+import urllib.request
 import uuid
 from contextlib import contextmanager, suppress
 from datetime import UTC, datetime, timedelta
@@ -62,6 +66,176 @@ def _validate_sha256(value: str) -> str:
     if len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
         raise ArtifactError("expected_sha256 must be a 64-character hexadecimal digest")
     return digest
+
+
+def _validate_remote_file_url(file: str) -> urllib.parse.SplitResult:
+    parsed = urllib.parse.urlsplit(file.strip())
+    if parsed.scheme.casefold() != "https":
+        raise ArtifactError(
+            "file must resolve to an HTTPS attachment URL; pass the client attachment/file "
+            "argument directly instead of base64 or a server filesystem path"
+        )
+    if not parsed.hostname:
+        raise ArtifactError("attachment URL has no hostname")
+    if parsed.username or parsed.password:
+        raise ArtifactError("attachment URL must not contain userinfo")
+
+    try:
+        addresses = socket.getaddrinfo(
+            parsed.hostname,
+            parsed.port or 443,
+            type=socket.SOCK_STREAM,
+        )
+    except OSError as exc:
+        raise ArtifactError("attachment hostname cannot be resolved") from exc
+    if not addresses:
+        raise ArtifactError("attachment hostname cannot be resolved")
+
+    for item in addresses:
+        raw_ip = str(item[4][0]).split("%", 1)[0]
+        try:
+            address = ipaddress.ip_address(raw_ip)
+        except ValueError as exc:
+            raise ArtifactError("attachment hostname resolved to an invalid address") from exc
+        if not address.is_global:
+            raise ArtifactError("attachment URL resolves to a non-public address")
+    return parsed
+
+
+class _AttachmentRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self,
+        req,
+        fp,
+        code,
+        msg,
+        headers,
+        newurl,
+    ):
+        _validate_remote_file_url(str(newurl))
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _open_remote_file(request: urllib.request.Request):
+    opener = urllib.request.build_opener(_AttachmentRedirectHandler())
+    return opener.open(request, timeout=60)
+
+
+def _attachment_name(parsed: urllib.parse.SplitResult, requested_name: str) -> str:
+    if requested_name.strip():
+        return _validate_name(requested_name)
+    candidate = urllib.parse.unquote(parsed.path.rsplit("/", 1)[-1]).strip()
+    return _validate_name(candidate or "attachment.bin")
+
+
+def ingest_file(
+    file: str,
+    name: str = "",
+    mime_type: str = "",
+    expected_size: int | None = None,
+    expected_sha256: str = "",
+) -> dict[str, Any]:
+    """Stream one client-authorized attachment directly into canonical artifact storage."""
+    store = ArtifactStore()
+    store.ensure()
+    parsed = _validate_remote_file_url(file)
+    clean_name = _attachment_name(parsed, name)
+    expected_digest = _validate_sha256(expected_sha256)
+
+    if (
+        expected_size is not None
+        and (expected_size < 0 or expected_size > upload_max_bytes())
+    ):
+        raise ArtifactError(
+            f"expected_size must be between 0 and {upload_max_bytes()}"
+        )
+
+    request = urllib.request.Request(
+        file,
+        headers={"User-Agent": "koba-mcp-bridge/0.1 artifact-ingress"},
+    )
+    temporary = store.tmp / f"attachment-{uuid.uuid4().hex}.part"
+    digest = hashlib.sha256()
+    total = 0
+    detected_mime = mime_type.strip()
+
+    try:
+        try:
+            response = _open_remote_file(request)
+        except Exception as exc:
+            if isinstance(exc, ArtifactError):
+                raise
+            raise ArtifactError(
+                f"attachment download failed: {type(exc).__name__}"
+            ) from exc
+
+        with response:
+            final_url = str(response.geturl())
+            _validate_remote_file_url(final_url)
+
+            declared = response.headers.get("Content-Length")
+            if declared:
+                try:
+                    declared_size = int(declared)
+                except ValueError as exc:
+                    raise ArtifactError("attachment returned invalid Content-Length") from exc
+                if declared_size < 0:
+                    raise ArtifactError("attachment returned invalid Content-Length")
+                if declared_size > upload_max_bytes():
+                    raise ArtifactError("attachment exceeds ARTIFACT_UPLOAD_MAX_BYTES")
+                if expected_size is not None and declared_size != expected_size:
+                    raise ArtifactError(
+                        "attachment Content-Length does not match expected_size"
+                    )
+
+            if not detected_mime:
+                detected_mime = (
+                    response.headers.get("Content-Type", "")
+                    .split(";", 1)[0]
+                    .strip()
+                )
+
+            with temporary.open("xb") as handle:
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > upload_max_bytes():
+                        raise ArtifactError("attachment exceeds ARTIFACT_UPLOAD_MAX_BYTES")
+                    digest.update(chunk)
+                    handle.write(chunk)
+                handle.flush()
+                os.fsync(handle.fileno())
+
+        actual_digest = digest.hexdigest()
+        if expected_size is not None and total != expected_size:
+            raise ArtifactError(
+                f"attachment size mismatch: expected {expected_size}, received {total}"
+            )
+        if expected_digest and actual_digest != expected_digest:
+            raise ArtifactError(
+                "attachment SHA-256 mismatch: "
+                f"expected {expected_digest}, found {actual_digest}"
+            )
+
+        artifact = store.put_file(
+            temporary,
+            name=clean_name,
+            mime_type=detected_mime,
+            source="attachment-ingress",
+            consume=True,
+        )
+        if str(artifact["sha256"]) != actual_digest:
+            raise ArtifactError("artifact store returned an unexpected SHA-256")
+        return {
+            "artifact": artifact,
+            "completed": True,
+            "transport": "client-file",
+        }
+    finally:
+        with suppress(FileNotFoundError):
+            temporary.unlink()
 
 
 class ArtifactUploadManager:

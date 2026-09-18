@@ -4,7 +4,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from .artifact_ingress import ArtifactUploadManager
+from .artifact_ingress import ArtifactUploadManager, ingest_file
 from .artifact_store import ArtifactStore
 
 
@@ -20,6 +20,32 @@ def register_artifact_tools(
         result = ArtifactStore().status()
         result["active_uploads"] = ArtifactUploadManager().active_count()
         return result
+
+    @mcp.tool(title="Artifact ingest file", annotations=write_annotations)
+    def artifact_ingest_file(
+        file: str,
+        name: str = "",
+        mime_type: str = "",
+        expected_size: int | None = None,
+        expected_sha256: str = "",
+    ) -> dict[str, Any]:
+        """Ingest a client attachment/file directly into immutable artifact storage.
+
+        Pass the client-visible attachment or local file argument as `file`. A
+        file-capable MCP client may replace that local handle/path with a temporary
+        authorized HTTPS URL before the request reaches Koba. Koba streams the bytes
+        server-side; do not base64-encode chat attachments for this tool.
+
+        Use artifact_upload_* only as the generic resumable fallback for clients that
+        cannot provide a file-capable argument.
+        """
+        return ingest_file(
+            file=file,
+            name=name,
+            mime_type=mime_type,
+            expected_size=expected_size,
+            expected_sha256=expected_sha256,
+        )
 
     @mcp.tool(title="Artifact upload begin", annotations=write_annotations)
     def artifact_upload_begin(
