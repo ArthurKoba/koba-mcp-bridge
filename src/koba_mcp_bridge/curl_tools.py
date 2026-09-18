@@ -222,6 +222,15 @@ def _has_header(headers: dict[str, str], name: str) -> bool:
     return any(key.casefold() == needle for key in headers)
 
 
+def _has_sensitive_redirect_state(
+    headers: dict[str, str],
+    cookies: dict[str, str] | None,
+) -> bool:
+    return bool(cookies) or any(
+        name.casefold() in _SENSITIVE_HEADERS for name in headers
+    )
+
+
 def _body_source(
     *,
     body_text: str | None,
@@ -551,6 +560,7 @@ def _execute_curl(
     verify_tls: bool,
     proxy_url: str,
     max_response_bytes: int,
+    forward_sensitive_headers_on_redirect: bool,
 ) -> tuple[dict[str, Any], Path, Path]:
     store = ArtifactStore()
     store.ensure()
@@ -575,14 +585,19 @@ def _execute_curl(
     os.close(fd_output)
     output_path = Path(raw_output)
 
+    sensitive_redirect_state = _has_sensitive_redirect_state(merged, cookies)
+    effective_follow_redirects = follow_redirects and (
+        forward_sensitive_headers_on_redirect or not sensitive_redirect_state
+    )
+
     command = _build_curl_command(
         method=clean_method,
         url=final_request_url,
         headers=merged,
         cookies=cookies,
         body_path=body_path,
-        follow_redirects=follow_redirects,
-        max_redirects=max_redirects,
+        follow_redirects=effective_follow_redirects,
+        max_redirects=max_redirects if effective_follow_redirects else 0,
         timeout_seconds=timeout_seconds,
         connect_timeout_seconds=connect_timeout_seconds,
         verify_tls=verify_tls,
@@ -617,6 +632,10 @@ def _execute_curl(
     metadata["request_url"] = final_request_url
     metadata["request_headers"] = _redacted_request_headers(merged)
     metadata["preset"] = preset
+    metadata["redirect_follow_requested"] = follow_redirects
+    metadata["redirect_follow_blocked_sensitive"] = bool(
+        follow_redirects and sensitive_redirect_state and not forward_sensitive_headers_on_redirect
+    )
     return metadata, header_path, output_path
 
 
@@ -650,6 +669,9 @@ def _http_result(
         "body_truncated": truncated,
         "curl_exit_code": int(metadata.get("curl_exit_code") or 0),
         "curl_error": str(metadata.get("curl_error") or ""),
+        "redirect_follow_blocked_sensitive": bool(
+            metadata.get("redirect_follow_blocked_sensitive")
+        ),
         "timings": {
             key: metadata.get(key)
             for key in (
@@ -713,6 +735,7 @@ def curl_request_impl(
     verify_tls: bool = True,
     proxy_url: str = "",
     max_response_bytes: int = _DEFAULT_REQUEST_MAX_BYTES,
+    forward_sensitive_headers_on_redirect: bool = False,
     preview_bytes: int = _DEFAULT_PREVIEW_BYTES,
 ) -> dict[str, Any]:
     if max_response_bytes > _MAX_REQUEST_MAX_BYTES:
@@ -740,6 +763,7 @@ def curl_request_impl(
         verify_tls=verify_tls,
         proxy_url=proxy_url,
         max_response_bytes=max_response_bytes,
+        forward_sensitive_headers_on_redirect=forward_sensitive_headers_on_redirect,
     )
     try:
         return _http_result(
@@ -776,6 +800,7 @@ def curl_download_impl(
     proxy_url: str = "",
     max_bytes: int = _DEFAULT_DOWNLOAD_MAX_BYTES,
     store_http_errors: bool = False,
+    forward_sensitive_headers_on_redirect: bool = False,
     preview_bytes: int = _DEFAULT_PREVIEW_BYTES,
 ) -> dict[str, Any]:
     metadata, header_path, output_path = _execute_curl(
@@ -798,6 +823,7 @@ def curl_download_impl(
         verify_tls=verify_tls,
         proxy_url=proxy_url,
         max_response_bytes=max_bytes,
+        forward_sensitive_headers_on_redirect=forward_sensitive_headers_on_redirect,
     )
     blocks = _parse_header_blocks(header_path)
     final_block = blocks[-1] if blocks else None
@@ -874,6 +900,7 @@ def curl_stream_capture_impl(
     verify_tls: bool = True,
     proxy_url: str = "",
     max_bytes: int = 16 * 1024 * 1024,
+    forward_sensitive_headers_on_redirect: bool = False,
     preview_bytes: int = _DEFAULT_PREVIEW_BYTES,
 ) -> dict[str, Any]:
     if duration_seconds <= 0 or duration_seconds > _MAX_DURATION_SECONDS:
@@ -910,14 +937,19 @@ def curl_stream_capture_impl(
     os.close(fd_output)
     output_path = Path(raw_output)
 
+    sensitive_redirect_state = _has_sensitive_redirect_state(merged, cookies)
+    effective_follow_redirects = follow_redirects and (
+        forward_sensitive_headers_on_redirect or not sensitive_redirect_state
+    )
+
     command = _build_curl_command(
         method=clean_method,
         url=request_url,
         headers=merged,
         cookies=cookies,
         body_path=body_path,
-        follow_redirects=follow_redirects,
-        max_redirects=max_redirects,
+        follow_redirects=effective_follow_redirects,
+        max_redirects=max_redirects if effective_follow_redirects else 0,
         timeout_seconds=duration_seconds,
         connect_timeout_seconds=connect_timeout_seconds,
         verify_tls=verify_tls,
@@ -1011,6 +1043,11 @@ def curl_stream_capture_impl(
             "artifact": artifact,
             "curl_exit_code": int(proc.returncode or 0),
             "curl_error": stderr.strip(),
+            "redirect_follow_blocked_sensitive": bool(
+                follow_redirects
+                and sensitive_redirect_state
+                and not forward_sensitive_headers_on_redirect
+            ),
             **_preview(data, final_block, metadata, preview_bytes),
         }
     finally:
