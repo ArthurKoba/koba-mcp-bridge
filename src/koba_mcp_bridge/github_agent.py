@@ -12,7 +12,12 @@ from datetime import datetime
 
 import jwt
 
-from .secrets import SecretError, resolve_secret
+from .secrets import (
+    InfisicalConfig,
+    SecretError,
+    resolve_config_secret,
+    resolve_secret,
+)
 
 _GITHUB_API = "https://api.github.com"
 _GITHUB_API_VERSION = "2026-03-10"
@@ -23,6 +28,8 @@ class GitHubAgentError(RuntimeError):
 
 
 def github_agent_configured() -> bool:
+    if InfisicalConfig.from_env().configured():
+        return True
     return bool(
         os.getenv("GITHUB_AGENT_APP_ID", "").strip()
         and (
@@ -33,7 +40,25 @@ def github_agent_configured() -> bool:
     )
 
 
+def _development_app_id() -> str:
+    try:
+        return resolve_config_secret("github/development", "APP_ID").strip()
+    except SecretError:
+        app_id = os.getenv("GITHUB_AGENT_APP_ID", "").strip()
+        if app_id:
+            return app_id
+        raise GitHubAgentError("GitHub development APP_ID is not configured")
+
+
 def _private_key_from_env() -> str:
+    try:
+        return resolve_config_secret(
+            "github/development",
+            "PRIVATE_KEY_PEM",
+        ).replace("\\n", "\n")
+    except SecretError:
+        pass
+
     secret_ref = os.getenv("GITHUB_AGENT_PRIVATE_KEY_REF", "").strip()
     raw = os.getenv("GITHUB_AGENT_PRIVATE_KEY", "").strip()
     encoded = os.getenv("GITHUB_AGENT_PRIVATE_KEY_B64", "").strip()
@@ -67,11 +92,8 @@ class GitHubAppClient:
 
     @classmethod
     def from_env(cls) -> GitHubAppClient:
-        app_id = os.getenv("GITHUB_AGENT_APP_ID", "").strip()
-        if not app_id:
-            raise GitHubAgentError("GITHUB_AGENT_APP_ID is not configured")
         return cls(
-            app_id=app_id,
+            app_id=_development_app_id(),
             private_key=_private_key_from_env(),
         )
 
