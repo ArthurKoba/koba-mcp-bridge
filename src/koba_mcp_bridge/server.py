@@ -100,7 +100,7 @@ def _github_oauth_value(secret_name: str, legacy_env: str) -> str:
             return legacy
         raise RuntimeError(
             f"GitHub OAuth value {secret_name!r} is not configured"
-        )
+        ) from None
 
 
 def _allowed_github_users() -> set[str]:
