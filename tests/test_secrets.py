@@ -231,6 +231,7 @@ def test_gitlab_profile_can_use_secret_reference(monkeypatch) -> None:
 
 
 def test_github_agent_private_key_ref(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_AGENT_APP_ID", "123")
     monkeypatch.setenv(
         "GITHUB_AGENT_PRIVATE_KEY_REF",
         "infisical://prod/github/development#PRIVATE_KEY_PEM",
