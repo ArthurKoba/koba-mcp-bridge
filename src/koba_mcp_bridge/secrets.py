@@ -386,7 +386,6 @@ class SecretResolver:
         return {
             "available": True,
             "reference": ref.public(),
-            "value": "<redacted>",
         }
 
 
