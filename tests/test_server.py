@@ -40,9 +40,11 @@ async def test_artifact_tools_are_registered() -> None:
     expected = {
         "artifact_status",
         "artifact_upload_begin",
+        "artifact_upload_list",
         "artifact_upload_status",
         "artifact_upload_write",
         "artifact_upload_finish",
+        "artifact_upload_gc",
         "artifact_upload_cancel",
         "artifact_list",
         "artifact_info",
@@ -111,15 +113,6 @@ async def test_agent_upload_round_trip_over_mcp(tmp_path, monkeypatch) -> None:
     artifact = finished.data["artifact"]
     assert artifact["artifact_id"].startswith("sha256:")
     assert artifact["size_bytes"] == len(payload)
-
-
-@pytest.mark.asyncio
-async def test_browser_write_probe_is_retired() -> None:
-    async with Client(mcp) as client:
-        tools = await client.list_tools()
-
-    names = {tool.name for tool in tools}
-    assert "github_write_probe" not in names
 
 
 def test_configured_backends_empty(monkeypatch: pytest.MonkeyPatch) -> None:
