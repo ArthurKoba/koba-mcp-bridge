@@ -25,7 +25,7 @@ from .github_reviewer_tools import register_github_reviewer_tools
 from .github_tools import register_github_workflow_tools
 from .gitlab_tools import register_gitlab_tools
 from .reverse_workflow import register_reverse_workflow_tools
-from .secrets import resolve_secret
+from .secrets import SecretError, resolve_secret
 from .secrets_tools import register_secrets_tools
 
 _STARTED_AT = datetime.now(UTC).isoformat()
@@ -81,7 +81,13 @@ def _required_env(name: str) -> str:
 def _required_secret(name: str, ref_name: str) -> str:
     reference = os.getenv(ref_name, "").strip()
     if reference:
-        return resolve_secret(reference)
+        try:
+            return resolve_secret(reference)
+        except SecretError:
+            legacy = os.getenv(name, "").strip()
+            if legacy:
+                return legacy
+            raise
     return _required_env(name)
 
 
