@@ -44,7 +44,7 @@ async def test_artifact_tools_are_registered() -> None:
         "artifact_upload_status",
         "artifact_upload_write",
         "artifact_upload_finish",
-        "artifact_upload_gc",
+        "artifact_upload_cleanup",
         "artifact_upload_cancel",
         "artifact_list",
         "artifact_info",
@@ -64,6 +64,19 @@ async def test_artifact_tools_are_registered() -> None:
         "ghidra_archive_project_artifact",
     }
     assert expected <= names
+
+    retired = {
+        "file_manager",
+        "list_files",
+        "read_file",
+        "artifact_mkdir",
+        "artifact_write_text",
+        "artifact_upload_chunk",
+        "artifact_import_file",
+        "artifact_extract_archive",
+        "artifact_download_chunk",
+    }
+    assert names.isdisjoint(retired)
 
 
 @pytest.mark.asyncio
