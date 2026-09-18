@@ -63,6 +63,10 @@ async def test_artifact_tools_are_registered() -> None:
         "ghidra_project_sources",
         "ghidra_export_program_artifact",
         "ghidra_archive_project_artifact",
+        "curl_presets",
+        "curl_request",
+        "curl_download",
+        "curl_stream_capture",
     }
     assert expected <= names
 
