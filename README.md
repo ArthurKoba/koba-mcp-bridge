@@ -35,34 +35,62 @@ koba-mcp-bridge
 
 Mounted MCP backends are optional. The public bridge starts normally when none are configured. FastMCP proxy providers connect lazily, so a temporarily unavailable backend does not prevent the gateway itself from starting.
 
-## Artifact storage
+## Artifact service
 
-The bridge owns a generic persistent artifact store. It is intentionally not
-Ghidra-specific: any backend or worker can consume staged inputs and publish
-outputs through the same transport.
+Koba provides one universal persistent file service for every backend and worker.
+Files are immutable and content-addressed. The public identifier is:
 
-The public tools are:
+```text
+sha256:<digest>
+```
 
-- `artifact_status`, `artifact_list`, `artifact_info`;
-- `artifact_mkdir`, `artifact_write_text`;
-- `artifact_upload_chunk`, `artifact_download_chunk`;
-- `artifact_delete`.
+Physical storage paths are private implementation details and are never used as
+cross-service identifiers.
 
-Paths are always relative to `ARTIFACT_ROOT` and cannot escape it. The Docker
-deployment mounts the explicitly named `koba-artifacts` volume at
-`/artifacts`, with conventional `inbox/`, `exports/`, and `scripts/`
-directories. Binary transfers are sequential and chunked; use
-`artifact_info` to verify SHA-256 after upload/download.
+Browser uploads use FastMCP's native `FileUpload` app. Calling `file_manager`
+opens the drag-and-drop UI; uploaded bytes are committed directly to the Koba
+artifact store and deduplicated by SHA-256. The model-facing artifact surface is:
 
-## Ghidra backend
+- `artifact_status`, `artifact_list`, `artifact_info`, `artifact_read`;
+- `artifact_create_text`;
+- `artifact_extract`, `artifact_collection_list`,
+  `artifact_collection_resolve`;
+- `artifact_references`, `artifact_release_reference`;
+- `artifact_delete`, `artifact_gc`.
 
-Set the runtime variable below to mount an internal Ghidra MCP server:
+Archive extraction creates a collection manifest whose members are themselves
+immutable artifacts. The same object can therefore be reused by multiple
+projects, workers, and backends without copying it again in the artifact store.
+
+Consumers hold durable references to source artifacts. Normal deletion refuses
+to remove referenced objects; garbage collection only targets objects with no
+consumer or collection references.
+
+## Ghidra integration
+
+Ghidra is a consumer of the artifact service, not the owner of uploaded files.
+`ghidra_import_artifact(artifact_id, ...)` resolves the immutable object
+internally, imports it into the currently open Ghidra project, and records a
+durable `ghidra-project` source reference.
+
+After import, Ghidra stores the program in its own project database under
+`/projects`. The canonical source artifact remains independently available for
+re-import, verification, or use by another backend. `ghidra_project_sources`
+lists the retained source objects for the current project.
+
+Ghidra outputs can be brought back into the same universal artifact store with:
+
+- `ghidra_export_program_artifact` for GZF;
+- `ghidra_archive_project_artifact` for GAR.
+
+Set the runtime variable below to mount the internal Ghidra MCP server:
 
 ```text
 GHIDRA_MCP_URL=http://ghidra-mcp:8081/mcp
 ```
 
-The mounted backend is namespaced as `ghidra`, so its tools are exposed through the public gateway with `ghidra_` prefixes. Ghidra itself does not need to be exposed publicly; it should share a private Docker network with this bridge.
+The mounted backend is namespaced as `ghidra`. Ghidra itself stays on the
+private Docker network.
 
 ## GitHub OAuth
 
