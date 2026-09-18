@@ -23,6 +23,8 @@ interrupted transfer can continue without restarting.
 
 Upload sessions are durable server state. They are independent from Ghidra and
 from every other consumer. The agent never supplies a server filesystem path.
+`artifact_upload_list` and `artifact_upload_status` let an agent recover after
+a disconnect, while `artifact_upload_gc` removes abandoned sessions by age.
 Successful commit returns the immutable content identity used by all subsequent
 operations.
 
