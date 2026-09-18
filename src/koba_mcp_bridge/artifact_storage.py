@@ -218,11 +218,11 @@ def register_artifact_tools(
     write_annotations: Any,
     destructive_annotations: Any,
 ) -> None:
-    ensure_artifact_layout()
 
     @mcp.tool(title="Artifact storage status", annotations=read_annotations)
     def artifact_status() -> dict[str, Any]:
         """Inspect shared artifact storage used by infrastructure backends."""
+        ensure_artifact_layout()
         root = _root()
         usage = shutil.disk_usage(root)
         return {
@@ -235,6 +235,7 @@ def register_artifact_tools(
     @mcp.tool(title="Artifact list", annotations=read_annotations)
     def artifact_list(path: str = "", offset: int = 0, limit: int = 200) -> dict[str, Any]:
         """List files/directories below a relative artifact path with pagination."""
+        ensure_artifact_layout()
         return artifact_list_impl(path, offset, limit)
 
     @mcp.tool(title="Artifact info", annotations=read_annotations)
@@ -245,6 +246,7 @@ def register_artifact_tools(
     @mcp.tool(title="Artifact mkdir", annotations=write_annotations)
     def artifact_mkdir(path: str) -> dict[str, Any]:
         """Create a directory recursively inside artifact storage."""
+        ensure_artifact_layout()
         target = _resolve(path)
         target.mkdir(parents=True, exist_ok=True)
         if not target.is_dir():
@@ -254,6 +256,7 @@ def register_artifact_tools(
     @mcp.tool(title="Artifact write text", annotations=write_annotations)
     def artifact_write_text(path: str, content: str, overwrite: bool = True) -> dict[str, Any]:
         """Write UTF-8 text, primarily for scripts/manifests produced by an agent."""
+        ensure_artifact_layout()
         return artifact_write_text_impl(path, content, overwrite)
 
     @mcp.tool(title="Artifact upload chunk", annotations=write_annotations)
@@ -268,6 +271,7 @@ def register_artifact_tools(
         Start with offset=0 and truncate=true. Each next call must use the
         returned next_offset, which prevents sparse or accidentally reordered writes.
         """
+        ensure_artifact_layout()
         return artifact_upload_chunk_impl(path, data_base64, offset, truncate)
 
     @mcp.tool(title="Artifact download chunk", annotations=read_annotations)
