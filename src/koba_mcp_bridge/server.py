@@ -292,6 +292,7 @@ if github_reviewer_configured():
         github_reviewer_client_from_env,
         _READ_EXTERNAL,
         _WRITE_EXTERNAL,
+        _DESTRUCTIVE_EXTERNAL,
     )
 
 

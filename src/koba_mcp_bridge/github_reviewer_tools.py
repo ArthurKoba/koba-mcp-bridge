@@ -6,16 +6,17 @@ from typing import Any
 from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
-from .github_collab import GitHubCollabClient
+from .github_reviewer import GitHubReviewerClient
 
 
 def register_github_reviewer_tools(
     mcp: FastMCP,
-    client_factory: Callable[[], GitHubCollabClient],
+    client_factory: Callable[[], GitHubReviewerClient],
     read_annotations: ToolAnnotations,
     write_annotations: ToolAnnotations,
+    destructive_annotations: ToolAnnotations,
 ) -> None:
-    """Register a narrow read/review surface for an independent reviewer GitHub App."""
+    """Register independent review plus the sole protected-branch merge capability."""
 
     @mcp.tool(title="GitHub reviewer list repositories", annotations=read_annotations)
     def github_reviewer_list_repositories() -> dict[str, object]:
@@ -233,6 +234,23 @@ def register_github_reviewer_tools(
             body,
         )
 
+    @mcp.tool(title="GitHub reviewer merge protected pull request", annotations=destructive_annotations)
+    def github_reviewer_merge_pull_request(
+        repository: str,
+        number: int,
+        merge_method: str = "squash",
+        commit_title: str | None = None,
+        commit_message: str | None = None,
+    ) -> dict[str, object]:
+        """Merge a PR into a protected branch after CI, current-head approval and thread gates."""
+        return client_factory().merge_protected_pull_request(
+            repository,
+            number,
+            merge_method,
+            commit_title,
+            commit_message,
+        )
+
     @mcp.tool(title="GitHub reviewer set thread state", annotations=write_annotations)
     def github_reviewer_set_review_thread_resolved(
         repository: str,
@@ -245,3 +263,5 @@ def register_github_reviewer_tools(
             thread_id,
             resolved,
         )
+
+

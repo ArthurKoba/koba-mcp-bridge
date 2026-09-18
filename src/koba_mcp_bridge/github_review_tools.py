@@ -41,11 +41,13 @@ def register_github_review_tools(
         comments: list[dict[str, Any]] | None = None,
         commit_id: str | None = None,
     ) -> dict[str, object]:
-        """Submit a PR review with optional inline file/line comments."""
+        """Submit non-decisive COMMENT review feedback with optional inline comments."""
+        if event.strip().upper() != "COMMENT":
+            raise ValueError("development agent may only submit COMMENT reviews")
         return client_factory().create_review_with_comments(
             repository,
             number,
-            event,
+            "COMMENT",
             body,
             comments,
             commit_id,

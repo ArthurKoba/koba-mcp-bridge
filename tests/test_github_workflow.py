@@ -106,3 +106,15 @@ def test_invalid_merge_method_is_blocked() -> None:
             1,
             "octopus",
         )
+
+
+def test_neutral_protected_branch_env_takes_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GITHUB_AGENT_PROTECTED_BRANCHES", "legacy")
+    monkeypatch.setenv("GITHUB_PROTECTED_BRANCHES", "main,production")
+    assert protected_branches_from_env() == {"main", "production"}
+
+
+def test_neutral_required_checks_env_takes_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GITHUB_AGENT_REQUIRED_CHECKS", "legacy")
+    monkeypatch.setenv("GITHUB_REQUIRED_CHECKS", "test,docker,security")
+    assert required_checks_from_env() == ["test", "docker", "security"]

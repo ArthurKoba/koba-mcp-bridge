@@ -105,7 +105,7 @@ Direct file writes, deletes, atomic commits, fast-forwards, branch deletion, and
 
 Pull requests are restricted to branches inside the same repository. `owner:branch` / fork heads are rejected by the bridge, so the agent cannot use this backend for external contribution PRs.
 
-PR merge supports `merge`, `squash`, and `rebase`. Before merging, every name in `GITHUB_AGENT_REQUIRED_CHECKS` must have a completed successful check-run on the PR head SHA. When `GITHUB_AGENT_REQUIRED_REVIEWERS` is configured, the latest decisive review state for every listed login must also be `APPROVED`. A later `CHANGES_REQUESTED` or dismissed review blocks the merge again.
+Agent PR merge remains available only for non-protected base branches. Any PR targeting `main`/`master` (or another configured protected branch) is rejected by the Agent surface. Protected merge belongs exclusively to the independent Reviewer App.
 
 ### Development surface
 
@@ -142,7 +142,7 @@ Pull requests and review:
 - draft PR ready-for-review transition;
 - PR branch update using GitHub GraphQL `MERGE` or true `REBASE` semantics;
 - check-run inspection and required-check validation;
-- merge with `merge`, `squash`, or `rebase` after required checks and configured independent approvals pass.
+- merge non-protected PRs after required checks; protected PR merge is intentionally absent from the Agent role.
 
 Issues and CI:
 
@@ -191,21 +191,33 @@ When reviewer credentials are absent, no `github_reviewer_*` tools are registere
 - rich review submission with inline comments;
 - review-thread replies and resolve/unresolve operations.
 
-It does **not** expose file mutation, branch mutation, tag mutation, issue mutation, PR merge, or protected-branch operations.
+It does **not** expose file mutation, branch mutation, tag mutation, or issue mutation. Its only repository-content mutation is `github_reviewer_merge_pull_request`, and that tool is restricted to protected PR bases after required CI, an APPROVE by the Reviewer App on the exact current HEAD, and zero unresolved non-outdated review threads.
 
 Recommended reviewer App permissions:
 
-- **Contents: Read-only**;
-- **Pull requests: Read and write**;
+- **Contents: Read and write** — required by GitHub’s PR merge endpoint; the bridge does not expose arbitrary content writes to the Reviewer App;
+- **Pull requests: Read and write** — review/approval lifecycle;
 - **Checks: Read-only**;
 - **Actions: Read-only**;
 - **Issues: Read-only** if PR conversation/issue-style metadata access requires it for the repository policy in use.
 
-A separate ChatGPT conversation by itself is not an independent GitHub identity. The second GitHub App is what makes the review actor distinct at GitHub level. A practical workflow is: development chat creates/updates the PR through `github_agent_*`; review chat inspects the diff and CI through `github_reviewer_*`; reviewer App submits `REQUEST_CHANGES` or `APPROVE`; the development App merge gate verifies the required reviewer bot login before allowing merge.
+A separate ChatGPT conversation by itself is not an independent GitHub identity. The second GitHub App is what makes the review actor distinct at GitHub level. The enforced workflow is: development Agent creates/updates a feature branch and PR; CI runs; Reviewer inspects the exact current HEAD and submits `REQUEST_CHANGES` or `APPROVE`; only Reviewer may merge a protected-base PR.
 
 ## GitHub-side branch protection
 
-Bridge policy protects `main`/`master` from direct agent mutations, but GitHub itself should also enforce the rule so human tokens and other integrations cannot bypass the workflow. Configure a repository ruleset or branch protection for protected branches that requires:
+Bridge policy protects `main`/`master` from direct Agent mutations, but GitHub itself must also enforce the actor separation. Configure a repository ruleset for protected branches that:
+
+- targets `main`/`master`;
+- requires changes through a pull request;
+- requires the CI checks configured by `GITHUB_REQUIRED_CHECKS`;
+- dismisses stale approvals when new commits are pushed and requires approval of the most recent reviewable push;
+- blocks force pushes and deletions;
+- does **not** grant the Agent App bypass;
+- grants the Reviewer App bypass only as **For pull requests only** when using `Restrict updates`.
+
+The Reviewer-side bridge gate still checks CI, exact-head approval, and unresolved threads before calling GitHub merge. GitHub rulesets therefore enforce actor separation while the bridge enforces review quality.
+
+The protected branch rules should also require:
 
 - changes through a pull request;
 - required CI checks such as `test` and `docker`;

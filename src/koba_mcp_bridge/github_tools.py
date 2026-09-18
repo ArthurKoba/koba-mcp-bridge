@@ -213,8 +213,10 @@ def register_github_workflow_tools(
         event: str,
         body: str,
     ) -> dict[str, object]:
-        """Submit APPROVE, REQUEST_CHANGES, or COMMENT review feedback."""
-        return client_factory().create_review(repository, number, event, body)
+        """Submit non-decisive COMMENT feedback; approvals belong to the reviewer role."""
+        if event.strip().upper() != "COMMENT":
+            raise ValueError("development agent may only submit COMMENT reviews")
+        return client_factory().create_review(repository, number, "COMMENT", body)
 
     @mcp.tool(title="GitHub agent update pull branch", annotations=write_annotations)
     def github_agent_update_pull_branch(

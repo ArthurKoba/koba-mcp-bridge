@@ -9,6 +9,7 @@ from mcp.types import ToolAnnotations
 from koba_mcp_bridge.github_agent import GitHubAgentError
 from koba_mcp_bridge.github_collab import GitHubCollabClient
 from koba_mcp_bridge.github_reviewer import (
+    GitHubReviewerClient,
     _reviewer_private_key_from_env,
     github_reviewer_client_from_env,
     github_reviewer_configured,
@@ -155,11 +156,18 @@ async def test_reviewer_tool_surface_excludes_development_mutations() -> None:
         idempotent_hint=False,
         open_world_hint=True,
     )
+    destructive = ToolAnnotations(
+        read_only_hint=False,
+        destructive_hint=True,
+        idempotent_hint=False,
+        open_world_hint=True,
+    )
     register_github_reviewer_tools(
         reviewer_mcp,
-        _unused_client,
+        _unused_client,  # type: ignore[arg-type]
         read_only,
         review_write,
+        destructive,
     )
 
     async with Client(reviewer_mcp) as client:
@@ -172,6 +180,93 @@ async def test_reviewer_tool_surface_excludes_development_mutations() -> None:
     assert "github_reviewer_workflow_runs" in names
     assert not any("put_file" in name for name in names)
     assert not any("delete_file" in name for name in names)
-    assert not any("merge_pull" in name for name in names)
+    assert "github_reviewer_merge_pull_request" in names
     assert not any("create_branch" in name for name in names)
     assert not any("delete_branch" in name for name in names)
+
+
+class ReviewerMergeClient(GitHubReviewerClient):
+    def __init__(self, *, approved_sha: str = "head123", unresolved: bool = False) -> None:
+        super().__init__(app_id="456", private_key="key")
+        self.approved_sha = approved_sha
+        self.unresolved = unresolved
+        self.merged_payload: dict[str, object] | None = None
+
+    def _app_identity(self) -> dict[str, object]:
+        return {"login": "koba-ai-reviewer[bot]"}
+
+    def _assert_allowed(self, repository: str) -> str:
+        return repository
+
+    def assert_required_checks(self, repository: str, ref: str) -> dict[str, object]:
+        assert ref == "head123"
+        return {"repository": repository, "ref": ref, "status": "ok"}
+
+    def list_review_threads(self, repository: str, number: int) -> dict[str, object]:
+        del repository, number
+        return {
+            "threads": [
+                {"id": "T1", "resolved": False, "outdated": False}
+            ] if self.unresolved else []
+        }
+
+    def _repo_request(
+        self,
+        repository: str,
+        method: str,
+        path: str,
+        *,
+        payload: object | None = None,
+        allowed_errors: set[int] | None = None,
+    ) -> tuple[int, object]:
+        del repository, allowed_errors
+        if method == "GET" and path.endswith("/pulls/7"):
+            return 200, {
+                "state": "open",
+                "draft": False,
+                "head": {
+                    "sha": "head123",
+                    "repo": {"full_name": "ArthurKoba/koba-mcp-bridge"},
+                },
+                "base": {
+                    "ref": "main",
+                    "repo": {"full_name": "ArthurKoba/koba-mcp-bridge"},
+                },
+            }
+        if method == "GET" and path.endswith("/reviews?per_page=100"):
+            return 200, [{
+                "user": {"login": "koba-ai-reviewer[bot]"},
+                "state": "APPROVED",
+                "commit_id": self.approved_sha,
+            }]
+        if method == "PUT" and path.endswith("/merge"):
+            assert isinstance(payload, dict)
+            self.merged_payload = payload
+            return 200, {"merged": True, "sha": "merge456", "message": "merged"}
+        raise AssertionError(f"unexpected request: {method} {path}")
+
+
+def test_reviewer_can_merge_protected_pr_after_current_head_approval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GITHUB_PROTECTED_BRANCHES", raising=False)
+    client = ReviewerMergeClient()
+    result = client.merge_protected_pull_request(
+        "ArthurKoba/koba-mcp-bridge", 7, "squash"
+    )
+    assert result["merged"] is True
+    assert client.merged_payload == {"merge_method": "squash", "sha": "head123"}
+
+
+def test_reviewer_rejects_stale_approval(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GITHUB_PROTECTED_BRANCHES", raising=False)
+    client = ReviewerMergeClient(approved_sha="oldsha")
+    with pytest.raises(GitHubAgentError, match="approval is stale"):
+        client.merge_protected_pull_request("ArthurKoba/koba-mcp-bridge", 7)
+
+
+def test_reviewer_rejects_unresolved_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GITHUB_PROTECTED_BRANCHES", raising=False)
+    client = ReviewerMergeClient(unresolved=True)
+    with pytest.raises(GitHubAgentError, match="unresolved review threads"):
+        client.merge_protected_pull_request("ArthurKoba/koba-mcp-bridge", 7)

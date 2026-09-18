@@ -9,7 +9,7 @@ import urllib.request
 from .github_agent import GitHubAgentError
 from .github_collab import GitHubCollabClient, required_reviewer_logins_from_env
 from .github_history import GitHubHistoryMixin
-from .github_workflow import protected_branches_from_env
+from .github_workflow import GitHubDevClient, protected_branches_from_env
 
 _GITHUB_API = "https://api.github.com"
 _MAX_LOG_BYTES = 8 * 1024 * 1024
@@ -129,7 +129,8 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
             raise GitHubAgentError(
                 f"protected branch merge requires administrator: {base_ref}"
             )
-        return super().merge_pull_request(
+        return GitHubDevClient.merge_pull_request(
+            self,
             repository,
             number,
             merge_method,
