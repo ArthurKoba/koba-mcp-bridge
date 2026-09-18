@@ -98,7 +98,7 @@ GITHUB_PROTECTED_BRANCHES=main,master
 GITHUB_REQUIRED_CHECKS=test,docker
 ```
 
-The neutral protected-branch and required-check variables are optional and default to the values shown. Legacy `GITHUB_AGENT_PROTECTED_BRANCHES` / `GITHUB_AGENT_REQUIRED_CHECKS` remain accepted as compatibility aliases.
+The neutral protected-branch and required-check variables are optional and default to the values shown. Legacy `GITHUB_AGENT_PROTECTED_BRANCHES` / `GITHUB_AGENT_REQUIRED_CHECKS` remain accepted as compatibility aliases. For repositories with different CI contexts, set `GITHUB_REQUIRED_CHECKS_BY_REPOSITORY` to a JSON map of full repository name to exact check-run names; repository-specific entries take precedence over the global fallback.
 
 Direct file writes, deletes, atomic commits, fast-forwards, branch deletion, and branch renames are rejected for protected branches. Work is expected to happen on feature branches and reach a protected branch through a pull request.
 
@@ -208,7 +208,7 @@ Bridge policy protects `main`/`master` from direct Agent mutations, but GitHub i
 
 - targets `main`/`master`;
 - requires changes through a pull request;
-- requires the CI checks configured by `GITHUB_REQUIRED_CHECKS`;
+- requires the CI checks configured by `GITHUB_REQUIRED_CHECKS_BY_REPOSITORY` or the global `GITHUB_REQUIRED_CHECKS` fallback;
 - dismisses stale approvals when new commits are pushed and requires approval of the most recent reviewable push;
 - blocks force pushes and deletions;
 - does **not** grant the Agent App bypass;

@@ -118,3 +118,25 @@ def test_neutral_required_checks_env_takes_precedence(monkeypatch: pytest.Monkey
     monkeypatch.setenv("GITHUB_AGENT_REQUIRED_CHECKS", "legacy")
     monkeypatch.setenv("GITHUB_REQUIRED_CHECKS", "test,docker,security")
     assert required_checks_from_env() == ["test", "docker", "security"]
+
+
+def test_required_checks_can_be_overridden_per_repository(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GITHUB_REQUIRED_CHECKS", "fallback")
+    monkeypatch.setenv(
+        "GITHUB_REQUIRED_CHECKS_BY_REPOSITORY",
+        '{"ArthurKoba/koba-mcp-bridge":["test","docker"],'
+        '"ArthurKoba/ghidra-mcp":["Build Status"]}',
+    )
+    assert required_checks_from_env("ArthurKoba/koba-mcp-bridge") == ["test", "docker"]
+    assert required_checks_from_env("arthurkoba/GHIDRA-MCP") == ["Build Status"]
+    assert required_checks_from_env("ArthurKoba/other") == ["fallback"]
+
+
+def test_required_checks_mapping_rejects_invalid_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GITHUB_REQUIRED_CHECKS_BY_REPOSITORY", "{not-json")
+    with pytest.raises(GitHubAgentError, match="valid JSON"):
+        required_checks_from_env("ArthurKoba/koba-mcp-bridge")

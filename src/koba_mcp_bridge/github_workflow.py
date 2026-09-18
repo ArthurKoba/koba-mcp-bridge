@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import os
 import urllib.parse
 from typing import Any
@@ -23,7 +24,33 @@ def protected_branches_from_env() -> set[str]:
     return {item.strip().casefold() for item in raw.split(",") if item.strip()}
 
 
-def required_checks_from_env() -> list[str]:
+def required_checks_from_env(repository: str | None = None) -> list[str]:
+    mapping_raw = os.getenv("GITHUB_REQUIRED_CHECKS_BY_REPOSITORY", "").strip()
+    if repository and mapping_raw:
+        try:
+            mapping = json.loads(mapping_raw)
+        except json.JSONDecodeError as exc:
+            raise GitHubAgentError(
+                "GITHUB_REQUIRED_CHECKS_BY_REPOSITORY must be valid JSON"
+            ) from exc
+        if not isinstance(mapping, dict):
+            raise GitHubAgentError(
+                "GITHUB_REQUIRED_CHECKS_BY_REPOSITORY must be a JSON object"
+            )
+        configured = None
+        for key, value in mapping.items():
+            if str(key).casefold() == repository.casefold():
+                configured = value
+                break
+        if configured is not None:
+            if not isinstance(configured, list) or not all(
+                isinstance(item, str) for item in configured
+            ):
+                raise GitHubAgentError(
+                    "per-repository required checks must be a JSON array of strings"
+                )
+            return [item.strip() for item in configured if item.strip()]
+
     raw = os.getenv("GITHUB_REQUIRED_CHECKS")
     if raw is None:
         raw = os.getenv("GITHUB_AGENT_REQUIRED_CHECKS", _DEFAULT_REQUIRED_CHECKS)
@@ -793,7 +820,7 @@ class GitHubDevClient(GitHubAppClient):
             for item in checks
             if isinstance(item, dict)
         }
-        required = required_checks_from_env()
+        required = required_checks_from_env(repository)
         missing = [name for name in required if name not in by_name]
         failing = [
             name
