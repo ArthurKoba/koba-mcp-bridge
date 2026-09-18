@@ -156,6 +156,25 @@ def _validate_https_source(source: str) -> urllib.parse.SplitResult:
     return parsed
 
 
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self,
+        req,
+        fp,
+        code,
+        msg,
+        headers,
+        newurl,
+    ):
+        _validate_https_source(str(newurl))
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _open_https_source(request: urllib.request.Request):
+    opener = urllib.request.build_opener(_SafeRedirectHandler())
+    return opener.open(request, timeout=60)
+
+
 def ensure_artifact_layout() -> None:
     root = _root()
     root.mkdir(parents=True, exist_ok=True)
@@ -311,7 +330,7 @@ def artifact_import_file_impl(
 
     try:
         try:
-            response = urllib.request.urlopen(request, timeout=60)
+            response = _open_https_source(request)
         except Exception as exc:
             raise ArtifactError(f"source download failed: {type(exc).__name__}") from exc
 
