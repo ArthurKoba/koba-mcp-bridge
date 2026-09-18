@@ -19,11 +19,11 @@ from .github_actions_tools import register_github_actions_tools
 from .github_agent import github_agent_configured
 from .github_collab_tools import register_github_collab_tools
 from .github_identity import GitHubPrettyIdentityClient
-from .gitlab_tools import register_gitlab_tools
 from .github_review_tools import register_github_review_tools
 from .github_reviewer import github_reviewer_client_from_env, github_reviewer_configured
 from .github_reviewer_tools import register_github_reviewer_tools
 from .github_tools import register_github_workflow_tools
+from .gitlab_tools import register_gitlab_tools
 from .reverse_workflow import register_reverse_workflow_tools
 
 _STARTED_AT = datetime.now(UTC).isoformat()
