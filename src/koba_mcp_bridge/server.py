@@ -103,10 +103,16 @@ def _build_auth() -> tuple[GitHubProvider | None, list[AuthMiddleware]]:
 
     provider = GitHubProvider(
         client_id=_required_env("OAUTH_GITHUB_CLIENT_ID"),
-        client_secret=_required_secret("OAUTH_GITHUB_CLIENT_SECRET", "OAUTH_GITHUB_CLIENT_SECRET_REF"),
+        client_secret=_required_secret(
+            "OAUTH_GITHUB_CLIENT_SECRET",
+            "OAUTH_GITHUB_CLIENT_SECRET_REF",
+        ),
         base_url=os.getenv("OAUTH_BASE_URL", "https://mcp.koba-nexus.ru"),
         required_scopes=["read:user"],
-        jwt_signing_key=_required_secret("OAUTH_JWT_SIGNING_KEY", "OAUTH_JWT_SIGNING_KEY_REF"),
+        jwt_signing_key=_required_secret(
+            "OAUTH_JWT_SIGNING_KEY",
+            "OAUTH_JWT_SIGNING_KEY_REF",
+        ),
         allowed_client_redirect_uris=[_CHATGPT_OAUTH_REDIRECT],
         require_authorization_consent="external",
         enable_cimd=False,
