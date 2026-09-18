@@ -36,14 +36,6 @@ def register_artifact_tools(
             expected_sha256=expected_sha256,
         )
 
-    @mcp.tool(title="Artifact upload list", annotations=read_annotations)
-    def artifact_upload_list(
-        offset: int = 0,
-        limit: int = 100,
-    ) -> dict[str, Any]:
-        """List active resumable upload sessions for recovery and cleanup."""
-        return ArtifactUploadManager().list(offset=offset, limit=limit)
-
     @mcp.tool(title="Artifact upload status", annotations=read_annotations)
     def artifact_upload_status(upload_id: str) -> dict[str, Any]:
         """Return upload progress and the exact next byte offset."""
@@ -75,19 +67,6 @@ def register_artifact_tools(
     def artifact_upload_finish(upload_id: str) -> dict[str, Any]:
         """Verify size/SHA-256, commit the upload, and return its immutable artifact_id."""
         return ArtifactUploadManager().finish(upload_id)
-
-    @mcp.tool(title="Artifact upload garbage collect", annotations=destructive_annotations)
-    def artifact_upload_gc(
-        max_age_hours: int = 24,
-        dry_run: bool = True,
-        limit: int = 1000,
-    ) -> dict[str, Any]:
-        """Find or discard abandoned upload sessions older than the requested age."""
-        return ArtifactUploadManager().gc(
-            max_age_hours=max_age_hours,
-            dry_run=dry_run,
-            limit=limit,
-        )
 
     @mcp.tool(title="Artifact upload cancel", annotations=destructive_annotations)
     def artifact_upload_cancel(upload_id: str) -> dict[str, Any]:
