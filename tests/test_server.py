@@ -42,10 +42,13 @@ async def test_artifact_tools_are_registered() -> None:
         "artifact_mkdir",
         "artifact_write_text",
         "artifact_upload_chunk",
+        "artifact_import_file",
+        "artifact_extract_archive",
         "artifact_download_chunk",
         "artifact_delete",
     }
     assert expected <= names
+    assert "ghidra_import_artifact" in names
 
 
 @pytest.mark.asyncio
