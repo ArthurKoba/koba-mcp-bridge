@@ -19,6 +19,14 @@ def manager(tmp_path, monkeypatch) -> ArtifactUploadManager:
     return value
 
 
+def _write(manager: ArtifactUploadManager, upload_id: str, offset: int, data: bytes):
+    return manager.write(
+        upload_id,
+        offset=offset,
+        data_base64=base64.b64encode(data).decode("ascii"),
+    )
+
+
 def test_agent_upload_begin_write_finish(manager: ArtifactUploadManager) -> None:
     payload = b"firmware-image"
     expected = hashlib.sha256(payload).hexdigest()
@@ -29,23 +37,34 @@ def test_agent_upload_begin_write_finish(manager: ArtifactUploadManager) -> None
         expected_sha256=expected,
     )
 
-    written = manager.write(
-        begun["upload_id"],
-        offset=0,
-        data_base64=base64.b64encode(payload).decode("ascii"),
-    )
+    written = _write(manager, begun["upload_id"], 0, payload)
     assert written["complete"] is True
+    assert written["committed"] is False
     assert written["next_offset"] == len(payload)
 
     finished = manager.finish(begun["upload_id"])
     artifact = finished["artifact"]
 
     assert finished["completed"] is True
+    assert finished["already_committed"] is False
     assert artifact["artifact_id"] == f"sha256:{expected}"
     assert ArtifactStore().path_for(artifact["artifact_id"]).read_bytes() == payload
 
-    with pytest.raises(ArtifactError, match="does not exist"):
-        manager.status(begun["upload_id"])
+    status = manager.status(begun["upload_id"])
+    assert status["committed"] is True
+    assert status["artifact_id"] == artifact["artifact_id"]
+
+
+def test_finish_is_idempotent_after_commit(manager: ArtifactUploadManager) -> None:
+    payload = b"idempotent"
+    begun = manager.begin("idempotent.bin", size_bytes=len(payload))
+    _write(manager, begun["upload_id"], 0, payload)
+
+    first = manager.finish(begun["upload_id"])
+    second = manager.finish(begun["upload_id"])
+
+    assert second["already_committed"] is True
+    assert second["artifact"]["artifact_id"] == first["artifact"]["artifact_id"]
 
 
 def test_agent_upload_is_resumable_across_manager_instances(
@@ -53,23 +72,37 @@ def test_agent_upload_is_resumable_across_manager_instances(
 ) -> None:
     payload = b"abcdef"
     begun = manager.begin("resume.bin", size_bytes=len(payload))
-    manager.write(
-        begun["upload_id"],
-        offset=0,
-        data_base64=base64.b64encode(payload[:3]).decode("ascii"),
-    )
+    _write(manager, begun["upload_id"], 0, payload[:3])
 
     resumed = ArtifactUploadManager().status(begun["upload_id"])
     assert resumed["bytes_received"] == 3
     assert resumed["next_offset"] == 3
     assert resumed["remaining_bytes"] == 3
 
-    ArtifactUploadManager().write(
-        begun["upload_id"],
-        offset=3,
-        data_base64=base64.b64encode(payload[3:]).decode("ascii"),
-    )
+    _write(ArtifactUploadManager(), begun["upload_id"], 3, payload[3:])
     finished = ArtifactUploadManager().finish(begun["upload_id"])
+    assert ArtifactStore().path_for(
+        finished["artifact"]["artifact_id"]
+    ).read_bytes() == payload
+
+
+def test_status_recovers_bytes_written_before_metadata_commit(
+    manager: ArtifactUploadManager,
+) -> None:
+    payload = b"recover-me"
+    begun = manager.begin("recover.bin", size_bytes=len(payload))
+    part = manager._part_path(begun["upload_id"])
+
+    with part.open("ab") as handle:
+        handle.write(payload)
+        handle.flush()
+
+    recovered = manager.status(begun["upload_id"])
+    assert recovered["bytes_received"] == len(payload)
+    assert recovered["next_offset"] == len(payload)
+    assert recovered["complete"] is True
+
+    finished = manager.finish(begun["upload_id"])
     assert ArtifactStore().path_for(
         finished["artifact"]["artifact_id"]
     ).read_bytes() == payload
@@ -77,29 +110,17 @@ def test_agent_upload_is_resumable_across_manager_instances(
 
 def test_agent_upload_rejects_wrong_offset(manager: ArtifactUploadManager) -> None:
     begun = manager.begin("ordered.bin", size_bytes=4)
-    manager.write(
-        begun["upload_id"],
-        offset=0,
-        data_base64=base64.b64encode(b"ab").decode("ascii"),
-    )
+    _write(manager, begun["upload_id"], 0, b"ab")
 
     with pytest.raises(ArtifactError, match="offset mismatch"):
-        manager.write(
-            begun["upload_id"],
-            offset=0,
-            data_base64=base64.b64encode(b"cd").decode("ascii"),
-        )
+        _write(manager, begun["upload_id"], 0, b"cd")
 
     assert manager.status(begun["upload_id"])["next_offset"] == 2
 
 
 def test_agent_upload_rejects_incomplete_finish(manager: ArtifactUploadManager) -> None:
     begun = manager.begin("incomplete.bin", size_bytes=4)
-    manager.write(
-        begun["upload_id"],
-        offset=0,
-        data_base64=base64.b64encode(b"ab").decode("ascii"),
-    )
+    _write(manager, begun["upload_id"], 0, b"ab")
 
     with pytest.raises(ArtifactError, match="incomplete"):
         manager.finish(begun["upload_id"])
@@ -114,11 +135,7 @@ def test_agent_upload_sha_mismatch_can_be_cancelled(manager: ArtifactUploadManag
         size_bytes=len(payload),
         expected_sha256=hashlib.sha256(b"different").hexdigest(),
     )
-    manager.write(
-        begun["upload_id"],
-        offset=0,
-        data_base64=base64.b64encode(payload).decode("ascii"),
-    )
+    _write(manager, begun["upload_id"], 0, payload)
 
     with pytest.raises(ArtifactError, match="SHA-256 mismatch"):
         manager.finish(begun["upload_id"])
@@ -129,6 +146,19 @@ def test_agent_upload_sha_mismatch_can_be_cancelled(manager: ArtifactUploadManag
     assert manager.cancel(begun["upload_id"])["already_absent"] is True
 
 
+def test_cancel_does_not_remove_committed_artifact(manager: ArtifactUploadManager) -> None:
+    payload = b"committed"
+    begun = manager.begin("committed.bin", size_bytes=len(payload))
+    _write(manager, begun["upload_id"], 0, payload)
+    finished = manager.finish(begun["upload_id"])
+
+    cancelled = manager.cancel(begun["upload_id"])
+
+    assert cancelled["already_committed"] is True
+    assert cancelled["artifact_id"] == finished["artifact"]["artifact_id"]
+    assert ArtifactStore().path_for(cancelled["artifact_id"]).read_bytes() == payload
+
+
 def test_agent_upload_deduplicates_identical_files(
     manager: ArtifactUploadManager,
 ) -> None:
@@ -137,11 +167,7 @@ def test_agent_upload_deduplicates_identical_files(
 
     for name in ("first.bin", "second.bin"):
         begun = manager.begin(name, size_bytes=len(payload))
-        manager.write(
-            begun["upload_id"],
-            offset=0,
-            data_base64=base64.b64encode(payload).decode("ascii"),
-        )
+        _write(manager, begun["upload_id"], 0, payload)
         artifact_ids.append(manager.finish(begun["upload_id"])["artifact"]["artifact_id"])
 
     assert artifact_ids[0] == artifact_ids[1]
@@ -149,36 +175,67 @@ def test_agent_upload_deduplicates_identical_files(
     assert {alias["name"] for alias in info["aliases"]} == {"first.bin", "second.bin"}
 
 
+def test_upload_list_recovers_open_and_completed_sessions(
+    manager: ArtifactUploadManager,
+) -> None:
+    open_session = manager.begin("open.bin", size_bytes=1)
+    completed = manager.begin("completed.bin", size_bytes=1)
+    _write(manager, completed["upload_id"], 0, b"x")
+    manager.finish(completed["upload_id"])
 
-def test_upload_list_and_gc_abandoned_sessions(
+    all_sessions = manager.list()
+    ids = {item["upload_id"] for item in all_sessions["sessions"]}
+    assert open_session["upload_id"] in ids
+    assert completed["upload_id"] in ids
+
+    open_only = manager.list(state="open")
+    assert [item["upload_id"] for item in open_only["sessions"]] == [
+        open_session["upload_id"]
+    ]
+
+    completed_only = manager.list(state="completed")
+    assert [item["upload_id"] for item in completed_only["sessions"]] == [
+        completed["upload_id"]
+    ]
+
+
+def test_upload_cleanup_removes_only_stale_session_state(
     manager: ArtifactUploadManager,
 ) -> None:
     active = manager.begin("active.bin", size_bytes=1)
-    abandoned = manager.begin("abandoned.bin", size_bytes=1)
+    stale_open = manager.begin("stale-open.bin", size_bytes=1)
+    stale_completed = manager.begin("stale-completed.bin", size_bytes=1)
+    _write(manager, stale_completed["upload_id"], 0, b"z")
+    committed = manager.finish(stale_completed["upload_id"])
 
     with manager._connect() as db:
         db.execute(
             """
             UPDATE upload_sessions
             SET updated_at = ?
-            WHERE upload_id = ?
+            WHERE upload_id IN (?, ?)
             """,
-            ("2000-01-01T00:00:00+00:00", abandoned["upload_id"]),
+            (
+                "2000-01-01T00:00:00+00:00",
+                stale_open["upload_id"],
+                stale_completed["upload_id"],
+            ),
         )
 
-    listed = manager.list()
-    ids = {item["upload_id"] for item in listed["items"]}
-    assert active["upload_id"] in ids
-    assert abandoned["upload_id"] in ids
+    preview = manager.cleanup(older_than_hours=1, dry_run=True)
+    assert {item["upload_id"] for item in preview["sessions"]} == {
+        stale_open["upload_id"],
+        stale_completed["upload_id"],
+    }
 
-    preview = manager.gc(max_age_hours=1, dry_run=True)
-    assert [item["upload_id"] for item in preview["candidates"]] == [
-        abandoned["upload_id"]
-    ]
+    cleaned = manager.cleanup(older_than_hours=1, dry_run=False)
+    assert cleaned["count"] == 2
+    assert manager.status(active["upload_id"])["committed"] is False
 
-    collected = manager.gc(max_age_hours=1, dry_run=False)
-    assert collected["count"] == 1
-    assert collected["deleted"][0]["upload_id"] == abandoned["upload_id"]
-    assert manager.status(active["upload_id"])["bytes_received"] == 0
     with pytest.raises(ArtifactError, match="does not exist"):
-        manager.status(abandoned["upload_id"])
+        manager.status(stale_open["upload_id"])
+    with pytest.raises(ArtifactError, match="does not exist"):
+        manager.status(stale_completed["upload_id"])
+
+    artifact_id = committed["artifact"]["artifact_id"]
+    assert ArtifactStore().path_for(artifact_id).read_bytes() == b"z"
