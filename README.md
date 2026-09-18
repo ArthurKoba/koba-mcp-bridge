@@ -47,14 +47,27 @@ sha256:<digest>
 Physical storage paths are private implementation details and are never used as
 cross-service identifiers.
 
-Browser uploads use FastMCP's native `FileUpload` app. Calling `file_manager`
-opens the drag-and-drop UI; uploaded bytes are committed directly to the Koba
-artifact store and deduplicated by SHA-256. The model-facing artifact surface is:
+Agents transfer arbitrary binary files through a resumable MCP upload protocol:
+
+- `artifact_upload_begin` creates an upload session from file metadata;
+- `artifact_upload_write` appends one bounded base64 chunk at the exact next offset;
+- `artifact_upload_list` enumerates open/completed sessions for autonomous recovery;
+- `artifact_upload_status` resumes interrupted transfers from the server-confirmed offset;
+- `artifact_upload_finish` verifies size and optional SHA-256, commits the immutable
+  object, and returns its `artifact_id`;
+- `artifact_upload_cleanup` previews or removes stale upload-session state by age without deleting committed artifacts;
+- `artifact_upload_cancel` discards a specific unfinished transfer.
+
+The protocol is transport-only. The agent does not choose a Koba filesystem path
+and no backend-specific directory participates in upload. After commit, every
+consumer receives only the immutable `artifact_id`.
+
+The generic artifact surface also provides:
 
 - `artifact_status`, `artifact_list`, `artifact_info`, `artifact_read`;
 - `artifact_create_text`;
 - `artifact_extract`, `artifact_collection_list`,
-  `artifact_collection_resolve`;
+  `artifact_collection_resolve`, `artifact_collection_delete`;
 - `artifact_references`, `artifact_release_reference`;
 - `artifact_delete`, `artifact_gc`.
 

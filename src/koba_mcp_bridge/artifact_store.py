@@ -195,6 +195,10 @@ class ArtifactStore:
         db.execute("PRAGMA journal_mode = WAL")
         try:
             yield db
+        except Exception:
+            db.rollback()
+            raise
+        else:
             db.commit()
         finally:
             db.close()
