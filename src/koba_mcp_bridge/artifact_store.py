@@ -11,7 +11,7 @@ import tarfile
 import tempfile
 import uuid
 import zipfile
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any, BinaryIO
@@ -833,10 +833,8 @@ class ArtifactStore:
         path = self.path_for(normalized) if self._object_path(info["sha256"]).exists() else None
         if path is not None and path.exists():
             path.unlink()
-            try:
+            with suppress(OSError):
                 path.parent.rmdir()
-            except OSError:
-                pass
         return {"artifact_id": normalized, "deleted": True, "forced": force}
 
     def gc(self, dry_run: bool = True, limit: int = 1000) -> dict[str, Any]:
