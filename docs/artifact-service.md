@@ -15,7 +15,14 @@ second stored object.
 
 ## Agent ingress
 
-Binary transfer is a resumable MCP protocol. An agent creates a session with
+For chat/client attachments, `artifact_ingest_file` is the primary ingress.
+The agent passes the attachment/file argument itself; a file-capable client can
+translate its local attachment handle into a temporary authorized HTTPS URL.
+Koba fetches that URL server-side, streams it directly to temporary storage,
+verifies optional expected size/SHA-256, and commits the resulting immutable
+artifact. Attachment bytes do not pass through model-visible base64.
+
+The generic fallback is a resumable MCP protocol. An agent creates a session with
 `artifact_upload_begin`, sends bounded base64 chunks with
 `artifact_upload_write`, and commits with `artifact_upload_finish`.
 `artifact_upload_status` returns the exact server-confirmed offset so an
