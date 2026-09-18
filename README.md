@@ -167,32 +167,21 @@ process-global "current GitLab" or "current account", so concurrent agents can u
 different GitLab instances or different accounts on the same instance without switching
 each other's context.
 
-Profiles are loaded from `GITLAB_PROFILES_FILE` and/or `GITLAB_PROFILES_JSON`.
-Profile metadata does not contain the token itself. Each profile references exactly one
-runtime secret source with `secret_ref`, `token_env`, or `token_file`.
+GitLab profiles are discovered from Infisical folders below:
 
-Example:
-
-```json
-[
-  {
-    "profile_id": "gitlab-com-arthur",
-    "label": "GitLab.com / Arthur",
-    "base_url": "https://gitlab.com",
-    "auth_type": "private_token",
-    "secret_ref": "infisical://prod/gitlab/accounts/arthur#TOKEN"
-  },
-  {
-    "profile_id": "lab-admin",
-    "label": "Self-hosted lab / admin",
-    "base_url": "https://gitlab.lab.example",
-    "auth_type": "bearer",
-    "secret_ref": "infisical://prod/gitlab/accounts/lab-admin#TOKEN",
-    "verify_tls": true,
-    "ca_file": "/run/secrets/lab-ca.pem"
-  }
-]
+```text
+/gitlab/accounts/<profile_id>
+├── BASE_URL
+├── AUTH_TYPE
+├── TOKEN
+├── LABEL        # optional
+├── VERIFY_TLS   # optional, default true
+└── CA_FILE      # optional
 ```
+
+Creating a new account folder makes the profile discoverable without adding Coolify
+environment variables. Legacy `GITLAB_PROFILES_FILE` and `GITLAB_PROFILES_JSON`
+remain fallback-only during migration.
 
 Supported authentication modes are:
 
