@@ -75,21 +75,26 @@ def _require_backend_success(result: Any, operation: str) -> dict[str, Any]:
     return decoded
 
 
-async def _cancel_stage(client: Client, stage_id: str) -> None:
+async def _cancel_stage(client: Client, project_id: str, stage_id: str) -> None:
     if not stage_id:
         return
     with suppress(Exception):
-        await client.call_tool("artifact_stage_cancel", {"stage_id": stage_id})
+        await client.call_tool(
+            "artifact_stage_cancel",
+            {"project_id": project_id, "stage_id": stage_id},
+        )
 
 
 async def _stage_artifact_for_ghidra(
     client: Client,
     store: ArtifactStore,
     artifact: dict[str, Any],
+    project_id: str,
 ) -> tuple[str, str]:
     begin_result = await client.call_tool(
         "artifact_stage_begin",
         {
+            "project_id": project_id,
             "name": str(artifact["name"]),
             "size_bytes": int(artifact["size_bytes"]),
             "sha256": str(artifact["sha256"]),
@@ -102,7 +107,7 @@ async def _stage_artifact_for_ghidra(
 
     chunk_bytes = int(begin.get("chunk_bytes", 1024 * 1024))
     if chunk_bytes <= 0 or chunk_bytes > 8 * 1024 * 1024:
-        await _cancel_stage(client, stage_id)
+        await _cancel_stage(client, project_id, stage_id)
         raise ArtifactError("Ghidra artifact staging returned an invalid chunk size")
 
     path = store.path_for(str(artifact["artifact_id"]))
@@ -116,6 +121,7 @@ async def _stage_artifact_for_ghidra(
                 write_result = await client.call_tool(
                     "artifact_stage_write",
                     {
+                        "project_id": project_id,
                         "stage_id": stage_id,
                         "offset": offset,
                         "data_base64": base64.b64encode(chunk).decode("ascii"),
@@ -132,7 +138,7 @@ async def _stage_artifact_for_ghidra(
 
         finish_result = await client.call_tool(
             "artifact_stage_finish",
-            {"stage_id": stage_id},
+            {"project_id": project_id, "stage_id": stage_id},
         )
         finish = _require_backend_success(finish_result, "artifact staging finish")
         staged_path = str(finish.get("path", "")).strip()
@@ -142,12 +148,15 @@ async def _stage_artifact_for_ghidra(
             raise ArtifactError("Ghidra artifact staging SHA-256 verification failed")
         return stage_id, staged_path
     except Exception:
-        await _cancel_stage(client, stage_id)
+        await _cancel_stage(client, project_id, stage_id)
         raise
 
 
-async def _current_project(client: Client) -> dict[str, Any]:
-    result = await client.call_tool("get_project_info", {})
+async def _current_project(client: Client, project_id: str) -> dict[str, Any]:
+    result = await client.call_tool(
+        "get_project_info",
+        {"project_id": project_id},
+    )
     info = _decode_call_result(result)
     if not isinstance(info, dict) or not info.get("has_project"):
         raise ArtifactError("no Ghidra project is open")
@@ -158,6 +167,7 @@ async def _current_project(client: Client) -> dict[str, Any]:
 
 
 async def ghidra_import_artifact_impl(
+    project_id: str,
     artifact_id: str,
     project_folder: str = "/",
     language: str | None = None,
@@ -172,6 +182,7 @@ async def ghidra_import_artifact_impl(
         return {
             "success": True,
             "dry_run": True,
+            "project_id": project_id,
             "artifact_id": artifact["artifact_id"],
             "name": artifact["name"],
             "project_folder": project_folder,
@@ -182,16 +193,18 @@ async def ghidra_import_artifact_impl(
 
     stage_id = ""
     async with Client(_ghidra_url()) as client:
-        project = await _current_project(client)
+        project = await _current_project(client, project_id)
         try:
             stage_id, staged_path = await _stage_artifact_for_ghidra(
                 client,
                 store,
                 artifact,
+                project_id,
             )
             result = await client.call_tool(
                 "import_file",
                 {
+                    "project_id": project_id,
                     "file_path": staged_path,
                     "project_folder": project_folder,
                     "language": language,
@@ -201,17 +214,18 @@ async def ghidra_import_artifact_impl(
             )
             ghidra_result = _require_backend_success(result, "artifact import")
         finally:
-            await _cancel_stage(client, stage_id)
+            await _cancel_stage(client, project_id, stage_id)
 
     project_name = str(project["project_name"])
     store.add_reference(
         artifact["artifact_id"],
         consumer_type="ghidra-project",
-        consumer_id=project_name,
+        consumer_id=project_id,
         role="source",
     )
     return {
         "success": True,
+        "project_id": project_id,
         "artifact_id": artifact["artifact_id"],
         "name": artifact["name"],
         "project_name": project_name,
@@ -219,13 +233,13 @@ async def ghidra_import_artifact_impl(
     }
 
 
-async def ghidra_project_sources_impl() -> dict[str, Any]:
+async def ghidra_project_sources_impl(project_id: str) -> dict[str, Any]:
     async with Client(_ghidra_url()) as client:
-        project = await _current_project(client)
+        project = await _current_project(client, project_id)
     project_name = str(project["project_name"])
     refs = ArtifactStore().references(
         consumer_type="ghidra-project",
-        consumer_id=project_name,
+        consumer_id=project_id,
     )
     sources = []
     store = ArtifactStore()
@@ -241,6 +255,7 @@ async def ghidra_project_sources_impl() -> dict[str, Any]:
             }
         )
     return {
+        "project_id": project_id,
         "project_name": project_name,
         "sources": sources,
         "count": len(sources),
@@ -248,6 +263,7 @@ async def ghidra_project_sources_impl() -> dict[str, Any]:
 
 
 async def _export_to_artifact(
+    project_id: str,
     tool_name: str,
     payload: dict[str, Any],
     suffix: str,
@@ -258,12 +274,13 @@ async def _export_to_artifact(
     temporary_name = f"ghidra-{uuid.uuid4().hex}{suffix}"
     temporary = store.tmp / temporary_name
     payload = dict(payload)
+    payload["project_id"] = project_id
     payload["output_dir"] = str(store.tmp)
     payload["output_name"] = temporary_name
 
     try:
         async with Client(_ghidra_url()) as client:
-            project = await _current_project(client)
+            project = await _current_project(client, project_id)
             result = await client.call_tool(tool_name, payload)
         if not temporary.is_file():
             raise ArtifactError("Ghidra export completed without producing a file")
@@ -276,11 +293,12 @@ async def _export_to_artifact(
         store.add_reference(
             artifact["artifact_id"],
             consumer_type="ghidra-project",
-            consumer_id=str(project["project_name"]),
+            consumer_id=project_id,
             role="export",
         )
         return {
             "success": True,
+            "project_id": project_id,
             "artifact": artifact,
             "project_name": str(project["project_name"]),
             "ghidra_result": _decode_call_result(result),
@@ -291,11 +309,13 @@ async def _export_to_artifact(
 
 
 async def ghidra_export_program_artifact_impl(
+    project_id: str,
     program_name: str,
     artifact_name: str = "",
 ) -> dict[str, Any]:
     name = artifact_name.strip() or f"{program_name}.gzf"
     return await _export_to_artifact(
+        project_id,
         "export_program",
         {"program_name": program_name},
         ".gzf",
@@ -304,13 +324,15 @@ async def ghidra_export_program_artifact_impl(
 
 
 async def ghidra_archive_project_artifact_impl(
+    project_id: str,
     artifact_name: str = "",
 ) -> dict[str, Any]:
     async with Client(_ghidra_url()) as client:
-        project = await _current_project(client)
+        project = await _current_project(client, project_id)
     project_name = str(project["project_name"])
     name = artifact_name.strip() or f"{project_name}.gar"
     return await _export_to_artifact(
+        project_id,
         "archive_project",
         {},
         ".gar",
@@ -325,6 +347,7 @@ def register_reverse_workflow_tools(
 ) -> None:
     @mcp.tool(title="Ghidra import artifact", annotations=write_annotations)
     async def ghidra_import_artifact(
+        project_id: str,
         artifact_id: str,
         project_folder: str = "/",
         language: str | None = None,
@@ -332,8 +355,9 @@ def register_reverse_workflow_tools(
         auto_analyze: bool = True,
         dry_run: bool = False,
     ) -> dict[str, Any]:
-        """Import an immutable Koba artifact into the currently open Ghidra project."""
+        """Import an immutable Koba artifact into the explicitly selected Ghidra project."""
         return await ghidra_import_artifact_impl(
+            project_id,
             artifact_id,
             project_folder,
             language,
@@ -343,21 +367,27 @@ def register_reverse_workflow_tools(
         )
 
     @mcp.tool(title="Ghidra project sources", annotations=read_annotations)
-    async def ghidra_project_sources() -> dict[str, Any]:
-        """List immutable source artifacts retained for the current Ghidra project."""
-        return await ghidra_project_sources_impl()
+    async def ghidra_project_sources(project_id: str) -> dict[str, Any]:
+        """List immutable source artifacts retained for one explicit Ghidra project."""
+        return await ghidra_project_sources_impl(project_id)
 
     @mcp.tool(title="Ghidra export program artifact", annotations=write_annotations)
     async def ghidra_export_program_artifact(
+        project_id: str,
         program_name: str,
         artifact_name: str = "",
     ) -> dict[str, Any]:
         """Export a Ghidra program as a GZF and register it as a Koba artifact."""
-        return await ghidra_export_program_artifact_impl(program_name, artifact_name)
+        return await ghidra_export_program_artifact_impl(
+            project_id,
+            program_name,
+            artifact_name,
+        )
 
     @mcp.tool(title="Ghidra archive project artifact", annotations=write_annotations)
     async def ghidra_archive_project_artifact(
+        project_id: str,
         artifact_name: str = "",
     ) -> dict[str, Any]:
-        """Archive the current Ghidra project as a GAR and register it as an artifact."""
-        return await ghidra_archive_project_artifact_impl(artifact_name)
+        """Archive one explicit Ghidra project as a GAR and register it as an artifact."""
+        return await ghidra_archive_project_artifact_impl(project_id, artifact_name)
