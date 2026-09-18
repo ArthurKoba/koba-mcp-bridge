@@ -112,6 +112,60 @@ def test_download_artifact_returns_base64_and_hash() -> None:
     assert result["sha256"] == hashlib.sha256(client.download_payload).hexdigest()
 
 
+
+def test_dispatch_workflow_uses_workflow_dispatch_endpoint() -> None:
+    class DispatchClient(RecordingActionsClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.dispatch_payload = None
+
+        def _repo_request(
+            self,
+            repository: str,
+            method: str,
+            path: str,
+            *,
+            payload: object | None = None,
+            allowed_errors: set[int] | None = None,
+        ) -> tuple[int, object]:
+            del repository, allowed_errors
+            self.calls.append((method, path))
+            self.dispatch_payload = payload
+            return 204, {}
+
+    client = DispatchClient()
+    result = client.dispatch_workflow(
+        "ArthurKoba/openipc-builder",
+        "build-one.yml",
+        "master",
+        {
+            "platform": "fh8626v100_lite",
+            "firmware_ref": "work/fh8626v100-divinus",
+            "rebuild_packages": "divinus",
+            "clean_output": False,
+        },
+    )
+
+    assert result["dispatched"] is True
+    assert result["status"] == 204
+    assert client.calls == [
+        (
+            "POST",
+            "/repos/ArthurKoba/openipc-builder/actions/workflows/"
+            "build-one.yml/dispatches",
+        )
+    ]
+    assert client.dispatch_payload == {
+        "ref": "master",
+        "inputs": {
+            "platform": "fh8626v100_lite",
+            "firmware_ref": "work/fh8626v100-divinus",
+            "rebuild_packages": "divinus",
+            "clean_output": False,
+        },
+    }
+
+
 def test_rerun_and_cancel_endpoints() -> None:
     client = RecordingActionsClient()
     repository = "ArthurKoba/koba-mcp-bridge"
