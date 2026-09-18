@@ -94,12 +94,11 @@ The GitHub App installation is the single source of truth for repository access.
 The bridge has an additional development policy layer:
 
 ```text
-GITHUB_AGENT_PROTECTED_BRANCHES=main,master
-GITHUB_AGENT_REQUIRED_CHECKS=test,docker
-GITHUB_AGENT_REQUIRED_REVIEWERS=koba-ai-reviewer[bot]
+GITHUB_PROTECTED_BRANCHES=main,master
+GITHUB_REQUIRED_CHECKS=test,docker
 ```
 
-The protected-branch and required-check variables are optional and default to the values shown. `GITHUB_AGENT_REQUIRED_REVIEWERS` is optional and defaults to no identity-specific approval requirement; production PR-only workflows can set it once the independent reviewer App is installed and validated.
+The neutral protected-branch and required-check variables are optional and default to the values shown. Legacy `GITHUB_AGENT_PROTECTED_BRANCHES` / `GITHUB_AGENT_REQUIRED_CHECKS` remain accepted as compatibility aliases.
 
 Direct file writes, deletes, atomic commits, fast-forwards, branch deletion, and branch renames are rejected for protected branches. Work is expected to happen on feature branches and reach a protected branch through a pull request.
 
@@ -136,7 +135,7 @@ Pull requests and review:
 - changed-file patches;
 - conversation comments;
 - submitted review list;
-- rich review submission (`COMMENT`, `APPROVE`, `REQUEST_CHANGES`) with inline file/line comments;
+- non-decisive `COMMENT` review feedback with optional inline comments; `APPROVE` / `REQUEST_CHANGES` belong exclusively to the Reviewer role;
 - inline review-thread list/reply/update/resolve/unresolve;
 - reviewer request/remove operations;
 - draft PR ready-for-review transition;
@@ -158,7 +157,7 @@ Issues and CI:
 Configure the development GitHub App with only the repositories that agents are allowed to modify and grant:
 
 - **Contents: Read and write** — files, Git Data objects, refs, tags;
-- **Pull requests: Read and write** — PR lifecycle, reviews, merge;
+- **Pull requests: Read and write** — create/update PRs, comments, reviewer requests and branch updates; protected merge remains blocked by policy;
 - **Issues: Read and write** — issue lifecycle and comments;
 - **Actions: Read and write** — workflow diagnostics plus rerun/cancel controls;
 - **Checks: Read-only** — required-check gating.

@@ -127,7 +127,7 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
             raise GitHubAgentError("pull request base has no ref")
         if base_ref.casefold() in protected_branches_from_env():
             raise GitHubAgentError(
-                f"protected branch merge requires administrator: {base_ref}"
+                f"protected branch merge requires independent reviewer: {base_ref}"
             )
         return GitHubDevClient.merge_pull_request(
             self,

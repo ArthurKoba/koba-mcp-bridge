@@ -17,14 +17,17 @@ def _split_env(name: str, default: str = "") -> list[str]:
 
 
 def protected_branches_from_env() -> set[str]:
-    return {item.casefold() for item in _split_env(
-        "GITHUB_AGENT_PROTECTED_BRANCHES",
-        _DEFAULT_PROTECTED_BRANCHES,
-    )}
+    raw = os.getenv("GITHUB_PROTECTED_BRANCHES")
+    if raw is None:
+        raw = os.getenv("GITHUB_AGENT_PROTECTED_BRANCHES", _DEFAULT_PROTECTED_BRANCHES)
+    return {item.strip().casefold() for item in raw.split(",") if item.strip()}
 
 
 def required_checks_from_env() -> list[str]:
-    return _split_env("GITHUB_AGENT_REQUIRED_CHECKS", _DEFAULT_REQUIRED_CHECKS)
+    raw = os.getenv("GITHUB_REQUIRED_CHECKS")
+    if raw is None:
+        raw = os.getenv("GITHUB_AGENT_REQUIRED_CHECKS", _DEFAULT_REQUIRED_CHECKS)
+    return [item.strip() for item in raw.split(",") if item.strip()]
 
 
 class GitHubDevClient(GitHubAppClient):

@@ -40,8 +40,8 @@ class ReviewGateClient(GitHubCollabClient):
         raise AssertionError(f"unexpected request: {method} {path}")
 
 
-def _unused_client() -> GitHubCollabClient:
-    return GitHubCollabClient(
+def _unused_client() -> GitHubReviewerClient:
+    return GitHubReviewerClient(
         app_id="123",
         private_key="key-material",
     )
@@ -164,7 +164,7 @@ async def test_reviewer_tool_surface_excludes_development_mutations() -> None:
     )
     register_github_reviewer_tools(
         reviewer_mcp,
-        _unused_client,  # type: ignore[arg-type]
+        _unused_client
         read_only,
         review_write,
         destructive,
