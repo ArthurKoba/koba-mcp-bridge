@@ -6,10 +6,17 @@ from functools import lru_cache
 
 from .github_agent import GitHubAgentError
 from .github_identity import GitHubPrettyIdentityClient
-from .secrets import SecretError, resolve_secret
+from .secrets import (
+    InfisicalConfig,
+    SecretError,
+    resolve_config_secret,
+    resolve_secret,
+)
 
 
 def github_reviewer_configured() -> bool:
+    if InfisicalConfig.from_env().configured():
+        return True
     return bool(
         os.getenv("GITHUB_REVIEWER_APP_ID", "").strip()
         and (
@@ -20,7 +27,25 @@ def github_reviewer_configured() -> bool:
     )
 
 
+def _reviewer_app_id() -> str:
+    try:
+        return resolve_config_secret("github/reviewer", "APP_ID").strip()
+    except SecretError:
+        app_id = os.getenv("GITHUB_REVIEWER_APP_ID", "").strip()
+        if app_id:
+            return app_id
+        raise GitHubAgentError("GitHub reviewer APP_ID is not configured")
+
+
 def _reviewer_private_key_from_env() -> str:
+    try:
+        return resolve_config_secret(
+            "github/reviewer",
+            "PRIVATE_KEY_PEM",
+        ).replace("\\n", "\n")
+    except SecretError:
+        pass
+
     secret_ref = os.getenv("GITHUB_REVIEWER_PRIVATE_KEY_REF", "").strip()
     raw = os.getenv("GITHUB_REVIEWER_PRIVATE_KEY", "").strip()
     encoded = os.getenv("GITHUB_REVIEWER_PRIVATE_KEY_B64", "").strip()
@@ -47,10 +72,7 @@ def _reviewer_private_key_from_env() -> str:
 
 @lru_cache(maxsize=1)
 def github_reviewer_client_from_env() -> GitHubPrettyIdentityClient:
-    app_id = os.getenv("GITHUB_REVIEWER_APP_ID", "").strip()
-    if not app_id:
-        raise GitHubAgentError("GITHUB_REVIEWER_APP_ID is not configured")
     return GitHubPrettyIdentityClient(
-        app_id=app_id,
+        app_id=_reviewer_app_id(),
         private_key=_reviewer_private_key_from_env(),
     )
