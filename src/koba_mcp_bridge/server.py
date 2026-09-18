@@ -13,6 +13,7 @@ from fastmcp.server.middleware import AuthMiddleware
 from mcp.types import ToolAnnotations
 
 from . import __version__
+from .artifact_storage import register_artifact_tools
 from .github_actions_tools import register_github_actions_tools
 from .github_agent import github_agent_configured
 from .github_collab_tools import register_github_collab_tools
@@ -21,7 +22,6 @@ from .github_review_tools import register_github_review_tools
 from .github_reviewer import github_reviewer_client_from_env, github_reviewer_configured
 from .github_reviewer_tools import register_github_reviewer_tools
 from .github_tools import register_github_workflow_tools
-from .artifact_storage import register_artifact_tools
 
 _STARTED_AT = datetime.now(UTC).isoformat()
 _READ_ONLY_LOCAL = ToolAnnotations(

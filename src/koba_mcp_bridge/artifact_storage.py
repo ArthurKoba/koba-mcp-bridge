@@ -125,7 +125,12 @@ def artifact_write_text_impl(path: str, content: str, overwrite: bool = True) ->
     return {"success": True, **_meta(target, include_hash=True)}
 
 
-def artifact_upload_chunk_impl(path: str, data_base64: str, offset: int = 0, truncate: bool = False) -> dict[str, Any]:
+def artifact_upload_chunk_impl(
+    path: str,
+    data_base64: str,
+    offset: int = 0,
+    truncate: bool = False,
+) -> dict[str, Any]:
     if offset < 0:
         raise ArtifactError("offset must be non-negative")
     if truncate and offset != 0:
@@ -160,7 +165,11 @@ def artifact_upload_chunk_impl(path: str, data_base64: str, offset: int = 0, tru
     }
 
 
-def artifact_download_chunk_impl(path: str, offset: int = 0, length: int = _DEFAULT_MAX_CHUNK) -> dict[str, Any]:
+def artifact_download_chunk_impl(
+    path: str,
+    offset: int = 0,
+    length: int = _DEFAULT_MAX_CHUNK,
+) -> dict[str, Any]:
     if offset < 0:
         raise ArtifactError("offset must be non-negative")
     limit = _max_chunk()
