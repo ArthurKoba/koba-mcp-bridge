@@ -1,36 +1,31 @@
 # Component catalog
 
-This catalog is intentionally high-level. It describes ownership boundaries we want to preserve while the implementation is still being reorganized.
+This catalog covers only the platform components currently being stabilized.
 
 | Component | Current role | Direction |
 | --- | --- | --- |
+| Secrets | New internal secret-reference resolver | Self-hosted Infisical; machine identities; provider tokens leave Coolify |
 | Gateway | OAuth boundary, local tools, mounted backends | Thin optional aggregate MCP entry point |
-| GitHub | GitHub App development/reviewer workflows | Independent `github-mcp` runtime using shared policy/auth libraries |
+| GitHub | GitHub App development/reviewer workflows | Independent `github-mcp` runtime using shared policy/secrets libraries |
 | GitLab | Multi-profile GitLab REST connector | Independent `gitlab-mcp` runtime; explicit `profile_id` |
-| Files | Immutable content-addressed file/artifact storage and transfer | User-facing `files-mcp`; internal artifact IDs may remain |
+| Ghidra | Project-scoped reverse-engineering backend | Keep independent backend; isolate adapters from gateway failure |
+| Files | Immutable content-addressed file/artifact storage and transfer | User-facing `files-mcp`; internal artifact IDs remain compatible |
 | HTTP | Structured curl request/download/stream tools | Independent `http-mcp` runtime |
-| Ghidra | Project-scoped reverse-engineering backend | Existing independent backend plus high-level adapters |
-| Agents | Future long-running task/worker operations | Independent `agents-mcp` / execution plane |
-| Control plane | Not implemented | Profiles, connector metadata, policy, health, administrative workflows |
-| Secret manager | Not implemented | Central secret lifecycle and machine access |
-| Identity/SSO | GitHub OAuth currently protects public MCP | Potential future shared IdP such as Keycloak |
-| Camera Manager | Not implemented | One manager service owns camera inventory, state and operations; clients do not talk directly to each camera |
+
+## Secrets
+
+Provider credentials should be referenced, not copied into connector configuration.
+
+Supported reference forms:
+
+```text
+env://NAME
+file:///absolute/path
+infisical://prod/path/to/folder#SECRET_NAME
+```
+
+The first Infisical integration uses Universal Auth for runtime machine identities. Only the machine identity bootstrap credential remains in the deployment system.
 
 ## Files versus artifacts
 
-The current implementation uses immutable `artifact_id = sha256:...` identifiers, collections and references. That model is useful internally and should not be discarded casually.
-
-The public MCP/component name may move from "artifact" toward "files" because agents think in terms of files, archives and transfers rather than storage implementation details. The naming/API migration needs its own design issue.
-
-## Camera Manager direction
-
-Cameras should not become one MCP endpoint per device. A future Camera Manager should provide:
-
-- camera inventory and stable camera IDs;
-- metadata/capabilities;
-- health and reachability;
-- configuration/state operations;
-- controlled access to camera-specific protocols or backend adapters;
-- audit/policy boundaries.
-
-The exact implementation is intentionally left open.
+The existing `artifact_id = sha256:...` model, collections and references remain useful. The planned change is primarily the public component/API naming toward Files, not a rewrite of content-addressed storage.
