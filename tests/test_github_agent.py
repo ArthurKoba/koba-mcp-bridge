@@ -3,7 +3,6 @@ import base64
 import pytest
 
 import koba_mcp_bridge.github_agent as github_agent
-
 from koba_mcp_bridge.github_agent import (
     GitHubAgentError,
     GitHubAppClient,
@@ -31,7 +30,6 @@ def test_github_agent_configured_requires_only_app_id_and_key(
     assert github_agent_configured() is True
 
 
-
 def test_github_agent_loads_convention_config_from_infisical(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -48,6 +46,7 @@ def test_github_agent_loads_convention_config_from_infisical(
 
     assert client.app_id == "777"
     assert client.private_key == "pem-material"
+
 
 def test_private_key_can_be_loaded_from_base64(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("GITHUB_AGENT_PRIVATE_KEY", raising=False)
