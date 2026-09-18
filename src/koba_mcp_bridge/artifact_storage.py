@@ -2,16 +2,27 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import ipaddress
 import os
 import shutil
+import socket
+import stat
+import tarfile
+import urllib.parse
+import urllib.request
+import uuid
+import zipfile
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from fastmcp import FastMCP
 
 _DEFAULT_ROOT = "/artifacts"
 _DEFAULT_MAX_CHUNK = 1024 * 1024
+_DEFAULT_MAX_IMPORT = 8 * 1024 * 1024 * 1024
+_DEFAULT_MAX_EXTRACT_FILES = 20_000
+_DEFAULT_MAX_EXTRACT_BYTES = 16 * 1024 * 1024 * 1024
 _STANDARD_DIRS = ("inbox", "exports", "scripts")
 
 
@@ -27,15 +38,51 @@ def _root() -> Path:
     return root.resolve(strict=False)
 
 
-def _max_chunk() -> int:
-    raw = os.getenv("ARTIFACT_MAX_CHUNK_BYTES", str(_DEFAULT_MAX_CHUNK)).strip()
+def _env_int(name: str, default: int, minimum: int, maximum: int) -> int:
+    raw = os.getenv(name, str(default)).strip()
     try:
         value = int(raw)
     except ValueError as exc:
-        raise ArtifactError("ARTIFACT_MAX_CHUNK_BYTES must be an integer") from exc
-    if value < 4096 or value > 16 * 1024 * 1024:
-        raise ArtifactError("ARTIFACT_MAX_CHUNK_BYTES must be between 4096 and 16777216")
+        raise ArtifactError(f"{name} must be an integer") from exc
+    if value < minimum or value > maximum:
+        raise ArtifactError(f"{name} must be between {minimum} and {maximum}")
     return value
+
+
+def _max_chunk() -> int:
+    return _env_int(
+        "ARTIFACT_MAX_CHUNK_BYTES",
+        _DEFAULT_MAX_CHUNK,
+        4096,
+        16 * 1024 * 1024,
+    )
+
+
+def _max_import_bytes() -> int:
+    return _env_int(
+        "ARTIFACT_MAX_IMPORT_BYTES",
+        _DEFAULT_MAX_IMPORT,
+        1024 * 1024,
+        64 * 1024 * 1024 * 1024,
+    )
+
+
+def _max_extract_files() -> int:
+    return _env_int(
+        "ARTIFACT_MAX_EXTRACT_FILES",
+        _DEFAULT_MAX_EXTRACT_FILES,
+        1,
+        100_000,
+    )
+
+
+def _max_extract_bytes() -> int:
+    return _env_int(
+        "ARTIFACT_MAX_EXTRACT_BYTES",
+        _DEFAULT_MAX_EXTRACT_BYTES,
+        1024 * 1024,
+        128 * 1024 * 1024 * 1024,
+    )
 
 
 def _resolve(path: str, *, allow_root: bool = False) -> Path:
@@ -67,16 +114,46 @@ def _sha256(path: Path) -> str:
 
 
 def _meta(path: Path, *, include_hash: bool = False) -> dict[str, Any]:
-    stat = path.stat()
+    stat_result = path.stat()
     result: dict[str, Any] = {
         "path": _rel(path),
         "type": "directory" if path.is_dir() else "file",
-        "size_bytes": stat.st_size,
-        "modified_at": datetime.fromtimestamp(stat.st_mtime, UTC).isoformat(),
+        "size_bytes": stat_result.st_size,
+        "modified_at": datetime.fromtimestamp(stat_result.st_mtime, UTC).isoformat(),
     }
     if include_hash and path.is_file():
         result["sha256"] = _sha256(path)
     return result
+
+
+def _validate_https_source(source: str) -> urllib.parse.SplitResult:
+    parsed = urllib.parse.urlsplit(source)
+    if parsed.scheme.casefold() != "https":
+        raise ArtifactError("source must be an HTTPS URL")
+    if not parsed.hostname:
+        raise ArtifactError("source URL has no hostname")
+
+    try:
+        addresses = socket.getaddrinfo(
+            parsed.hostname,
+            parsed.port or 443,
+            type=socket.SOCK_STREAM,
+        )
+    except OSError as exc:
+        raise ArtifactError("source hostname cannot be resolved") from exc
+
+    if not addresses:
+        raise ArtifactError("source hostname cannot be resolved")
+
+    for item in addresses:
+        raw_ip = str(item[4][0]).split("%", 1)[0]
+        try:
+            address = ipaddress.ip_address(raw_ip)
+        except ValueError as exc:
+            raise ArtifactError("source hostname resolved to an invalid address") from exc
+        if not address.is_global:
+            raise ArtifactError("source URL resolves to a non-public address")
+    return parsed
 
 
 def ensure_artifact_layout() -> None:
@@ -95,7 +172,7 @@ def artifact_list_impl(path: str = "", offset: int = 0, limit: int = 200) -> dic
     if not target.is_dir():
         raise ArtifactError("artifact path is not a directory")
     all_entries = sorted(target.iterdir(), key=lambda p: (not p.is_dir(), p.name.casefold()))
-    page = all_entries[offset: offset + limit]
+    page = all_entries[offset : offset + limit]
     return {
         "path": _rel(target),
         "entries": [_meta(item) for item in page],
@@ -149,7 +226,9 @@ def artifact_upload_chunk_impl(
     else:
         current = target.stat().st_size if target.exists() else 0
         if current != offset:
-            raise ArtifactError(f"offset mismatch: current size is {current}, requested {offset}")
+            raise ArtifactError(
+                f"offset mismatch: current size is {current}, requested {offset}"
+            )
         mode = "ab"
     with target.open(mode) as handle:
         handle.write(payload)
@@ -196,6 +275,265 @@ def artifact_download_chunk_impl(
     }
 
 
+def artifact_import_file_impl(
+    source: str,
+    path: str,
+    overwrite: bool = False,
+    expected_sha256: str = "",
+    max_bytes: int = 0,
+) -> dict[str, Any]:
+    ensure_artifact_layout()
+    _validate_https_source(source)
+    target = _resolve(path)
+    if target.exists() and not overwrite:
+        raise ArtifactError("artifact already exists")
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    configured_limit = _max_import_bytes()
+    limit = configured_limit if max_bytes == 0 else max_bytes
+    if limit <= 0 or limit > configured_limit:
+        raise ArtifactError(f"max_bytes must be between 1 and {configured_limit}")
+
+    expected = expected_sha256.strip().casefold()
+    if expected and (
+        len(expected) != 64
+        or any(character not in "0123456789abcdef" for character in expected)
+    ):
+        raise ArtifactError("expected_sha256 must be a 64-character hexadecimal digest")
+
+    request = urllib.request.Request(
+        source,
+        headers={"User-Agent": "koba-mcp-bridge/0.1 artifact-import"},
+    )
+    temp = target.with_name(f".{target.name}.{uuid.uuid4().hex}.part")
+    digest = hashlib.sha256()
+    total = 0
+
+    try:
+        try:
+            response = urllib.request.urlopen(request, timeout=60)
+        except Exception as exc:
+            raise ArtifactError(f"source download failed: {type(exc).__name__}") from exc
+
+        with response:
+            final_url = str(response.geturl())
+            _validate_https_source(final_url)
+            header_length = response.headers.get("Content-Length")
+            if header_length:
+                try:
+                    declared_size = int(header_length)
+                except ValueError:
+                    declared_size = -1
+                if declared_size > limit:
+                    raise ArtifactError("source exceeds configured import size limit")
+
+            with temp.open("xb") as handle:
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > limit:
+                        raise ArtifactError("source exceeds configured import size limit")
+                    digest.update(chunk)
+                    handle.write(chunk)
+                handle.flush()
+                os.fsync(handle.fileno())
+
+        actual = digest.hexdigest()
+        if expected and actual != expected:
+            raise ArtifactError(
+                f"source SHA-256 mismatch: expected {expected}, found {actual}"
+            )
+        os.replace(temp, target)
+    finally:
+        if temp.exists():
+            temp.unlink()
+
+    parsed = urllib.parse.urlsplit(source)
+    return {
+        "success": True,
+        "source_host": parsed.hostname,
+        **_meta(target, include_hash=True),
+    }
+
+
+def _safe_archive_relative(name: str) -> PurePosixPath:
+    value = name.replace("\\", "/")
+    rel = PurePosixPath(value)
+    if rel.is_absolute() or any(part == ".." for part in rel.parts):
+        raise ArtifactError(f"archive member escapes destination: {name}")
+    cleaned = PurePosixPath(*(part for part in rel.parts if part not in {"", "."}))
+    if not cleaned.parts:
+        raise ArtifactError("archive member has an empty path")
+    return cleaned
+
+
+def _archive_output(destination: Path, member_name: str) -> Path:
+    rel = _safe_archive_relative(member_name)
+    candidate = (destination / rel.as_posix()).resolve(strict=False)
+    try:
+        candidate.relative_to(destination)
+    except ValueError as exc:
+        raise ArtifactError(f"archive member escapes destination: {member_name}") from exc
+    return candidate
+
+
+def _extract_tar(
+    archive: Path,
+    destination: Path,
+    max_files: int,
+    max_total_bytes: int,
+) -> tuple[int, int, int]:
+    files = 0
+    directories = 0
+    total_bytes = 0
+
+    with tarfile.open(archive, mode="r:*") as handle:
+        members = handle.getmembers()
+        for member in members:
+            _archive_output(destination, member.name)
+            if member.isdir():
+                directories += 1
+                continue
+            if not member.isfile():
+                raise ArtifactError(f"unsupported archive member type: {member.name}")
+            files += 1
+            total_bytes += member.size
+            if files > max_files:
+                raise ArtifactError("archive exceeds configured file-count limit")
+            if total_bytes > max_total_bytes:
+                raise ArtifactError("archive exceeds configured extraction size limit")
+
+        for member in members:
+            output = _archive_output(destination, member.name)
+            if member.isdir():
+                output.mkdir(parents=True, exist_ok=True)
+                continue
+            output.parent.mkdir(parents=True, exist_ok=True)
+            source = handle.extractfile(member)
+            if source is None:
+                raise ArtifactError(f"unable to read archive member: {member.name}")
+            with source, output.open("xb") as target:
+                shutil.copyfileobj(source, target, length=1024 * 1024)
+
+    return files, directories, total_bytes
+
+
+def _extract_zip(
+    archive: Path,
+    destination: Path,
+    max_files: int,
+    max_total_bytes: int,
+) -> tuple[int, int, int]:
+    files = 0
+    directories = 0
+    total_bytes = 0
+
+    with zipfile.ZipFile(archive) as handle:
+        members = handle.infolist()
+        for member in members:
+            _archive_output(destination, member.filename)
+            mode = (member.external_attr >> 16) & 0o170000
+            if mode and stat.S_ISLNK(mode):
+                raise ArtifactError(f"archive symlink is not allowed: {member.filename}")
+            if member.is_dir():
+                directories += 1
+                continue
+            if mode and not stat.S_ISREG(mode):
+                raise ArtifactError(
+                    f"unsupported archive member type: {member.filename}"
+                )
+            files += 1
+            total_bytes += member.file_size
+            if files > max_files:
+                raise ArtifactError("archive exceeds configured file-count limit")
+            if total_bytes > max_total_bytes:
+                raise ArtifactError("archive exceeds configured extraction size limit")
+
+        for member in members:
+            output = _archive_output(destination, member.filename)
+            if member.is_dir():
+                output.mkdir(parents=True, exist_ok=True)
+                continue
+            output.parent.mkdir(parents=True, exist_ok=True)
+            with handle.open(member, "r") as source, output.open("xb") as target:
+                shutil.copyfileobj(source, target, length=1024 * 1024)
+
+    return files, directories, total_bytes
+
+
+def artifact_extract_archive_impl(
+    archive_path: str,
+    destination: str,
+    max_files: int = 0,
+    max_total_bytes: int = 0,
+) -> dict[str, Any]:
+    archive = _resolve(archive_path)
+    if not archive.is_file():
+        raise ArtifactError("archive_path is not a file")
+
+    target = _resolve(destination)
+    if target.exists():
+        raise ArtifactError("destination already exists")
+
+    configured_files = _max_extract_files()
+    configured_bytes = _max_extract_bytes()
+    file_limit = configured_files if max_files == 0 else max_files
+    byte_limit = configured_bytes if max_total_bytes == 0 else max_total_bytes
+    if file_limit <= 0 or file_limit > configured_files:
+        raise ArtifactError(f"max_files must be between 1 and {configured_files}")
+    if byte_limit <= 0 or byte_limit > configured_bytes:
+        raise ArtifactError(
+            f"max_total_bytes must be between 1 and {configured_bytes}"
+        )
+
+    target.mkdir(parents=True)
+    try:
+        lower = archive.name.casefold()
+        supported_tar = (
+            ".tar",
+            ".tar.gz",
+            ".tgz",
+            ".tar.bz2",
+            ".tbz2",
+            ".tar.xz",
+        )
+        if lower.endswith(supported_tar):
+            files, directories, total_bytes = _extract_tar(
+                archive,
+                target,
+                file_limit,
+                byte_limit,
+            )
+        elif lower.endswith(".zip"):
+            files, directories, total_bytes = _extract_zip(
+                archive,
+                target,
+                file_limit,
+                byte_limit,
+            )
+        else:
+            raise ArtifactError(
+                "supported archives: .tar, .tar.gz, .tgz, .tar.bz2, .tar.xz, .zip"
+            )
+    except Exception:
+        shutil.rmtree(target, ignore_errors=True)
+        raise
+
+    top_level = sorted(item.name for item in target.iterdir())
+    return {
+        "success": True,
+        "archive_path": _rel(archive),
+        "destination": _rel(target),
+        "files": files,
+        "directories": directories,
+        "total_bytes": total_bytes,
+        "top_level": top_level[:200],
+        "top_level_truncated": len(top_level) > 200,
+    }
+
+
 def artifact_delete_impl(path: str, recursive: bool = False) -> dict[str, Any]:
     target = _resolve(path)
     if not target.exists():
@@ -229,6 +567,9 @@ def register_artifact_tools(
             "status": "ok",
             "standard_directories": list(_STANDARD_DIRS),
             "max_chunk_bytes": _max_chunk(),
+            "max_import_bytes": _max_import_bytes(),
+            "max_extract_files": _max_extract_files(),
+            "max_extract_bytes": _max_extract_bytes(),
             "free_bytes": usage.free,
         }
 
@@ -268,11 +609,53 @@ def register_artifact_tools(
     ) -> dict[str, Any]:
         """Upload one sequential base64 chunk.
 
-        Start with offset=0 and truncate=true. Each next call must use the
-        returned next_offset, which prevents sparse or accidentally reordered writes.
+        This is the low-level fallback for clients that cannot provide a retrievable
+        attachment URL. Prefer artifact_import_file for chat or client attachments.
         """
         ensure_artifact_layout()
         return artifact_upload_chunk_impl(path, data_base64, offset, truncate)
+
+    @mcp.tool(title="Artifact import file", annotations=write_annotations)
+    def artifact_import_file(
+        source: str,
+        path: str,
+        overwrite: bool = False,
+        expected_sha256: str = "",
+        max_bytes: int = 0,
+    ) -> dict[str, Any]:
+        """Stage one client/chat attachment in Koba artifact storage.
+
+        Pass the attachment or file argument as source. File-capable MCP clients may
+        translate a client-local attachment path to a temporary HTTPS URL before
+        invoking this tool. The Koba server downloads the bytes directly into the
+        relative artifact path; a client-local /mnt path is never a Koba path.
+        """
+        return artifact_import_file_impl(
+            source,
+            path,
+            overwrite,
+            expected_sha256,
+            max_bytes,
+        )
+
+    @mcp.tool(title="Artifact extract archive", annotations=write_annotations)
+    def artifact_extract_archive(
+        archive_path: str,
+        destination: str,
+        max_files: int = 0,
+        max_total_bytes: int = 0,
+    ) -> dict[str, Any]:
+        """Extract a staged archive on Koba into a new artifact directory.
+
+        Supports tar/tar.gz/tgz/tar.bz2/tar.xz/zip. Symlinks, hard links, devices,
+        path traversal, and extraction outside ARTIFACT_ROOT are rejected.
+        """
+        return artifact_extract_archive_impl(
+            archive_path,
+            destination,
+            max_files,
+            max_total_bytes,
+        )
 
     @mcp.tool(title="Artifact download chunk", annotations=read_annotations)
     def artifact_download_chunk(
