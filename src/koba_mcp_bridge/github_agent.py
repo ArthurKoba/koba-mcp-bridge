@@ -12,7 +12,7 @@ from datetime import datetime
 
 import jwt
 
-from .secrets import resolve_secret
+from .secrets import SecretError, resolve_secret
 
 _GITHUB_API = "https://api.github.com"
 _GITHUB_API_VERSION = "2026-03-10"
@@ -35,24 +35,28 @@ def github_agent_configured() -> bool:
 
 def _private_key_from_env() -> str:
     secret_ref = os.getenv("GITHUB_AGENT_PRIVATE_KEY_REF", "").strip()
-    if secret_ref:
-        return resolve_secret(secret_ref).replace("\\n", "\n")
-
     raw = os.getenv("GITHUB_AGENT_PRIVATE_KEY", "").strip()
+    encoded = os.getenv("GITHUB_AGENT_PRIVATE_KEY_B64", "").strip()
+
+    if secret_ref:
+        try:
+            return resolve_secret(secret_ref).replace("\\n", "\n")
+        except SecretError:
+            if not raw and not encoded:
+                raise
+
     if raw:
         return raw.replace("\\n", "\n")
 
-    encoded = os.getenv("GITHUB_AGENT_PRIVATE_KEY_B64", "").strip()
     if encoded:
         try:
             return base64.b64decode(encoded).decode("utf-8")
-        except Exception as exc:  # pragma: no cover - defensive configuration error path
+        except Exception as exc:  # pragma: no cover - defensive configuration path
             raise GitHubAgentError(
                 "GITHUB_AGENT_PRIVATE_KEY_B64 is not valid base64 UTF-8"
             ) from exc
 
     raise GitHubAgentError("GitHub agent private key is not configured")
-
 
 @dataclass
 class GitHubAppClient:
