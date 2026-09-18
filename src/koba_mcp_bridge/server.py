@@ -25,7 +25,7 @@ from .github_reviewer_tools import register_github_reviewer_tools
 from .github_tools import register_github_workflow_tools
 from .gitlab_tools import register_gitlab_tools
 from .reverse_workflow import register_reverse_workflow_tools
-from .secrets import SecretError, resolve_secret
+from .secrets import SecretError, resolve_config_secret, resolve_secret
 from .secrets_tools import register_secrets_tools
 
 _STARTED_AT = datetime.now(UTC).isoformat()
@@ -91,8 +91,20 @@ def _required_secret(name: str, ref_name: str) -> str:
     return _required_env(name)
 
 
+def _github_oauth_value(secret_name: str, legacy_env: str) -> str:
+    try:
+        return resolve_config_secret("github/oauth", secret_name).strip()
+    except SecretError:
+        legacy = os.getenv(legacy_env, "").strip()
+        if legacy:
+            return legacy
+        raise RuntimeError(
+            f"GitHub OAuth value {secret_name!r} is not configured"
+        )
+
+
 def _allowed_github_users() -> set[str]:
-    raw = _required_env("OAUTH_ALLOWED_GITHUB_USERS")
+    raw = _github_oauth_value("ALLOWED_USERS", "OAUTH_ALLOWED_GITHUB_USERS")
     return {item.strip().casefold() for item in raw.split(",") if item.strip()}
 
 
@@ -108,16 +120,19 @@ def _build_auth() -> tuple[GitHubProvider | None, list[AuthMiddleware]]:
         return None, []
 
     provider = GitHubProvider(
-        client_id=_required_env("OAUTH_GITHUB_CLIENT_ID"),
-        client_secret=_required_secret(
+        client_id=_github_oauth_value(
+            "CLIENT_ID",
+            "OAUTH_GITHUB_CLIENT_ID",
+        ),
+        client_secret=_github_oauth_value(
+            "CLIENT_SECRET",
             "OAUTH_GITHUB_CLIENT_SECRET",
-            "OAUTH_GITHUB_CLIENT_SECRET_REF",
         ),
         base_url=os.getenv("OAUTH_BASE_URL", "https://mcp.koba-nexus.ru"),
         required_scopes=["read:user"],
-        jwt_signing_key=_required_secret(
+        jwt_signing_key=_github_oauth_value(
+            "JWT_SIGNING_KEY",
             "OAUTH_JWT_SIGNING_KEY",
-            "OAUTH_JWT_SIGNING_KEY_REF",
         ),
         allowed_client_redirect_uris=[_CHATGPT_OAUTH_REDIRECT],
         require_authorization_consent="external",
