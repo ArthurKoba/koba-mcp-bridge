@@ -184,11 +184,66 @@ def test_required_reviewer_changes_requested_blocks_current_head(
         client.assert_required_reviews("ArthurKoba/koba-mcp-bridge", 7)
 
 
-def test_protected_pull_request_merge_requires_administrator(
+def test_protected_pull_request_merge_requires_independent_reviewer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("GITHUB_AGENT_PROTECTED_BRANCHES", raising=False)
     client = RecordingActionsClient()
 
-    with pytest.raises(GitHubAgentError, match="requires administrator"):
+    with pytest.raises(GitHubAgentError, match="requires independent reviewer"):
         client.merge_pull_request("ArthurKoba/koba-mcp-bridge", 7)
+
+
+class MergeRecordingActionsClient(RecordingActionsClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.base_ref = "integration"
+        self.merge_payload: dict[str, object] | None = None
+
+    def assert_required_checks(self, repository: str, ref: str) -> dict[str, object]:
+        assert repository == "ArthurKoba/koba-mcp-bridge"
+        assert ref == self.head_sha
+        return {"status": "ok"}
+
+    def _repo_request(
+        self,
+        repository: str,
+        method: str,
+        path: str,
+        *,
+        payload: object | None = None,
+        allowed_errors: set[int] | None = None,
+    ) -> tuple[int, object]:
+        if method == "GET" and path.endswith("/pulls/7"):
+            return 200, {
+                "head": {
+                    "sha": self.head_sha,
+                    "repo": {"full_name": repository},
+                },
+                "base": {
+                    "ref": self.base_ref,
+                    "repo": {"full_name": repository},
+                },
+            }
+        if method == "PUT" and path.endswith("/pulls/7/merge"):
+            assert isinstance(payload, dict)
+            self.merge_payload = payload
+            return 200, {"merged": True, "sha": "merged123", "message": "merged"}
+        return super()._repo_request(
+            repository,
+            method,
+            path,
+            payload=payload,
+            allowed_errors=allowed_errors,
+        )
+
+
+def test_agent_can_merge_non_protected_pr_after_checks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GITHUB_PROTECTED_BRANCHES", "main,master")
+    monkeypatch.setenv("GITHUB_AGENT_REQUIRED_REVIEWERS", "koba-ai-reviewer[bot]")
+    client = MergeRecordingActionsClient()
+    result = client.merge_pull_request("ArthurKoba/koba-mcp-bridge", 7, "squash")
+    assert result["merged"] is True
+    assert client.merge_payload == {"merge_method": "squash"}
