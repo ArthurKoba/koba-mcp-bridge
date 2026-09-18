@@ -113,6 +113,33 @@ async def test_agent_upload_round_trip_over_mcp(tmp_path, monkeypatch) -> None:
     assert artifact["size_bytes"] == len(payload)
 
 
+
+def test_github_oauth_values_prefer_infisical_convention(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    values = {
+        ("github/oauth", "CLIENT_ID"): "client-id-from-infisical",
+        ("github/oauth", "CLIENT_SECRET"): "client-secret-from-infisical",
+        ("github/oauth", "JWT_SIGNING_KEY"): "jwt-from-infisical",
+        ("github/oauth", "ALLOWED_USERS"): "ArthurKoba,ReviewerBot",
+    }
+    monkeypatch.setattr(
+        server_module,
+        "resolve_config_secret",
+        lambda path, name: values[(path, name)],
+    )
+    monkeypatch.setenv("OAUTH_GITHUB_CLIENT_ID", "legacy-client-id")
+    monkeypatch.setenv("OAUTH_ALLOWED_GITHUB_USERS", "legacy-user")
+
+    assert server_module._github_oauth_value(
+        "CLIENT_ID",
+        "OAUTH_GITHUB_CLIENT_ID",
+    ) == "client-id-from-infisical"
+    assert server_module._allowed_github_users() == {
+        "arthurkoba",
+        "reviewerbot",
+    }
+
 def test_configured_backends_empty(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("GHIDRA_MCP_URL", raising=False)
     assert _configured_backends() == {}

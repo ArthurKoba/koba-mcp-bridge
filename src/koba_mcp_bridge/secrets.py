@@ -51,6 +51,8 @@ class InfisicalConfig:
     project_id: str
     client_id: str
     client_secret: str
+    environment: str = "prod"
+    base_path: str = "/"
     verify_tls: bool = True
     ca_file: str = ""
     client_id_source: str = ""
@@ -60,6 +62,11 @@ class InfisicalConfig:
     def from_env(cls) -> InfisicalConfig:
         host = os.getenv("INFISICAL_HOST", "").strip().rstrip("/")
         project_id = os.getenv("INFISICAL_PROJECT_ID", "").strip()
+        environment = os.getenv("INFISICAL_ENVIRONMENT", "prod").strip() or "prod"
+        base_path = os.getenv("INFISICAL_BASE_PATH", "/").strip() or "/"
+        if not base_path.startswith("/"):
+            base_path = "/" + base_path
+        base_path = "/" + base_path.strip("/") if base_path.strip("/") else "/"
         client_id, client_id_source = _read_bootstrap_value(
             "INFISICAL_CLIENT_ID",
             "INFISICAL_CLIENT_ID_FILE",
@@ -76,6 +83,8 @@ class InfisicalConfig:
             project_id=project_id,
             client_id=client_id,
             client_secret=client_secret,
+            environment=environment,
+            base_path=base_path,
             verify_tls=_env_bool("INFISICAL_VERIFY_TLS", True),
             ca_file=ca_file,
             client_id_source=client_id_source,
@@ -110,6 +119,8 @@ class InfisicalConfig:
             "configured": self.configured(),
             "host": self.host or None,
             "project_id": self.project_id or None,
+            "environment": self.environment,
+            "base_path": self.base_path,
             "verify_tls": self.verify_tls,
             "ca_file": self.ca_file or None,
             "client_id_source": self.client_id_source or None,
@@ -275,6 +286,46 @@ class InfisicalClient:
         with self._lock:
             return self._login_locked()
 
+    def list_folders(
+        self,
+        *,
+        environment: str,
+        secret_path: str = "/",
+        project_id: str = "",
+    ) -> list[dict[str, Any]]:
+        env = environment.strip()
+        path = secret_path.strip() or "/"
+        if not env:
+            raise SecretError("Infisical environment is required")
+        if not path.startswith("/"):
+            path = "/" + path
+        project = project_id.strip() or self.config.project_id
+        if not project:
+            raise SecretError("Infisical project id is not configured")
+
+        query = urllib.parse.urlencode(
+            {
+                "workspaceId": project,
+                "environment": env,
+                "path": path,
+                "recursive": "false",
+            }
+        )
+        request = urllib.request.Request(
+            self.config.host + "/api/v1/folders?" + query,
+            method="GET",
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {self.access_token()}",
+                "User-Agent": "koba-mcp-bridge",
+            },
+        )
+        _, data = self._json_request(request)
+        folders = data.get("folders")
+        if not isinstance(folders, list):
+            raise SecretError("Infisical folder response has no folders list")
+        return [item for item in folders if isinstance(item, dict)]
+
     def get_secret(
         self,
         secret_name: str,
@@ -353,6 +404,26 @@ class SecretResolver:
     def __init__(self, infisical: InfisicalClient | None = None) -> None:
         self.infisical = infisical or InfisicalClient()
 
+    def _config_path(self, relative_path: str) -> str:
+        base = self.infisical.config.base_path.strip("/")
+        relative = relative_path.strip("/")
+        parts = [part for part in (base, relative) if part]
+        return "/" + "/".join(parts) if parts else "/"
+
+    def get(self, relative_path: str, secret_name: str) -> str:
+        value, _metadata = self.infisical.get_secret(
+            secret_name,
+            environment=self.infisical.config.environment,
+            secret_path=self._config_path(relative_path),
+        )
+        return value
+
+    def list_folders(self, relative_path: str) -> list[dict[str, Any]]:
+        return self.infisical.list_folders(
+            environment=self.infisical.config.environment,
+            secret_path=self._config_path(relative_path),
+        )
+
     def resolve(self, reference: str) -> str:
         ref = SecretReference.parse(reference)
         if ref.scheme == "env":
@@ -393,8 +464,18 @@ _default_resolver = SecretResolver()
 
 
 def resolve_secret(reference: str) -> str:
-    """Resolve a secret for internal connector use. Never expose the return value via MCP."""
+    """Resolve an explicit secret reference for internal connector use."""
     return _default_resolver.resolve(reference)
+
+
+def resolve_config_secret(relative_path: str, secret_name: str) -> str:
+    """Resolve one convention-based Infisical secret under the configured base path."""
+    return _default_resolver.get(relative_path, secret_name)
+
+
+def list_config_folders(relative_path: str) -> list[dict[str, Any]]:
+    """List immediate Infisical folders under one convention-based path."""
+    return _default_resolver.list_folders(relative_path)
 
 
 def secret_reference_available(reference: str) -> dict[str, Any]:

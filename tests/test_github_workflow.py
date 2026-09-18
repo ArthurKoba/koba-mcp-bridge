@@ -1,5 +1,6 @@
 import pytest
 
+import koba_mcp_bridge.github_workflow as github_workflow
 from koba_mcp_bridge.github_agent import GitHubAgentError
 from koba_mcp_bridge.github_workflow import (
     GitHubDevClient,
@@ -23,6 +24,22 @@ def test_default_protected_branches(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_custom_protected_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GITHUB_AGENT_PROTECTED_BRANCHES", "main,release")
     assert protected_branches_from_env() == {"main", "release"}
+
+
+def test_protected_branches_prefer_infisical_convention(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GITHUB_AGENT_PROTECTED_BRANCHES", "legacy")
+    monkeypatch.setattr(
+        github_workflow,
+        "resolve_config_secret",
+        lambda path, name: "main,production"
+        if (path, name)
+        == ("github/development", "PROTECTED_BRANCHES")
+        else "",
+    )
+
+    assert protected_branches_from_env() == {"main", "production"}
 
 
 def test_default_required_checks(monkeypatch: pytest.MonkeyPatch) -> None:

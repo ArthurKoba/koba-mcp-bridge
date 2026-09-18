@@ -126,21 +126,26 @@ private Docker network.
 
 ## Secrets / Infisical
 
-Koba supports internal secret references so provider credentials do not need to be
-stored directly in every connector's Coolify variables.
+Koba uses self-hosted Infisical as the central provider for provider-specific
+credentials and configuration. Runtime workloads authenticate with an Infisical
+Machine Identity using Universal Auth and receive a short-lived access token.
 
-Supported references:
+Coolify only keeps the Infisical bootstrap and transport configuration:
 
 ```text
-env://NAME
-file:///run/secrets/name
-infisical://prod/path/to/folder#SECRET_NAME
+INFISICAL_HOST=https://secrets.koba-nexus.ru
+INFISICAL_PROJECT_ID=<project UUID>
+INFISICAL_ENVIRONMENT=prod
+INFISICAL_BASE_PATH=/
+INFISICAL_CLIENT_ID=<machine identity client id>
+INFISICAL_CLIENT_SECRET=<machine identity client secret>
+INFISICAL_VERIFY_TLS=true
 ```
 
-The selected central provider is self-hosted Infisical. Runtime workloads authenticate
-with an Infisical Machine Identity using Universal Auth and receive a short-lived access
-token before fetching the provider secret. The bootstrap client ID/client secret are the
-only credentials that need to remain in the deployment system during this phase.
+Connectors resolve values by convention below `INFISICAL_BASE_PATH`. Explicit
+`env://`, `file://`, and `infisical://` references remain available as
+low-level compatibility primitives, but normal connector configuration does not
+require per-secret `*_REF` variables.
 
 Deployment and migration instructions are in
 [`deploy/infisical/README.md`](deploy/infisical/README.md).
@@ -162,32 +167,21 @@ process-global "current GitLab" or "current account", so concurrent agents can u
 different GitLab instances or different accounts on the same instance without switching
 each other's context.
 
-Profiles are loaded from `GITLAB_PROFILES_FILE` and/or `GITLAB_PROFILES_JSON`.
-Profile metadata does not contain the token itself. Each profile references exactly one
-runtime secret source with `secret_ref`, `token_env`, or `token_file`.
+GitLab profiles are discovered from Infisical folders below:
 
-Example:
-
-```json
-[
-  {
-    "profile_id": "gitlab-com-arthur",
-    "label": "GitLab.com / Arthur",
-    "base_url": "https://gitlab.com",
-    "auth_type": "private_token",
-    "secret_ref": "infisical://prod/gitlab/accounts/arthur#TOKEN"
-  },
-  {
-    "profile_id": "lab-admin",
-    "label": "Self-hosted lab / admin",
-    "base_url": "https://gitlab.lab.example",
-    "auth_type": "bearer",
-    "secret_ref": "infisical://prod/gitlab/accounts/lab-admin#TOKEN",
-    "verify_tls": true,
-    "ca_file": "/run/secrets/lab-ca.pem"
-  }
-]
+```text
+/gitlab/accounts/<profile_id>
+├── BASE_URL
+├── AUTH_TYPE
+├── TOKEN
+├── LABEL        # optional
+├── VERIFY_TLS   # optional, default true
+└── CA_FILE      # optional
 ```
+
+Creating a new account folder makes the profile discoverable without adding Coolify
+environment variables. Legacy `GITLAB_PROFILES_FILE` and `GITLAB_PROFILES_JSON`
+remain fallback-only during migration.
 
 Supported authentication modes are:
 
@@ -206,43 +200,36 @@ role, and token-scope settings remain the authoritative server-side access contr
 
 ## GitHub OAuth
 
-OAuth is disabled by default so a deployment can be upgraded before credentials are configured. When `OAUTH_ENABLED=true`, the bridge requires all of the following runtime environment variables:
-
-- `OAUTH_GITHUB_CLIENT_ID`
-- `OAUTH_GITHUB_CLIENT_SECRET` or `OAUTH_GITHUB_CLIENT_SECRET_REF`
-- `OAUTH_JWT_SIGNING_KEY` or `OAUTH_JWT_SIGNING_KEY_REF`
-- `OAUTH_ALLOWED_GITHUB_USERS`
-
-The public OAuth base URL defaults to:
+When `OAUTH_ENABLED=true`, GitHub OAuth configuration is resolved from Infisical:
 
 ```text
-https://mcp.koba-nexus.ru
+/github/oauth
+├── CLIENT_ID
+├── CLIENT_SECRET
+├── JWT_SIGNING_KEY
+└── ALLOWED_USERS
 ```
 
-and can be changed with `OAUTH_BASE_URL`.
+Only `OAUTH_ENABLED` and `OAUTH_BASE_URL` remain deployment variables. The
+public OAuth base URL defaults to `https://mcp.koba-nexus.ru`.
 
-The GitHub OAuth application callback URL is:
-
-```text
-https://mcp.koba-nexus.ru/auth/callback
-```
-
-OAuth client registrations and token state are stored below `FASTMCP_HOME`, which defaults to `/data/fastmcp` in the container. Production deployments should mount `/data/fastmcp` as persistent storage before enabling OAuth.
-
-Secrets belong in runtime environment variables or the deployment secret store. They must not be committed to the repository or injected at image build time.
+OAuth client registrations and token state are stored below `FASTMCP_HOME`, which
+defaults to `/data/fastmcp` in the container. Production deployments should keep
+that directory persistent.
 
 ## GitHub App development backend
 
 The `github_agent_*` tools authenticate as a GitHub App installation. Automated repository activity is therefore attributed to the app identity rather than the human account used to log into the MCP bridge.
 
-Required runtime variables:
+The development identity is resolved from Infisical:
 
 ```text
-GITHUB_AGENT_APP_ID=<GitHub App numeric App ID>
-GITHUB_AGENT_PRIVATE_KEY_B64=<base64-encoded GitHub App private key PEM>
+/github/development
+├── APP_ID
+└── PRIVATE_KEY_PEM
 ```
 
-`GITHUB_AGENT_PRIVATE_KEY` can be used instead of the base64 form. `GITHUB_AGENT_PRIVATE_KEY_REF` takes precedence and can resolve the key from Infisical.
+Legacy environment variables remain fallback-only during the migration window.
 
 The GitHub App installation is the single source of truth for repository access. There is no duplicated bridge-side repository allowlist. Adding or removing repositories in the GitHub App installation immediately changes the repository set visible to the bridge without changing Coolify environment variables.
 
@@ -310,6 +297,7 @@ Issues and CI:
 - GitHub Actions workflow-run and job listing;
 - job-log diagnostics;
 - workflow artifact listing/download;
+- dispatch `workflow_dispatch` workflows with explicit refs/inputs;
 - rerun one job, rerun failed jobs, rerun a workflow run, and cancel a workflow run.
 
 ### Development GitHub App permissions
@@ -319,7 +307,7 @@ Configure the development GitHub App with only the repositories that agents are 
 - **Contents: Read and write** — files, Git Data objects, refs, tags;
 - **Pull requests: Read and write** — PR lifecycle, reviews, merge;
 - **Issues: Read and write** — issue lifecycle and comments;
-- **Actions: Read and write** — workflow diagnostics plus rerun/cancel controls;
+- **Actions: Read and write** — workflow diagnostics plus dispatch/rerun/cancel controls;
 - **Checks: Read-only** — required-check gating.
 
 Do not grant organization/administration permissions to the app unless a later feature explicitly requires them. Branch/ruleset administration should remain a human-controlled GitHub setting.
@@ -328,14 +316,15 @@ Do not grant organization/administration permissions to the app unless a later f
 
 A second GitHub App can be configured for independent review identity. This is intentionally separate from the development App so a development agent cannot satisfy an identity-specific approval requirement by approving its own PR as the same bot actor.
 
-Reviewer runtime variables:
+The reviewer identity is resolved from Infisical:
 
 ```text
-GITHUB_REVIEWER_APP_ID=<reviewer GitHub App numeric App ID>
-GITHUB_REVIEWER_PRIVATE_KEY_B64=<base64-encoded reviewer private key PEM>
+/github/reviewer
+├── APP_ID
+└── PRIVATE_KEY_PEM
 ```
 
-`GITHUB_REVIEWER_PRIVATE_KEY` is also supported for multiline PEM storage. `GITHUB_REVIEWER_PRIVATE_KEY_REF` takes precedence and can resolve the key from Infisical.
+Legacy environment variables remain fallback-only during the migration window.
 
 The reviewer App installation is also the sole source of repository access. `github_reviewer_list_repositories` discovers its current installation repository set directly from GitHub. No reviewer repository list is duplicated in Coolify.
 

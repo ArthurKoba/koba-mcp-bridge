@@ -12,7 +12,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .secrets import resolve_secret
+from .secrets import (
+    InfisicalConfig,
+    SecretError,
+    list_config_folders,
+    resolve_config_secret,
+    resolve_secret,
+)
 
 _PROFILE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -55,6 +61,7 @@ class GitLabProfile:
     token_env: str = ""
     token_file: str = ""
     secret_ref: str = ""
+    convention_path: str = ""
     verify_tls: bool = True
     ca_file: str = ""
     label: str = ""
@@ -64,6 +71,8 @@ class GitLabProfile:
         return self.base_url.rstrip("/") + "/api/v4"
 
     def token(self) -> str:
+        if self.convention_path:
+            return resolve_config_secret(self.convention_path, "TOKEN")
         if self.secret_ref:
             return resolve_secret(self.secret_ref)
         if self.token_env:
@@ -94,7 +103,7 @@ class GitLabProfile:
             credential_configured = bool(os.getenv(self.token_env, "").strip())
         elif self.token_file:
             credential_configured = Path(self.token_file).is_file()
-        elif self.secret_ref:
+        elif self.secret_ref or self.convention_path:
             credential_configured = True
         return {
             "profile_id": self.profile_id,
@@ -103,12 +112,20 @@ class GitLabProfile:
             "api_url": self.api_url,
             "auth_type": self.auth_type,
             "credential_source": (
-                {"type": "secret_ref", "reference": self.secret_ref}
-                if self.secret_ref
+                {
+                    "type": "infisical_convention",
+                    "path": self.convention_path,
+                    "secret": "TOKEN",
+                }
+                if self.convention_path
                 else (
-                    {"type": "env", "name": self.token_env}
-                    if self.token_env
-                    else {"type": "file", "path": self.token_file}
+                    {"type": "secret_ref", "reference": self.secret_ref}
+                    if self.secret_ref
+                    else (
+                        {"type": "env", "name": self.token_env}
+                        if self.token_env
+                        else {"type": "file", "path": self.token_file}
+                    )
                 )
             ),
             "credential_configured": credential_configured,
@@ -121,8 +138,71 @@ class GitLabProfileRegistry:
     def __init__(self, profiles: dict[str, GitLabProfile]) -> None:
         self._profiles = profiles
 
+    @staticmethod
+    def _optional_secret(path: str, name: str, default: str = "") -> str:
+        try:
+            return resolve_config_secret(path, name).strip()
+        except SecretError:
+            return default
+
+    @classmethod
+    def _from_infisical(cls) -> list[GitLabProfile]:
+        if not InfisicalConfig.from_env().configured():
+            return []
+        try:
+            folders = list_config_folders("gitlab/accounts")
+        except SecretError:
+            return []
+
+        profiles: list[GitLabProfile] = []
+        for folder in folders:
+            profile_id = str(folder.get("name", "")).strip()
+            if not _PROFILE_ID_RE.fullmatch(profile_id):
+                continue
+            path = f"gitlab/accounts/{profile_id}"
+            try:
+                base_url = resolve_config_secret(path, "BASE_URL").strip().rstrip("/")
+            except SecretError:
+                continue
+
+            auth_type = cls._optional_secret(
+                path,
+                "AUTH_TYPE",
+                "private_token",
+            ).casefold()
+            if auth_type not in _ALLOWED_AUTH:
+                raise GitLabError(
+                    f"profile {profile_id!r} AUTH_TYPE must be one of "
+                    f"{sorted(_ALLOWED_AUTH)}"
+                )
+            parsed = urllib.parse.urlsplit(base_url)
+            if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+                raise GitLabError(
+                    f"profile {profile_id!r} has invalid BASE_URL"
+                )
+
+            verify_raw = cls._optional_secret(path, "VERIFY_TLS", "true")
+            verify_tls = verify_raw.casefold() not in {"0", "false", "no", "off"}
+            profiles.append(
+                GitLabProfile(
+                    profile_id=profile_id,
+                    base_url=base_url,
+                    auth_type=auth_type,
+                    convention_path=path,
+                    verify_tls=verify_tls,
+                    ca_file=cls._optional_secret(path, "CA_FILE"),
+                    label=cls._optional_secret(path, "LABEL", profile_id),
+                )
+            )
+        return profiles
+
     @classmethod
     def from_env(cls) -> GitLabProfileRegistry:
+        profiles: dict[str, GitLabProfile] = {}
+
+        for profile in cls._from_infisical():
+            profiles[profile.profile_id.casefold()] = profile
+
         items: list[dict[str, Any]] = []
         path = os.getenv("GITLAB_PROFILES_FILE", _DEFAULT_PROFILES_FILE).strip()
         if path and Path(path).is_file():
@@ -140,13 +220,11 @@ class GitLabProfileRegistry:
                 raise GitLabError("GITLAB_PROFILES_JSON is not valid JSON") from exc
             items.extend(_normalize_profile_list(loaded, "GITLAB_PROFILES_JSON"))
 
-        profiles: dict[str, GitLabProfile] = {}
         for item in items:
             profile = _parse_profile(item)
             key = profile.profile_id.casefold()
-            if key in profiles:
-                raise GitLabError(f"duplicate GitLab profile_id: {profile.profile_id}")
-            profiles[key] = profile
+            if key not in profiles:
+                profiles[key] = profile
         return cls(profiles)
 
     def list(self) -> dict[str, Any]:
@@ -162,7 +240,6 @@ class GitLabProfileRegistry:
         if profile is None:
             raise GitLabError(f"unknown GitLab profile_id: {profile_id}")
         return profile
-
 
 def _normalize_profile_list(value: object, source: str) -> list[dict[str, Any]]:
     if isinstance(value, dict) and isinstance(value.get("profiles"), list):

@@ -166,6 +166,21 @@ def register_github_actions_tools(
             max_bytes,
         )
 
+    @mcp.tool(title="GitHub agent dispatch workflow", annotations=write_annotations)
+    def github_agent_dispatch_workflow(
+        repository: str,
+        workflow_id: str,
+        ref: str,
+        inputs: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        """Dispatch a workflow_dispatch workflow with an explicit ref and inputs."""
+        return client_factory().dispatch_workflow(
+            repository,
+            workflow_id,
+            ref,
+            inputs,
+        )
+
     @mcp.tool(title="GitHub agent rerun workflow job", annotations=write_annotations)
     def github_agent_rerun_workflow_job(
         repository: str,

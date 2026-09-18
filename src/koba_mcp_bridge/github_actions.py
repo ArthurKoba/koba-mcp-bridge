@@ -283,6 +283,41 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
             "content_base64": base64.b64encode(data).decode("ascii"),
         }
 
+    def dispatch_workflow(
+        self,
+        repository: str,
+        workflow_id: str,
+        ref: str,
+        inputs: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        repository = self._assert_allowed(repository)
+        workflow = workflow_id.strip()
+        target_ref = ref.strip()
+        if not workflow:
+            raise GitHubAgentError("workflow_id must not be empty")
+        if not target_ref:
+            raise GitHubAgentError("ref must not be empty")
+
+        workflow_q = urllib.parse.quote(workflow, safe="")
+        payload: dict[str, object] = {"ref": target_ref}
+        if inputs:
+            payload["inputs"] = dict(inputs)
+
+        status, _ = self._repo_request(
+            repository,
+            "POST",
+            f"/repos/{repository}/actions/workflows/{workflow_q}/dispatches",
+            payload=payload,
+        )
+        return {
+            "repository": repository,
+            "workflow_id": workflow,
+            "ref": target_ref,
+            "inputs": dict(inputs or {}),
+            "status": status,
+            "dispatched": status in {201, 204},
+        }
+
     def rerun_workflow_job(self, repository: str, job_id: int) -> dict[str, object]:
         repository = self._assert_allowed(repository)
         status, _ = self._repo_request(

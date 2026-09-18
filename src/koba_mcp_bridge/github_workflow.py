@@ -6,6 +6,7 @@ import urllib.parse
 from typing import Any
 
 from .github_agent import GitHubAgentError, GitHubAppClient
+from .secrets import SecretError, resolve_config_secret
 
 _DEFAULT_PROTECTED_BRANCHES = "main,master"
 _DEFAULT_REQUIRED_CHECKS = "test,docker"
@@ -17,10 +18,21 @@ def _split_env(name: str, default: str = "") -> list[str]:
 
 
 def protected_branches_from_env() -> set[str]:
-    return {item.casefold() for item in _split_env(
-        "GITHUB_AGENT_PROTECTED_BRANCHES",
-        _DEFAULT_PROTECTED_BRANCHES,
-    )}
+    try:
+        raw = resolve_config_secret(
+            "github/development",
+            "PROTECTED_BRANCHES",
+        )
+    except SecretError:
+        raw = os.getenv(
+            "GITHUB_AGENT_PROTECTED_BRANCHES",
+            _DEFAULT_PROTECTED_BRANCHES,
+        )
+    return {
+        item.strip().casefold()
+        for item in raw.split(",")
+        if item.strip()
+    }
 
 
 def required_checks_from_env() -> list[str]:
