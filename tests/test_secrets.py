@@ -166,7 +166,7 @@ def test_resolver_never_returns_value_from_check(infisical_server) -> None:
 
     serialized = json.dumps(result)
     assert result["available"] is True
-    assert result["value"] == "<redacted>"
+    assert "value" not in result
     assert "super-secret-private-key" not in serialized
 
 
@@ -276,5 +276,5 @@ async def test_secrets_diagnostics_are_registered() -> None:
     async with Client(mcp) as client:
         tools = await client.list_tools()
     names = {tool.name for tool in tools}
-    assert "secrets_status_tool" in names
+    assert "secrets_status" in names
     assert "secrets_check_reference" in names
