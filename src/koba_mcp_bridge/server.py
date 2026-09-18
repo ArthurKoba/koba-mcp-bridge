@@ -14,7 +14,6 @@ from mcp.types import ToolAnnotations
 
 from . import __version__
 from .artifact_tools import register_artifact_tools
-from .artifact_upload import ArtifactUpload
 from .github_actions_tools import register_github_actions_tools
 from .github_agent import github_agent_configured
 from .github_collab_tools import register_github_collab_tools
@@ -135,10 +134,10 @@ mcp = FastMCP(
     instructions=(
         "Koba MCP Bridge is the authenticated gateway for Koba infrastructure, "
         "local tools, and mounted MCP backends. Files are first-class immutable "
-        "artifacts identified by artifact_id. Use file_manager for browser uploads, "
-        "artifact_* tools for generic file operations, and backend-specific adapters "
-        "such as ghidra_import_artifact to consume artifacts. Do not use filesystem "
-        "paths as cross-service identifiers."
+        "artifacts identified by artifact_id. Agents upload bytes through resumable "
+        "artifact_upload_* MCP tools, then use artifact_* operations or backend-specific "
+        "adapters such as ghidra_import_artifact. Filesystem paths are private server "
+        "implementation details and are never cross-service identifiers."
     ),
     auth=_auth,
     middleware=_auth_middleware,
@@ -187,7 +186,7 @@ def bridge_capabilities() -> dict[str, object]:
         "opentelemetry",
         "gateway",
         "artifact-store-v2",
-        "native-file-upload",
+        "agent-resumable-upload",
         "artifact-collections",
         "artifact-references",
     ]
@@ -313,7 +312,6 @@ register_github_actions_tools(
     _WRITE_EXTERNAL,
     _DESTRUCTIVE_EXTERNAL,
 )
-mcp.add_provider(ArtifactUpload())
 register_artifact_tools(mcp, _READ_ONLY_LOCAL, _WRITE_LOCAL, _DESTRUCTIVE_LOCAL)
 register_reverse_workflow_tools(mcp, _READ_ONLY_LOCAL, _WRITE_LOCAL)
 
