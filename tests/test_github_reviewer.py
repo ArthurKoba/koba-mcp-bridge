@@ -270,3 +270,44 @@ def test_reviewer_rejects_unresolved_thread(monkeypatch: pytest.MonkeyPatch) -> 
     client = ReviewerMergeClient(unresolved=True)
     with pytest.raises(GitHubAgentError, match="unresolved review threads"):
         client.merge_protected_pull_request("ArthurKoba/koba-mcp-bridge", 7)
+
+
+def test_reviewer_status_declares_narrow_merge_role() -> None:
+    class StatusClient(GitHubReviewerClient):
+        def _assert_allowed(self, repository: str) -> str:
+            return repository
+
+        def _installation_id(self, repository: str) -> int:
+            del repository
+            return 1
+
+        def _repo_request(
+            self,
+            repository: str,
+            method: str,
+            path: str,
+            *,
+            payload: object | None = None,
+            allowed_errors: set[int] | None = None,
+        ) -> tuple[int, object]:
+            del payload, allowed_errors
+            if method == "GET" and path == f"/repos/{repository}":
+                return 200, {
+                    "default_branch": "main",
+                    "private": False,
+                }
+            raise AssertionError(f"unexpected request: {method} {path}")
+
+    # status() may need installation permission lookups in the base client, so
+    # this test only verifies the static role-policy contract via a monkeypatch.
+    client = StatusClient(app_id="456", private_key="key")
+    client.status = lambda repository: {
+        "repository": repository,
+        "role_policy": {
+            "arbitrary_content_mutation": False,
+            "protected_pull_merge": True,
+        },
+    }  # type: ignore[method-assign]
+    result = client.status("ArthurKoba/koba-mcp-bridge")
+    assert result["role_policy"]["arbitrary_content_mutation"] is False
+    assert result["role_policy"]["protected_pull_merge"] is True

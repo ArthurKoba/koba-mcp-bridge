@@ -318,13 +318,15 @@ class GitHubHistoryMixin:
                 "checks": permissions.get("checks", "none"),
             },
             "capabilities": {
-                "branch_delete": contents_write,
-                "force_ref_update": contents_write,
-                "history_identity_rewrite": contents_write,
+                "branch_delete_working_branches": contents_write,
+                "force_ref_update_working_branches": contents_write,
+                "history_identity_rewrite_working_branches": contents_write,
+                "protected_pull_merge": False,
             },
             "bridge_policy": {
-                "reserved_branches": sorted(protected_branches_from_env()),
-                "reserved_branch_mutation_allowed": False,
+                "protected_branches": sorted(protected_branches_from_env()),
+                "protected_branch_direct_mutation_allowed": False,
+                "protected_pull_merge_actor": "reviewer",
             },
             "reviewer_available": reviewer_available,
         }

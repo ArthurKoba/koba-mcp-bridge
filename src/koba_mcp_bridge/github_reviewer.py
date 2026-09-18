@@ -39,6 +39,20 @@ def _reviewer_private_key_from_env() -> str:
 class GitHubReviewerClient(GitHubPrettyIdentityClient):
     """Independent reviewer identity with one narrowly-scoped protected mutation."""
 
+    def status(self, repository: str) -> dict[str, object]:
+        result = super().status(repository)
+        result["role_policy"] = {
+            "arbitrary_content_mutation": False,
+            "branch_mutation": False,
+            "tag_mutation": False,
+            "protected_pull_merge": True,
+            "protected_branches": sorted(protected_branches_from_env()),
+            "merge_requires_current_head_approval": True,
+            "merge_requires_required_checks": True,
+            "merge_requires_resolved_threads": True,
+        }
+        return result
+
     def _assert_self_approval_current_head(
         self,
         repository: str,
