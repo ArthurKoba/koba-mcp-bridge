@@ -23,7 +23,7 @@ COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
 
 RUN uv sync --no-dev \
-    && mkdir -p /data/fastmcp /artifacts/inbox /artifacts/exports /artifacts/scripts /home/bridge \
+    && mkdir -p /data/fastmcp /artifacts/objects/sha256 /artifacts/tmp /home/bridge \
     && chown -R 1000:1000 /data /artifacts /home/bridge
 
 COPY deploy/docker-entrypoint.sh /usr/local/bin/koba-entrypoint

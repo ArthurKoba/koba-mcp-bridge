@@ -13,7 +13,8 @@ from fastmcp.server.middleware import AuthMiddleware
 from mcp.types import ToolAnnotations
 
 from . import __version__
-from .artifact_storage import register_artifact_tools
+from .artifact_tools import register_artifact_tools
+from .artifact_upload import ArtifactUpload
 from .github_actions_tools import register_github_actions_tools
 from .github_agent import github_agent_configured
 from .github_collab_tools import register_github_collab_tools
@@ -133,12 +134,11 @@ mcp = FastMCP(
     version=__version__,
     instructions=(
         "Koba MCP Bridge is the authenticated gateway for Koba infrastructure, "
-        "local tools, and mounted MCP backends. File workflow contract: a client-local "
-        "/mnt path is never a Koba path. Stage chat/client attachments with "
-        "artifact_import_file into a relative artifact path, extract archives on Koba "
-        "with artifact_extract_archive, and import staged files into Ghidra with "
-        "ghidra_import_artifact. The /projects tree is Ghidra-managed and must only be "
-        "changed through ghidra project tools."
+        "local tools, and mounted MCP backends. Files are first-class immutable "
+        "artifacts identified by artifact_id. Use file_manager for browser uploads, "
+        "artifact_* tools for generic file operations, and backend-specific adapters "
+        "such as ghidra_import_artifact to consume artifacts. Do not use filesystem "
+        "paths as cross-service identifiers."
     ),
     auth=_auth,
     middleware=_auth_middleware,
@@ -186,8 +186,10 @@ def bridge_capabilities() -> dict[str, object]:
         "streamable-http",
         "opentelemetry",
         "gateway",
-        "artifact-storage",
-        "reverse-artifact-ingest",
+        "artifact-store-v2",
+        "native-file-upload",
+        "artifact-collections",
+        "artifact-references",
     ]
     if _auth is not None:
         features.append("github-oauth")
@@ -311,8 +313,9 @@ register_github_actions_tools(
     _WRITE_EXTERNAL,
     _DESTRUCTIVE_EXTERNAL,
 )
+mcp.add_provider(ArtifactUpload())
 register_artifact_tools(mcp, _READ_ONLY_LOCAL, _WRITE_LOCAL, _DESTRUCTIVE_LOCAL)
-register_reverse_workflow_tools(mcp, _WRITE_LOCAL)
+register_reverse_workflow_tools(mcp, _READ_ONLY_LOCAL, _WRITE_LOCAL)
 
 if github_reviewer_configured():
     register_github_reviewer_tools(
