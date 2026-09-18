@@ -23,6 +23,7 @@ from .github_review_tools import register_github_review_tools
 from .github_reviewer import github_reviewer_client_from_env, github_reviewer_configured
 from .github_reviewer_tools import register_github_reviewer_tools
 from .github_tools import register_github_workflow_tools
+from .gitlab_tools import register_gitlab_tools
 from .reverse_workflow import register_reverse_workflow_tools
 
 _STARTED_AT = datetime.now(UTC).isoformat()
@@ -147,6 +148,27 @@ mcp = FastMCP(
 )
 
 
+gitlab_mcp = FastMCP(
+    "koba-gitlab",
+    version=__version__,
+    instructions=(
+        "Dedicated GitLab connector surface. Every operation requires an explicit "
+        "profile_id selecting one GitLab instance and credential identity. Profiles "
+        "never contain inline tokens; credentials come from runtime secret env vars "
+        "or mounted secret files."
+    ),
+    auth=_auth,
+    middleware=_auth_middleware,
+)
+register_gitlab_tools(
+    gitlab_mcp,
+    _READ_EXTERNAL,
+    _WRITE_EXTERNAL,
+    _DESTRUCTIVE_EXTERNAL,
+)
+mcp.mount(gitlab_mcp, namespace="gitlab")
+
+
 @mcp.tool(
     title="Bridge ping",
     annotations=_READ_ONLY_LOCAL,
@@ -197,6 +219,11 @@ def bridge_capabilities() -> dict[str, object]:
         "curl-artifact-download",
         "curl-stream-capture",
         "curl-browser-header-presets",
+        "gitlab-multi-profile",
+        "gitlab-dedicated-endpoint",
+        "gitlab-repository-workflow",
+        "gitlab-merge-requests",
+        "gitlab-ci",
     ]
     if _auth is not None:
         features.append("github-oauth")
@@ -340,14 +367,24 @@ def _split_env(name: str, default: str) -> list[str]:
 
 _MOUNTED_BACKENDS = _mount_backends(mcp)
 
+_allowed_hosts = _split_env(
+    "MCP_ALLOWED_HOSTS",
+    "localhost:*,127.0.0.1:*,[::1]:*",
+)
+_allowed_origins = _split_env(
+    "MCP_ALLOWED_ORIGINS",
+    "http://localhost:*,http://127.0.0.1:*,http://[::1]:*",
+)
+
 app = mcp.http_app(
     path="/mcp",
-    allowed_hosts=_split_env(
-        "MCP_ALLOWED_HOSTS",
-        "localhost:*,127.0.0.1:*,[::1]:*",
-    ),
-    allowed_origins=_split_env(
-        "MCP_ALLOWED_ORIGINS",
-        "http://localhost:*,http://127.0.0.1:*,http://[::1]:*",
-    ),
+    allowed_hosts=_allowed_hosts,
+    allowed_origins=_allowed_origins,
 )
+
+gitlab_app = gitlab_mcp.http_app(
+    path="/mcp",
+    allowed_hosts=_allowed_hosts,
+    allowed_origins=_allowed_origins,
+)
+app.mount("/gitlab", gitlab_app)

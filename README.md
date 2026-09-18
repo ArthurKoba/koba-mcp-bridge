@@ -114,6 +114,62 @@ GHIDRA_MCP_URL=http://ghidra-mcp:8081/mcp
 The mounted backend is namespaced as `ghidra`. Ghidra itself stays on the
 private Docker network.
 
+## GitLab connector
+
+GitLab is implemented as a reusable subserver rather than another monolithic block of
+gateway-only tools. The same GitLab tool provider is exposed in two ways:
+
+- the normal gateway endpoint at `/mcp`, where tools are namespaced as `gitlab_*`;
+- a dedicated GitLab-only endpoint at `/gitlab/mcp`, where the same tools are exposed
+  without the `gitlab_` namespace prefix.
+
+Every GitLab operation requires an explicit `profile_id`. There is deliberately no
+process-global "current GitLab" or "current account", so concurrent agents can use
+different GitLab instances or different accounts on the same instance without switching
+each other's context.
+
+Profiles are loaded from `GITLAB_PROFILES_FILE` and/or `GITLAB_PROFILES_JSON`.
+Profile metadata does not contain the token itself. Each profile references exactly one
+runtime secret source with `token_env` or `token_file`.
+
+Example:
+
+```json
+[
+  {
+    "profile_id": "gitlab-com-arthur",
+    "label": "GitLab.com / Arthur",
+    "base_url": "https://gitlab.com",
+    "auth_type": "private_token",
+    "token_env": "GITLAB_TOKEN_GITLAB_COM_ARTHUR"
+  },
+  {
+    "profile_id": "lab-admin",
+    "label": "Self-hosted lab / admin",
+    "base_url": "https://gitlab.lab.example",
+    "auth_type": "bearer",
+    "token_env": "GITLAB_TOKEN_LAB_ADMIN",
+    "verify_tls": true,
+    "ca_file": "/run/secrets/lab-ca.pem"
+  }
+]
+```
+
+Supported authentication modes are:
+
+- `private_token` -> GitLab `PRIVATE-TOKEN` header for personal/project/group access tokens;
+- `bearer` -> `Authorization: Bearer ...` for OAuth-compatible access tokens;
+- `job_token` -> `JOB-TOKEN` for endpoints that support CI/CD job-token authentication.
+
+The connector currently exposes profile/account validation, project discovery, repository
+file/tree/code-search operations, atomic commit actions, branches and compare, merge
+requests, issues, and CI pipelines/jobs/job traces with retry/cancel controls.
+
+Direct writes to branches listed in `GITLAB_PROTECTED_BRANCHES` are blocked by the bridge
+(default: `main,master`). Feature branches can be created from protected branches and
+merge requests can target protected branches. GitLab's own protected branch, approval,
+role, and token-scope settings remain the authoritative server-side access controls.
+
 ## GitHub OAuth
 
 OAuth is disabled by default so a deployment can be upgraded before credentials are configured. When `OAUTH_ENABLED=true`, the bridge requires all of the following runtime environment variables:
