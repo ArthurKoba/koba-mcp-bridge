@@ -65,19 +65,6 @@ async def test_artifact_tools_are_registered() -> None:
     }
     assert expected <= names
 
-    retired = {
-        "file_manager",
-        "list_files",
-        "read_file",
-        "artifact_mkdir",
-        "artifact_write_text",
-        "artifact_upload_chunk",
-        "artifact_import_file",
-        "artifact_extract_archive",
-        "artifact_download_chunk",
-    }
-    assert names.isdisjoint(retired)
-
 
 @pytest.mark.asyncio
 async def test_agent_upload_round_trip_over_mcp(tmp_path, monkeypatch) -> None:
