@@ -147,3 +147,38 @@ def test_agent_upload_deduplicates_identical_files(
     assert artifact_ids[0] == artifact_ids[1]
     info = ArtifactStore().info(artifact_ids[0])
     assert {alias["name"] for alias in info["aliases"]} == {"first.bin", "second.bin"}
+
+
+
+def test_upload_list_and_gc_abandoned_sessions(
+    manager: ArtifactUploadManager,
+) -> None:
+    active = manager.begin("active.bin", size_bytes=1)
+    abandoned = manager.begin("abandoned.bin", size_bytes=1)
+
+    with manager._connect() as db:
+        db.execute(
+            """
+            UPDATE upload_sessions
+            SET updated_at = ?
+            WHERE upload_id = ?
+            """,
+            ("2000-01-01T00:00:00+00:00", abandoned["upload_id"]),
+        )
+
+    listed = manager.list()
+    ids = {item["upload_id"] for item in listed["items"]}
+    assert active["upload_id"] in ids
+    assert abandoned["upload_id"] in ids
+
+    preview = manager.gc(max_age_hours=1, dry_run=True)
+    assert [item["upload_id"] for item in preview["candidates"]] == [
+        abandoned["upload_id"]
+    ]
+
+    collected = manager.gc(max_age_hours=1, dry_run=False)
+    assert collected["count"] == 1
+    assert collected["deleted"][0]["upload_id"] == abandoned["upload_id"]
+    assert manager.status(active["upload_id"])["bytes_received"] == 0
+    with pytest.raises(ArtifactError, match="does not exist"):
+        manager.status(abandoned["upload_id"])
