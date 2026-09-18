@@ -1,3 +1,5 @@
+import base64
+
 import pytest
 from fastmcp import Client
 
@@ -36,10 +38,12 @@ async def test_artifact_tools_are_registered() -> None:
 
     names = {tool.name for tool in tools}
     expected = {
-        "file_manager",
-        "list_files",
-        "read_file",
         "artifact_status",
+        "artifact_upload_begin",
+        "artifact_upload_status",
+        "artifact_upload_write",
+        "artifact_upload_finish",
+        "artifact_upload_cancel",
         "artifact_list",
         "artifact_info",
         "artifact_read",
@@ -60,6 +64,9 @@ async def test_artifact_tools_are_registered() -> None:
     assert expected <= names
 
     retired = {
+        "file_manager",
+        "list_files",
+        "read_file",
         "artifact_mkdir",
         "artifact_write_text",
         "artifact_upload_chunk",
@@ -68,6 +75,42 @@ async def test_artifact_tools_are_registered() -> None:
         "artifact_download_chunk",
     }
     assert names.isdisjoint(retired)
+
+
+@pytest.mark.asyncio
+async def test_agent_upload_round_trip_over_mcp(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("ARTIFACT_ROOT", str(tmp_path))
+    monkeypatch.setenv("ARTIFACT_UPLOAD_MAX_BYTES", str(16 * 1024 * 1024))
+    monkeypatch.setenv("ARTIFACT_UPLOAD_CHUNK_BYTES", str(64 * 1024))
+    payload = b"mcp-agent-upload"
+
+    async with Client(mcp) as client:
+        begun = await client.call_tool(
+            "artifact_upload_begin",
+            {
+                "name": "probe.bin",
+                "size_bytes": len(payload),
+            },
+        )
+        upload_id = begun.data["upload_id"]
+        written = await client.call_tool(
+            "artifact_upload_write",
+            {
+                "upload_id": upload_id,
+                "offset": 0,
+                "data_base64": base64.b64encode(payload).decode("ascii"),
+            },
+        )
+        assert written.data["complete"] is True
+
+        finished = await client.call_tool(
+            "artifact_upload_finish",
+            {"upload_id": upload_id},
+        )
+
+    artifact = finished.data["artifact"]
+    assert artifact["artifact_id"].startswith("sha256:")
+    assert artifact["size_bytes"] == len(payload)
 
 
 @pytest.mark.asyncio
