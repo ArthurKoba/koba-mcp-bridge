@@ -49,6 +49,15 @@ def register_artifact_tools(
         """Return upload progress and the exact next byte offset."""
         return ArtifactUploadManager().status(upload_id)
 
+    @mcp.tool(title="Artifact upload list", annotations=read_annotations)
+    def artifact_upload_list(
+        state: str = "",
+        offset: int = 0,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """List resumable upload sessions so agents can recover interrupted transfers."""
+        return ArtifactUploadManager().list(state=state, offset=offset, limit=limit)
+
     @mcp.tool(title="Artifact upload write", annotations=write_annotations)
     def artifact_upload_write(
         upload_id: str,
@@ -84,6 +93,19 @@ def register_artifact_tools(
     def artifact_upload_cancel(upload_id: str) -> dict[str, Any]:
         """Cancel an unfinished upload and discard its staged bytes."""
         return ArtifactUploadManager().cancel(upload_id)
+
+    @mcp.tool(title="Artifact upload cleanup", annotations=destructive_annotations)
+    def artifact_upload_cleanup(
+        older_than_hours: int = 24,
+        dry_run: bool = True,
+        limit: int = 1000,
+    ) -> dict[str, Any]:
+        """Preview or remove stale upload-session state without deleting committed artifacts."""
+        return ArtifactUploadManager().cleanup(
+            older_than_hours=older_than_hours,
+            dry_run=dry_run,
+            limit=limit,
+        )
 
     @mcp.tool(title="Artifact list", annotations=read_annotations)
     def artifact_list(
