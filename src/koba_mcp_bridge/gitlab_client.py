@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .secrets import resolve_secret
+
 _PROFILE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _ALLOWED_AUTH = {"private_token", "bearer", "job_token"}
@@ -52,6 +54,7 @@ class GitLabProfile:
     auth_type: str
     token_env: str = ""
     token_file: str = ""
+    secret_ref: str = ""
     verify_tls: bool = True
     ca_file: str = ""
     label: str = ""
@@ -61,6 +64,8 @@ class GitLabProfile:
         return self.base_url.rstrip("/") + "/api/v4"
 
     def token(self) -> str:
+        if self.secret_ref:
+            return resolve_secret(self.secret_ref)
         if self.token_env:
             value = os.getenv(self.token_env, "").strip()
             if not value:
@@ -89,6 +94,8 @@ class GitLabProfile:
             credential_configured = bool(os.getenv(self.token_env, "").strip())
         elif self.token_file:
             credential_configured = Path(self.token_file).is_file()
+        elif self.secret_ref:
+            credential_configured = True
         return {
             "profile_id": self.profile_id,
             "label": self.label,
@@ -96,9 +103,13 @@ class GitLabProfile:
             "api_url": self.api_url,
             "auth_type": self.auth_type,
             "credential_source": (
-                {"type": "env", "name": self.token_env}
-                if self.token_env
-                else {"type": "file", "path": self.token_file}
+                {"type": "secret_ref", "reference": self.secret_ref}
+                if self.secret_ref
+                else (
+                    {"type": "env", "name": self.token_env}
+                    if self.token_env
+                    else {"type": "file", "path": self.token_file}
+                )
             ),
             "credential_configured": credential_configured,
             "verify_tls": self.verify_tls,
@@ -194,9 +205,11 @@ def _parse_profile(item: dict[str, Any]) -> GitLabProfile:
 
     token_env = str(item.get("token_env", "")).strip()
     token_file = str(item.get("token_file", "")).strip()
-    if bool(token_env) == bool(token_file):
+    secret_ref = str(item.get("secret_ref", "")).strip()
+    configured_sources = sum(bool(value) for value in (token_env, token_file, secret_ref))
+    if configured_sources != 1:
         raise GitLabError(
-            f"profile {profile_id!r} must define exactly one of token_env or token_file"
+            f"profile {profile_id!r} must define exactly one of token_env, token_file, or secret_ref"
         )
     if token_env and not _ENV_NAME_RE.fullmatch(token_env):
         raise GitLabError(f"profile {profile_id!r} token_env is not a valid env name")
@@ -213,6 +226,7 @@ def _parse_profile(item: dict[str, Any]) -> GitLabProfile:
         auth_type=auth_type,
         token_env=token_env,
         token_file=token_file,
+        secret_ref=secret_ref,
         verify_tls=verify_tls,
         ca_file=ca_file,
         label=str(item.get("label", "")).strip(),
