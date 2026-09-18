@@ -22,6 +22,7 @@ from .github_review_tools import register_github_review_tools
 from .github_reviewer import github_reviewer_client_from_env, github_reviewer_configured
 from .github_reviewer_tools import register_github_reviewer_tools
 from .github_tools import register_github_workflow_tools
+from .reverse_workflow import register_reverse_workflow_tools
 
 _STARTED_AT = datetime.now(UTC).isoformat()
 _READ_ONLY_LOCAL = ToolAnnotations(
@@ -132,7 +133,12 @@ mcp = FastMCP(
     version=__version__,
     instructions=(
         "Koba MCP Bridge is the authenticated gateway for Koba infrastructure, "
-        "local tools, and mounted MCP backends."
+        "local tools, and mounted MCP backends. File workflow contract: a client-local "
+        "/mnt path is never a Koba path. Stage chat/client attachments with "
+        "artifact_import_file into a relative artifact path, extract archives on Koba "
+        "with artifact_extract_archive, and import staged files into Ghidra with "
+        "ghidra_import_artifact. The /projects tree is Ghidra-managed and must only be "
+        "changed through ghidra project tools."
     ),
     auth=_auth,
     middleware=_auth_middleware,
@@ -175,7 +181,14 @@ def bridge_build_info() -> dict[str, str]:
 )
 def bridge_capabilities() -> dict[str, object]:
     """Return the currently enabled high-level bridge capabilities."""
-    features = ["mcp", "streamable-http", "opentelemetry", "gateway", "artifact-storage"]
+    features = [
+        "mcp",
+        "streamable-http",
+        "opentelemetry",
+        "gateway",
+        "artifact-storage",
+        "reverse-artifact-ingest",
+    ]
     if _auth is not None:
         features.append("github-oauth")
     if github_agent_configured():
@@ -299,6 +312,7 @@ register_github_actions_tools(
     _DESTRUCTIVE_EXTERNAL,
 )
 register_artifact_tools(mcp, _READ_ONLY_LOCAL, _WRITE_LOCAL, _DESTRUCTIVE_LOCAL)
+register_reverse_workflow_tools(mcp, _WRITE_LOCAL)
 
 if github_reviewer_configured():
     register_github_reviewer_tools(
