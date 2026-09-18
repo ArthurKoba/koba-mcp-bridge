@@ -36,19 +36,37 @@ async def test_artifact_tools_are_registered() -> None:
 
     names = {tool.name for tool in tools}
     expected = {
+        "file_manager",
+        "list_files",
+        "read_file",
         "artifact_status",
         "artifact_list",
         "artifact_info",
+        "artifact_read",
+        "artifact_create_text",
+        "artifact_extract",
+        "artifact_collection_list",
+        "artifact_collection_resolve",
+        "artifact_references",
+        "artifact_release_reference",
+        "artifact_delete",
+        "artifact_gc",
+        "ghidra_import_artifact",
+        "ghidra_project_sources",
+        "ghidra_export_program_artifact",
+        "ghidra_archive_project_artifact",
+    }
+    assert expected <= names
+
+    retired = {
         "artifact_mkdir",
         "artifact_write_text",
         "artifact_upload_chunk",
         "artifact_import_file",
         "artifact_extract_archive",
         "artifact_download_chunk",
-        "artifact_delete",
     }
-    assert expected <= names
-    assert "ghidra_import_artifact" in names
+    assert names.isdisjoint(retired)
 
 
 @pytest.mark.asyncio
