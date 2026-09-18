@@ -15,6 +15,16 @@ The project is designed around a few core ideas:
 - isolate workers and constrain CPU, memory, storage, network, and filesystem access;
 - make integrations modular so new development and analysis tools can be added over time.
 
+## Documentation
+
+The documentation entry point is [docs/README.md](docs/README.md). It links the current
+architecture map, component catalog, repository map, roadmap, existing technical notes,
+and future architecture decision records.
+
+The documentation intentionally separates the current implementation from the target
+modular runtime direction so incremental migrations can be reviewed without treating
+the roadmap as already implemented.
+
 ## Architecture
 
 ```text
