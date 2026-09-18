@@ -237,7 +237,7 @@ def register_github_workflow_tools(
         """Verify configured required check-runs are completed successfully."""
         return client_factory().assert_required_checks(repository, ref)
 
-    @mcp.tool(title="GitHub agent merge pull request", annotations=write_annotations)
+    @mcp.tool(title="GitHub agent merge non-protected pull request", annotations=write_annotations)
     def github_agent_merge_pull_request(
         repository: str,
         number: int,
@@ -245,7 +245,7 @@ def register_github_workflow_tools(
         commit_title: str | None = None,
         commit_message: str | None = None,
     ) -> dict[str, object]:
-        """Merge a same-repository PR only after configured required checks pass."""
+        """Merge a same-repository PR into a non-protected base after required checks. Protected bases require the Reviewer App."""
         return client_factory().merge_pull_request(
             repository,
             number,
