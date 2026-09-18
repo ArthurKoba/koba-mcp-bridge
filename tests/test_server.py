@@ -30,6 +30,25 @@ async def test_bridge_build_info() -> None:
 
 
 @pytest.mark.asyncio
+async def test_artifact_tools_are_registered() -> None:
+    async with Client(mcp) as client:
+        tools = await client.list_tools()
+
+    names = {tool.name for tool in tools}
+    expected = {
+        "artifact_status",
+        "artifact_list",
+        "artifact_info",
+        "artifact_mkdir",
+        "artifact_write_text",
+        "artifact_upload_chunk",
+        "artifact_download_chunk",
+        "artifact_delete",
+    }
+    assert expected <= names
+
+
+@pytest.mark.asyncio
 async def test_browser_write_probe_is_retired() -> None:
     async with Client(mcp) as client:
         tools = await client.list_tools()
