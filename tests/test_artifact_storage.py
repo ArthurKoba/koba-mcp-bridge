@@ -104,9 +104,9 @@ def test_import_file_from_https_source(root, monkeypatch):
         lambda source: None,
     )
     monkeypatch.setattr(
-        artifact_storage.urllib.request,
-        "urlopen",
-        lambda request, timeout: _FakeResponse(payload),
+        artifact_storage,
+        "_open_https_source",
+        lambda request: _FakeResponse(payload),
     )
 
     result = artifact_storage.artifact_import_file_impl(
