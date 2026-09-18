@@ -235,7 +235,6 @@ def configured_profiles(monkeypatch, gitlab_server):
     monkeypatch.setenv("GITLAB_PROFILES_FILE", "/nonexistent/gitlab-profiles.json")
 
 
-
 def test_registry_discovers_infisical_profiles_without_eager_token_read(
     monkeypatch,
     gitlab_server,
@@ -291,6 +290,7 @@ def test_registry_discovers_infisical_profiles_without_eager_token_read(
 
     assert profile.token() == "token-a"
     assert ("gitlab/accounts/local-alice", "TOKEN") in reads
+
 
 def test_registry_lists_multiple_profiles_without_tokens(configured_profiles) -> None:
     result = GitLabProfileRegistry.from_env().list()
