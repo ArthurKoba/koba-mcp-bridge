@@ -106,3 +106,74 @@ def test_invalid_merge_method_is_blocked() -> None:
             1,
             "octopus",
         )
+
+
+
+def test_required_checks_delegate_when_names_do_not_belong_to_repository(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GITHUB_AGENT_REQUIRED_CHECKS", "test,docker")
+    dev = client()
+
+    def fake_check_runs(repository: str, ref: str) -> dict[str, object]:
+        return {
+            "repository": repository,
+            "ref": ref,
+            "check_runs": [
+                {
+                    "name": "Build Status",
+                    "status": "completed",
+                    "conclusion": "success",
+                }
+            ],
+        }
+
+    def fake_repo_request(
+        repository: str,
+        method: str,
+        endpoint: str,
+        **kwargs: object,
+    ) -> tuple[int, object]:
+        assert method == "GET"
+        assert endpoint == f"/repos/{repository}"
+        return 200, {"default_branch": "main"}
+
+    monkeypatch.setattr(dev, "check_runs", fake_check_runs)
+    monkeypatch.setattr(dev, "_repo_request", fake_repo_request)
+
+    result = dev.assert_required_checks("ArthurKoba/ghidra-mcp", "head-sha")
+
+    assert result["status"] == "delegated_to_github"
+
+
+def test_required_checks_stay_strict_when_repository_uses_configured_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GITHUB_AGENT_REQUIRED_CHECKS", "test,docker")
+    dev = client()
+
+    def fake_check_runs(repository: str, ref: str) -> dict[str, object]:
+        if ref == "head-sha":
+            checks = [
+                {"name": "test", "status": "completed", "conclusion": "success"},
+            ]
+        else:
+            checks = [
+                {"name": "test", "status": "completed", "conclusion": "success"},
+                {"name": "docker", "status": "completed", "conclusion": "success"},
+            ]
+        return {"repository": repository, "ref": ref, "check_runs": checks}
+
+    def fake_repo_request(
+        repository: str,
+        method: str,
+        endpoint: str,
+        **kwargs: object,
+    ) -> tuple[int, object]:
+        return 200, {"default_branch": "main"}
+
+    monkeypatch.setattr(dev, "check_runs", fake_check_runs)
+    monkeypatch.setattr(dev, "_repo_request", fake_repo_request)
+
+    with pytest.raises(GitHubAgentError, match="missing=\\['docker'\\]"):
+        dev.assert_required_checks("ArthurKoba/koba-mcp-bridge", "head-sha")

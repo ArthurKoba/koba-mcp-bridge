@@ -791,6 +791,47 @@ class GitHubDevClient(GitHubAppClient):
             if isinstance(item, dict)
         }
         required = required_checks_from_env()
+
+        # The bridge can serve multiple repositories whose CI check names are
+        # unrelated. GITHUB_AGENT_REQUIRED_CHECKS is therefore only applicable
+        # when at least one configured check name is part of this repository's
+        # normal CI surface. If the PR head has none of them, inspect the
+        # repository's default branch before deciding that they are "missing".
+        #
+        # This keeps the strict test/docker gate for koba-mcp-bridge while
+        # avoiding an impossible merge requirement on repositories such as
+        # ghidra-mcp, whose aggregate check is named "Build Status". GitHub's
+        # own branch protection/rulesets remain the final merge authority.
+        configured_names = set(required)
+        if configured_names and not configured_names.intersection(by_name):
+            _, repository_info = self._repo_request(
+                repository,
+                "GET",
+                f"/repos/{repository}",
+            )
+            default_branch = (
+                str(repository_info.get("default_branch", ""))
+                if isinstance(repository_info, dict)
+                else ""
+            )
+            baseline_names: set[str] = set()
+            if default_branch:
+                baseline = self.check_runs(repository, default_branch)
+                baseline_checks = baseline["check_runs"]
+                assert isinstance(baseline_checks, list)
+                baseline_names = {
+                    str(item.get("name", ""))
+                    for item in baseline_checks
+                    if isinstance(item, dict)
+                }
+            if not configured_names.intersection(baseline_names):
+                return {
+                    "repository": repository,
+                    "ref": ref,
+                    "required": required,
+                    "status": "delegated_to_github",
+                }
+
         missing = [name for name in required if name not in by_name]
         failing = [
             name
