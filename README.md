@@ -47,7 +47,7 @@ sha256:<digest>
 Physical storage paths are private implementation details and are never used as
 cross-service identifiers.
 
-For client/chat attachments, agents should call `artifact_ingest_file` with the
+For client/chat attachments, agents should call `artifact_ingest_attachment` with the
 attachment/file argument itself. The tool marks `file` in
 `_meta["openai/fileParams"]`, so ChatGPT supplies a structured file payload
 containing `download_url`, `file_id`, and optional MIME/name metadata. Koba

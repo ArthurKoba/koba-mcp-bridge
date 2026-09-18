@@ -15,7 +15,7 @@ second stored object.
 
 ## Agent ingress
 
-For chat/client attachments, `artifact_ingest_file` is the primary ingress.
+For chat/client attachments, `artifact_ingest_attachment` is the primary ingress.
 Its `file` input is explicitly advertised through
 `_meta["openai/fileParams"]`. ChatGPT therefore resolves the attachment into a
 structured file payload with `download_url`, `file_id`, and optional

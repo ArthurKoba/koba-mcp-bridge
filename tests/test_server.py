@@ -39,7 +39,7 @@ async def test_artifact_tools_are_registered() -> None:
     names = {tool.name for tool in tools}
     expected = {
         "artifact_status",
-        "artifact_ingest_file",
+        "artifact_ingest_attachment",
         "artifact_upload_begin",
         "artifact_upload_list",
         "artifact_upload_status",
@@ -66,7 +66,7 @@ async def test_artifact_tools_are_registered() -> None:
     }
     assert expected <= names
 
-    ingest_tool = next(tool for tool in tools if tool.name == "artifact_ingest_file")
+    ingest_tool = next(tool for tool in tools if tool.name == "artifact_ingest_attachment")
     descriptor = ingest_tool.model_dump(by_alias=True)
     assert descriptor["_meta"]["openai/fileParams"] == ["file"]
     assert descriptor["inputSchema"]["properties"]["file"]["type"] == "object"

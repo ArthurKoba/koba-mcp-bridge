@@ -22,11 +22,11 @@ def register_artifact_tools(
         return result
 
     @mcp.tool(
-        title="Artifact ingest file",
+        title="Artifact ingest attachment",
         annotations=write_annotations,
         meta={"openai/fileParams": ["file"]},
     )
-    def artifact_ingest_file(
+    def artifact_ingest_attachment(
         file: ClientFile,
         name: str = "",
         mime_type: str = "",
