@@ -1,16 +1,16 @@
-<!-- Koba MCP Bridge internal development PR template -->
-
 ## Summary
 
-Describe the change and the operational impact.
+Describe the change and its operational impact.
 
 ## Validation
 
-- [ ] Ruff passes
-- [ ] Pytest passes
-- [ ] Docker build passes
-- [ ] No direct protected-branch mutation was used
+- [ ] Relevant tests/checks pass
+- [ ] Changes are committed only on a working branch
+- [ ] No direct protected/default-branch mutation was used
 
-## Review
+## Reviewer gate
 
-Review the actual diff, tests, and runtime implications before approval.
+- [ ] Koba AI Reviewer reviews the actual diff and CI result
+- [ ] Approval is for the current PR HEAD after the latest commit
+- [ ] Outstanding review threads are resolved before merge
+- [ ] Final merge is performed by the Reviewer identity
