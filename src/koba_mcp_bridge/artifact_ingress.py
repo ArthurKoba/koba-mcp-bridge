@@ -6,7 +6,7 @@ import os
 import sqlite3
 import uuid
 from contextlib import contextmanager, suppress
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -321,6 +321,125 @@ class ArtifactUploadManager:
             "upload_id": normalized,
             "cancelled": True,
             "discarded_bytes": bytes_received,
+        }
+
+    def list(self, offset: int = 0, limit: int = 100) -> dict[str, Any]:
+        if offset < 0:
+            raise ArtifactError("offset must be non-negative")
+        if limit <= 0 or limit > 1000:
+            raise ArtifactError("limit must be between 1 and 1000")
+        self.ensure()
+        with self._connect() as db:
+            total = int(
+                db.execute("SELECT COUNT(*) FROM upload_sessions").fetchone()[0]
+            )
+            rows = db.execute(
+                """
+                SELECT *
+                FROM upload_sessions
+                ORDER BY updated_at DESC, upload_id
+                LIMIT ? OFFSET ?
+                """,
+                (limit, offset),
+            ).fetchall()
+        items = []
+        for row in rows:
+            received = int(row["bytes_received"])
+            expected = int(row["expected_size"])
+            items.append(
+                {
+                    "upload_id": str(row["upload_id"]),
+                    "name": str(row["name"]),
+                    "mime_type": str(row["mime_type"]),
+                    "expected_size": expected,
+                    "bytes_received": received,
+                    "remaining_bytes": expected - received,
+                    "complete": received == expected,
+                    "created_at": str(row["created_at"]),
+                    "updated_at": str(row["updated_at"]),
+                }
+            )
+        return {
+            "items": items,
+            "offset": offset,
+            "limit": limit,
+            "total": total,
+            "truncated": offset + len(items) < total,
+        }
+
+    def gc(
+        self,
+        max_age_hours: int = 24,
+        dry_run: bool = True,
+        limit: int = 1000,
+    ) -> dict[str, Any]:
+        if max_age_hours <= 0 or max_age_hours > 24 * 365:
+            raise ArtifactError("max_age_hours must be between 1 and 8760")
+        if limit <= 0 or limit > 10_000:
+            raise ArtifactError("limit must be between 1 and 10000")
+        self.ensure()
+        cutoff = (datetime.now(UTC) - timedelta(hours=max_age_hours)).isoformat()
+        with self._connect() as db:
+            rows = db.execute(
+                """
+                SELECT upload_id, bytes_received, updated_at
+                FROM upload_sessions
+                WHERE updated_at <= ?
+                ORDER BY updated_at
+                LIMIT ?
+                """,
+                (cutoff, limit),
+            ).fetchall()
+        candidates = [
+            {
+                "upload_id": str(row["upload_id"]),
+                "bytes_received": int(row["bytes_received"]),
+                "updated_at": str(row["updated_at"]),
+            }
+            for row in rows
+        ]
+        if dry_run:
+            return {
+                "dry_run": True,
+                "max_age_hours": max_age_hours,
+                "candidates": candidates,
+                "count": len(candidates),
+            }
+
+        deleted = []
+        for item in candidates:
+            upload_id = str(item["upload_id"])
+            with self._connect() as db:
+                db.execute("BEGIN IMMEDIATE")
+                row = db.execute(
+                    """
+                    SELECT updated_at, bytes_received
+                    FROM upload_sessions
+                    WHERE upload_id = ?
+                    """,
+                    (upload_id,),
+                ).fetchone()
+                if row is None or str(row["updated_at"]) > cutoff:
+                    continue
+                bytes_received = int(row["bytes_received"])
+                db.execute(
+                    "DELETE FROM upload_sessions WHERE upload_id = ?",
+                    (upload_id,),
+                )
+            with suppress(FileNotFoundError):
+                self._part_path(upload_id).unlink()
+            deleted.append(
+                {
+                    "upload_id": upload_id,
+                    "discarded_bytes": bytes_received,
+                }
+            )
+
+        return {
+            "dry_run": False,
+            "max_age_hours": max_age_hours,
+            "deleted": deleted,
+            "count": len(deleted),
         }
 
     def active_count(self) -> int:
