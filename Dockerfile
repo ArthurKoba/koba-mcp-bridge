@@ -26,4 +26,4 @@ USER 1000:1000
 
 EXPOSE 8000
 
-CMD ["uv", "run", "opentelemetry-instrument", "uvicorn", "koba_mcp_bridge.server:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "--no-sync", "opentelemetry-instrument", "uvicorn", "koba_mcp_bridge.server:app", "--host", "0.0.0.0", "--port", "8000"]
