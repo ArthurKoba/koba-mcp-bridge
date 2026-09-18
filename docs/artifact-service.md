@@ -13,12 +13,22 @@ sha256:<64-hex-digest>
 Names and MIME types are metadata. Re-uploading identical bytes does not create a
 second stored object.
 
-## Browser ingress
+## Agent ingress
 
-The `file_manager` MCP App provides drag-and-drop upload. The browser sends the
-selected bytes directly through the MCP App backend tool; the LLM does not carry
-the file contents in its context. Koba persists the payload in the shared object
-store and returns artifact metadata.
+Binary transfer is a resumable MCP protocol. An agent creates a session with
+`artifact_upload_begin`, sends bounded base64 chunks with
+`artifact_upload_write`, and commits with `artifact_upload_finish`.
+`artifact_upload_status` returns the exact server-confirmed offset so an
+interrupted transfer can continue without restarting.
+
+Upload sessions are durable server state. They are independent from Ghidra and
+from every other consumer. The agent never supplies a server filesystem path.
+Successful commit returns the immutable content identity used by all subsequent
+operations.
+
+The server validates sequential offsets, declared total size, chunk limits, and
+an optional expected SHA-256 before admitting the object into canonical storage.
+Identical content is deduplicated automatically.
 
 ## Storage
 
