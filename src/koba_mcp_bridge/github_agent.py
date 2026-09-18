@@ -12,6 +12,8 @@ from datetime import datetime
 
 import jwt
 
+from .secrets import resolve_secret
+
 _GITHUB_API = "https://api.github.com"
 _GITHUB_API_VERSION = "2026-03-10"
 
@@ -24,13 +26,18 @@ def github_agent_configured() -> bool:
     return bool(
         os.getenv("GITHUB_AGENT_APP_ID", "").strip()
         and (
-            os.getenv("GITHUB_AGENT_PRIVATE_KEY", "").strip()
+            os.getenv("GITHUB_AGENT_PRIVATE_KEY_REF", "").strip()
+            or os.getenv("GITHUB_AGENT_PRIVATE_KEY", "").strip()
             or os.getenv("GITHUB_AGENT_PRIVATE_KEY_B64", "").strip()
         )
     )
 
 
 def _private_key_from_env() -> str:
+    secret_ref = os.getenv("GITHUB_AGENT_PRIVATE_KEY_REF", "").strip()
+    if secret_ref:
+        return resolve_secret(secret_ref).replace("\\n", "\n")
+
     raw = os.getenv("GITHUB_AGENT_PRIVATE_KEY", "").strip()
     if raw:
         return raw.replace("\\n", "\n")
