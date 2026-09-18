@@ -13,6 +13,8 @@ from koba_mcp_bridge.reverse_workflow import (
     ghidra_import_artifact_impl,
 )
 
+PROJECT_ID = "ghp_camera"
+
 
 @pytest.mark.asyncio
 async def test_ghidra_import_artifact_dry_run_uses_artifact_id(
@@ -23,6 +25,7 @@ async def test_ghidra_import_artifact_dry_run_uses_artifact_id(
     saved = ArtifactStore().put_bytes(b"ELF", "Sofia")
 
     result = await ghidra_import_artifact_impl(
+        PROJECT_ID,
         saved["artifact_id"],
         project_folder="/firmware",
         auto_analyze=True,
@@ -32,6 +35,7 @@ async def test_ghidra_import_artifact_dry_run_uses_artifact_id(
     assert result == {
         "success": True,
         "dry_run": True,
+        "project_id": PROJECT_ID,
         "artifact_id": saved["artifact_id"],
         "name": "Sofia",
         "project_folder": "/firmware",
@@ -153,6 +157,7 @@ class _FakeGhidraClient:
         return None
 
     async def call_tool(self, name: str, payload: dict):
+        assert payload["project_id"] == PROJECT_ID
         self.calls.append((name, payload))
         if name == "get_project_info":
             body = {
@@ -206,11 +211,13 @@ async def test_ghidra_import_artifact_streams_through_backend_stage(
     monkeypatch.setattr(reverse_workflow, "Client", lambda url: fake)
 
     result = await ghidra_import_artifact_impl(
+        PROJECT_ID,
         saved["artifact_id"],
         auto_analyze=False,
     )
 
     assert result["success"] is True
+    assert result["project_id"] == PROJECT_ID
     assert result["project_name"] == "camera"
     assert bytes(fake.received) == payload
     assert [name for name, _ in fake.calls] == [
@@ -225,7 +232,7 @@ async def test_ghidra_import_artifact_streams_through_backend_stage(
     ]
     refs = ArtifactStore().references(
         consumer_type="ghidra-project",
-        consumer_id="camera",
+        consumer_id=PROJECT_ID,
     )
     assert [ref["artifact_id"] for ref in refs] == [saved["artifact_id"]]
 
@@ -243,6 +250,7 @@ async def test_ghidra_import_artifact_does_not_reference_backend_failure(
 
     with pytest.raises(ArtifactError, match="import exploded"):
         await ghidra_import_artifact_impl(
+            PROJECT_ID,
             saved["artifact_id"],
             auto_analyze=False,
         )
@@ -250,6 +258,6 @@ async def test_ghidra_import_artifact_does_not_reference_backend_failure(
     assert fake.calls[-1][0] == "artifact_stage_cancel"
     refs = ArtifactStore().references(
         consumer_type="ghidra-project",
-        consumer_id="camera",
+        consumer_id=PROJECT_ID,
     )
     assert refs == []
