@@ -3,6 +3,8 @@ from __future__ import annotations
 import base64
 
 import pytest
+
+import koba_mcp_bridge.github_reviewer as github_reviewer
 from fastmcp import Client, FastMCP
 from mcp.types import ToolAnnotations
 
@@ -67,6 +69,25 @@ def test_reviewer_config_requires_only_distinct_app_credentials(
     assert client.app_id == "456"
     assert client.private_key == "reviewer-key"
 
+
+
+def test_reviewer_loads_convention_config_from_infisical(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    github_reviewer_client_from_env.cache_clear()
+    monkeypatch.setattr(
+        github_reviewer,
+        "resolve_config_secret",
+        lambda path, name: {
+            ("github/reviewer", "APP_ID"): "888",
+            ("github/reviewer", "PRIVATE_KEY_PEM"): "reviewer-pem",
+        }[(path, name)],
+    )
+
+    client = github_reviewer_client_from_env()
+
+    assert client.app_id == "888"
+    assert client.private_key == "reviewer-pem"
 
 def test_reviewer_private_key_can_be_loaded_from_base64(
     monkeypatch: pytest.MonkeyPatch,
