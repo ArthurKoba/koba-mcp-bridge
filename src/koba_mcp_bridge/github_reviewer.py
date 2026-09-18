@@ -34,7 +34,7 @@ def _reviewer_app_id() -> str:
         app_id = os.getenv("GITHUB_REVIEWER_APP_ID", "").strip()
         if app_id:
             return app_id
-        raise GitHubAgentError("GitHub reviewer APP_ID is not configured")
+        raise GitHubAgentError("GitHub reviewer APP_ID is not configured") from None
 
 
 def _reviewer_private_key_from_env() -> str:
