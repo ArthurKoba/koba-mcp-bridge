@@ -244,6 +244,7 @@ class ArtifactStore:
         mime_type: str = "",
         source: str = "upload",
     ) -> dict[str, Any]:
+        self.ensure()
         if len(data) > upload_max_bytes():
             raise ArtifactError("file exceeds ARTIFACT_UPLOAD_MAX_BYTES")
         digest = hashlib.sha256(data).hexdigest()
@@ -277,6 +278,7 @@ class ArtifactStore:
         source: str = "generated",
         max_bytes: int | None = None,
     ) -> dict[str, Any]:
+        self.ensure()
         limit = max_bytes or upload_max_bytes()
         digest = hashlib.sha256()
         total = 0
@@ -322,6 +324,7 @@ class ArtifactStore:
         source: str = "generated",
         consume: bool = False,
     ) -> dict[str, Any]:
+        self.ensure()
         if not path.is_file():
             raise ArtifactError("source file does not exist")
         size = path.stat().st_size
