@@ -16,11 +16,13 @@ second stored object.
 ## Agent ingress
 
 For chat/client attachments, `artifact_ingest_file` is the primary ingress.
-The agent passes the attachment/file argument itself; a file-capable client can
-translate its local attachment handle into a temporary authorized HTTPS URL.
-Koba fetches that URL server-side, streams it directly to temporary storage,
-verifies optional expected size/SHA-256, and commits the resulting immutable
-artifact. Attachment bytes do not pass through model-visible base64.
+Its `file` input is explicitly advertised through
+`_meta["openai/fileParams"]`. ChatGPT therefore resolves the attachment into a
+structured file payload with `download_url`, `file_id`, and optional
+`mime_type`/`file_name`. Koba fetches the authorized URL server-side, streams
+it directly to temporary storage, verifies optional expected size/SHA-256, and
+commits the resulting immutable artifact. Attachment bytes do not pass through
+model-visible base64.
 
 The generic fallback is a resumable MCP protocol. An agent creates a session with
 `artifact_upload_begin`, sends bounded base64 chunks with
