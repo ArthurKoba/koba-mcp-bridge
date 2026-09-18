@@ -4,6 +4,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
+from .artifact_ingress import ArtifactUploadManager
 from .artifact_store import ArtifactStore
 
 
@@ -15,8 +16,53 @@ def register_artifact_tools(
 ) -> None:
     @mcp.tool(title="Artifact status", annotations=read_annotations)
     def artifact_status() -> dict[str, Any]:
-        """Inspect the universal persistent Koba artifact store."""
-        return ArtifactStore().status()
+        """Inspect the universal persistent Koba artifact store and active uploads."""
+        result = ArtifactStore().status()
+        result["active_uploads"] = ArtifactUploadManager().active_count()
+        return result
+
+    @mcp.tool(title="Artifact upload begin", annotations=write_annotations)
+    def artifact_upload_begin(
+        name: str,
+        size_bytes: int,
+        mime_type: str = "",
+        expected_sha256: str = "",
+    ) -> dict[str, Any]:
+        """Create a resumable upload session for an agent-controlled file transfer."""
+        return ArtifactUploadManager().begin(
+            name=name,
+            size_bytes=size_bytes,
+            mime_type=mime_type,
+            expected_sha256=expected_sha256,
+        )
+
+    @mcp.tool(title="Artifact upload status", annotations=read_annotations)
+    def artifact_upload_status(upload_id: str) -> dict[str, Any]:
+        """Return upload progress and the exact next byte offset."""
+        return ArtifactUploadManager().status(upload_id)
+
+    @mcp.tool(title="Artifact upload write", annotations=write_annotations)
+    def artifact_upload_write(
+        upload_id: str,
+        offset: int,
+        data_base64: str,
+    ) -> dict[str, Any]:
+        """Append one base64-encoded chunk at the exact next offset.
+
+        The server rejects oversized, reordered, sparse, or overlapping chunks.
+        Use the returned next_offset for the following call.
+        """
+        return ArtifactUploadManager().write(upload_id, offset, data_base64)
+
+    @mcp.tool(title="Artifact upload finish", annotations=write_annotations)
+    def artifact_upload_finish(upload_id: str) -> dict[str, Any]:
+        """Verify size/SHA-256, commit the upload, and return its immutable artifact_id."""
+        return ArtifactUploadManager().finish(upload_id)
+
+    @mcp.tool(title="Artifact upload cancel", annotations=destructive_annotations)
+    def artifact_upload_cancel(upload_id: str) -> dict[str, Any]:
+        """Cancel an unfinished upload and discard its staged bytes."""
+        return ArtifactUploadManager().cancel(upload_id)
 
     @mcp.tool(title="Artifact list", annotations=read_annotations)
     def artifact_list(
