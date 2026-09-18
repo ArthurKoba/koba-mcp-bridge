@@ -43,6 +43,7 @@ def register_curl_tools(
         verify_tls: bool = True,
         proxy_url: str = "",
         max_response_bytes: int = 2 * 1024 * 1024,
+        forward_sensitive_headers_on_redirect: bool = False,
         preview_bytes: int = 4096,
     ) -> dict[str, Any]:
         """Run a structured curl request with arbitrary HTTP method, headers, cookies and body.
@@ -71,6 +72,7 @@ def register_curl_tools(
             verify_tls=verify_tls,
             proxy_url=proxy_url,
             max_response_bytes=max_response_bytes,
+            forward_sensitive_headers_on_redirect=forward_sensitive_headers_on_redirect,
             preview_bytes=preview_bytes,
         )
 
@@ -97,6 +99,7 @@ def register_curl_tools(
         proxy_url: str = "",
         max_bytes: int = 1024 * 1024 * 1024,
         store_http_errors: bool = False,
+        forward_sensitive_headers_on_redirect: bool = False,
         preview_bytes: int = 4096,
     ) -> dict[str, Any]:
         """Stream an HTTP response into the immutable artifact store.
@@ -127,6 +130,7 @@ def register_curl_tools(
             proxy_url=proxy_url,
             max_bytes=max_bytes,
             store_http_errors=store_http_errors,
+            forward_sensitive_headers_on_redirect=forward_sensitive_headers_on_redirect,
             preview_bytes=preview_bytes,
         )
 
@@ -152,6 +156,7 @@ def register_curl_tools(
         verify_tls: bool = True,
         proxy_url: str = "",
         max_bytes: int = 16 * 1024 * 1024,
+        forward_sensitive_headers_on_redirect: bool = False,
         preview_bytes: int = 4096,
     ) -> dict[str, Any]:
         """Observe/capture a response byte stream for a bounded duration or byte count.
@@ -180,5 +185,6 @@ def register_curl_tools(
             verify_tls=verify_tls,
             proxy_url=proxy_url,
             max_bytes=max_bytes,
+            forward_sensitive_headers_on_redirect=forward_sensitive_headers_on_redirect,
             preview_bytes=preview_bytes,
         )
