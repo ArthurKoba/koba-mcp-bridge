@@ -64,3 +64,12 @@ def test_write_text_and_delete(root):
 def test_standard_dirs_are_protected(root):
     with pytest.raises(artifact_storage.ArtifactError, match="cannot be deleted"):
         artifact_storage.artifact_delete_impl("inbox", recursive=True)
+
+
+def test_list_is_paginated(root):
+    artifact_storage.artifact_write_text_impl("inbox/a.txt", "a")
+    artifact_storage.artifact_write_text_impl("inbox/b.txt", "b")
+    page = artifact_storage.artifact_list_impl("inbox", offset=1, limit=1)
+    assert page["total"] == 2
+    assert len(page["entries"]) == 1
+    assert page["truncated"] is False

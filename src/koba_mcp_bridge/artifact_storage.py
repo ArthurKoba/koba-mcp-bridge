@@ -86,12 +86,24 @@ def ensure_artifact_layout() -> None:
         (root / name).mkdir(parents=True, exist_ok=True)
 
 
-def artifact_list_impl(path: str = "") -> dict[str, Any]:
+def artifact_list_impl(path: str = "", offset: int = 0, limit: int = 200) -> dict[str, Any]:
+    if offset < 0:
+        raise ArtifactError("offset must be non-negative")
+    if limit <= 0 or limit > 1000:
+        raise ArtifactError("limit must be between 1 and 1000")
     target = _resolve(path, allow_root=True)
     if not target.is_dir():
         raise ArtifactError("artifact path is not a directory")
-    entries = [_meta(item) for item in sorted(target.iterdir(), key=lambda p: (not p.is_dir(), p.name.casefold()))]
-    return {"path": _rel(target), "entries": entries}
+    all_entries = sorted(target.iterdir(), key=lambda p: (not p.is_dir(), p.name.casefold()))
+    page = all_entries[offset: offset + limit]
+    return {
+        "path": _rel(target),
+        "entries": [_meta(item) for item in page],
+        "offset": offset,
+        "limit": limit,
+        "total": len(all_entries),
+        "truncated": offset + len(page) < len(all_entries),
+    }
 
 
 def artifact_info_impl(path: str, sha256: bool = True) -> dict[str, Any]:
@@ -212,9 +224,9 @@ def register_artifact_tools(
         }
 
     @mcp.tool(title="Artifact list", annotations=read_annotations)
-    def artifact_list(path: str = "") -> dict[str, Any]:
-        """List files/directories below a relative artifact path."""
-        return artifact_list_impl(path)
+    def artifact_list(path: str = "", offset: int = 0, limit: int = 200) -> dict[str, Any]:
+        """List files/directories below a relative artifact path with pagination."""
+        return artifact_list_impl(path, offset, limit)
 
     @mcp.tool(title="Artifact info", annotations=read_annotations)
     def artifact_info(path: str, sha256: bool = True) -> dict[str, Any]:
