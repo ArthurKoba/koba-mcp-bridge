@@ -180,6 +180,91 @@ def test_env_and_file_refs(tmp_path: Path, monkeypatch) -> None:
     assert resolver.resolve(f"file://{secret_file}") == "file-value"
 
 
+
+def test_infisical_config_reads_environment_and_base_path(monkeypatch) -> None:
+    monkeypatch.setenv("INFISICAL_HOST", "https://secrets.example.test")
+    monkeypatch.setenv("INFISICAL_PROJECT_ID", "project")
+    monkeypatch.setenv("INFISICAL_CLIENT_ID", "client-id")
+    monkeypatch.setenv("INFISICAL_CLIENT_SECRET", "client-secret")
+    monkeypatch.setenv("INFISICAL_ENVIRONMENT", "production")
+    monkeypatch.setenv("INFISICAL_BASE_PATH", "/koba/platform/")
+
+    config = InfisicalConfig.from_env()
+
+    assert config.environment == "production"
+    assert config.base_path == "/koba/platform"
+    public = config.public()
+    assert public["environment"] == "production"
+    assert public["base_path"] == "/koba/platform"
+
+
+def test_convention_resolver_joins_base_path(monkeypatch) -> None:
+    client = InfisicalClient(
+        InfisicalConfig(
+            host="https://secrets.example.test",
+            project_id="project",
+            client_id="client-id",
+            client_secret="client-secret",
+            environment="prod",
+            base_path="/koba",
+        )
+    )
+    resolver = SecretResolver(client)
+    calls = []
+
+    def fake_get_secret(secret_name, *, environment, secret_path, project_id=""):
+        calls.append(
+            {
+                "secret_name": secret_name,
+                "environment": environment,
+                "secret_path": secret_path,
+                "project_id": project_id,
+            }
+        )
+        return "value", {}
+
+    monkeypatch.setattr(client, "get_secret", fake_get_secret)
+
+    assert resolver.get("github/development", "APP_ID") == "value"
+    assert calls == [
+        {
+            "secret_name": "APP_ID",
+            "environment": "prod",
+            "secret_path": "/koba/github/development",
+            "project_id": "",
+        }
+    ]
+
+
+def test_convention_resolver_root_base_path(monkeypatch) -> None:
+    client = InfisicalClient(
+        InfisicalConfig(
+            host="https://secrets.example.test",
+            project_id="project",
+            client_id="client-id",
+            client_secret="client-secret",
+            environment="prod",
+            base_path="/",
+        )
+    )
+    resolver = SecretResolver(client)
+    captured = {}
+
+    def fake_get_secret(secret_name, *, environment, secret_path, project_id=""):
+        captured["name"] = secret_name
+        captured["environment"] = environment
+        captured["path"] = secret_path
+        return "pem", {}
+
+    monkeypatch.setattr(client, "get_secret", fake_get_secret)
+
+    assert resolver.get("github/reviewer", "PRIVATE_KEY_PEM") == "pem"
+    assert captured == {
+        "name": "PRIVATE_KEY_PEM",
+        "environment": "prod",
+        "path": "/github/reviewer",
+    }
+
 def test_infisical_config_supports_bootstrap_files(tmp_path: Path, monkeypatch) -> None:
     client_id = tmp_path / "client-id"
     client_secret = tmp_path / "client-secret"
