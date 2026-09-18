@@ -3,11 +3,10 @@ from __future__ import annotations
 import base64
 
 import pytest
-
-import koba_mcp_bridge.github_reviewer as github_reviewer
 from fastmcp import Client, FastMCP
 from mcp.types import ToolAnnotations
 
+import koba_mcp_bridge.github_reviewer as github_reviewer
 from koba_mcp_bridge.github_agent import GitHubAgentError
 from koba_mcp_bridge.github_collab import GitHubCollabClient
 from koba_mcp_bridge.github_reviewer import (
