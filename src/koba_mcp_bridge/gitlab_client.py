@@ -209,7 +209,8 @@ def _parse_profile(item: dict[str, Any]) -> GitLabProfile:
     configured_sources = sum(bool(value) for value in (token_env, token_file, secret_ref))
     if configured_sources != 1:
         raise GitLabError(
-            f"profile {profile_id!r} must define exactly one of token_env, token_file, or secret_ref"
+            f"profile {profile_id!r} must define exactly one credential source: "
+            "token_env, token_file, or secret_ref"
         )
     if token_env and not _ENV_NAME_RE.fullmatch(token_env):
         raise GitLabError(f"profile {profile_id!r} token_env is not a valid env name")
