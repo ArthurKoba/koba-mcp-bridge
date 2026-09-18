@@ -27,7 +27,9 @@ RUN uv sync --no-dev \
     && chown -R 1000:1000 /data /artifacts /home/bridge
 
 COPY deploy/docker-entrypoint.sh /usr/local/bin/koba-entrypoint
-RUN chmod 0755 /usr/local/bin/koba-entrypoint
+RUN chmod 0755 /usr/local/bin/koba-entrypoint \
+    && test "$(/usr/local/bin/koba-entrypoint id -u)" = "1000" \
+    && /usr/local/bin/koba-entrypoint /app/.venv/bin/python -c "import koba_mcp_bridge.server"
 
 EXPOSE 8000
 
