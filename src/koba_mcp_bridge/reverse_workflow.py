@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import uuid
+from contextlib import suppress
 from typing import Any
 
 from fastmcp import Client, FastMCP
@@ -77,10 +78,8 @@ def _require_backend_success(result: Any, operation: str) -> dict[str, Any]:
 async def _cancel_stage(client: Client, stage_id: str) -> None:
     if not stage_id:
         return
-    try:
+    with suppress(Exception):
         await client.call_tool("artifact_stage_cancel", {"stage_id": stage_id})
-    except Exception:
-        pass
 
 
 async def _stage_artifact_for_ghidra(
