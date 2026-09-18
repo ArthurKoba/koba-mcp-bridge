@@ -297,8 +297,12 @@ def test_attachment_ingress_streams_directly_to_artifact_store(
     )
 
     result = artifact_ingress.ingest_file(
-        file="https://files.example.invalid/download/token",
-        name="Sofia",
+        file={
+            "download_url": "https://files.example.invalid/download/token",
+            "file_id": "file-test",
+            "file_name": "Sofia",
+            "mime_type": "application/x-firmware",
+        },
         expected_size=len(payload),
         expected_sha256=digest,
     )
@@ -334,8 +338,11 @@ def test_attachment_ingress_rejects_checksum_mismatch_without_committing(
 
     with pytest.raises(ArtifactError, match="SHA-256 mismatch"):
         artifact_ingress.ingest_file(
-            file="https://files.example.invalid/download/token",
-            name="bad.bin",
+            file={
+                "download_url": "https://files.example.invalid/download/token",
+                "file_id": "file-test",
+                "file_name": "bad.bin",
+            },
             expected_size=len(payload),
             expected_sha256=hashlib.sha256(b"different").hexdigest(),
         )
@@ -343,8 +350,15 @@ def test_attachment_ingress_rejects_checksum_mismatch_without_committing(
     assert ArtifactStore().list()["total"] == 0
 
 
-def test_attachment_ingress_rejects_non_https_source() -> None:
-    from koba_mcp_bridge.artifact_ingress import _validate_remote_file_url
+def test_attachment_ingress_rejects_non_https_source(tmp_path, monkeypatch) -> None:
+    from koba_mcp_bridge import artifact_ingress
 
+    monkeypatch.setenv("ARTIFACT_ROOT", str(tmp_path))
     with pytest.raises(ArtifactError, match="HTTPS attachment URL"):
-        _validate_remote_file_url("/mnt/data/local.bin")
+        artifact_ingress.ingest_file(
+            file={
+                "download_url": "/mnt/data/local.bin",
+                "file_id": "file-local",
+                "file_name": "local.bin",
+            }
+        )

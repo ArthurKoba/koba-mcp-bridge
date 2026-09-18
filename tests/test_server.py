@@ -66,6 +66,12 @@ async def test_artifact_tools_are_registered() -> None:
     }
     assert expected <= names
 
+    ingest_tool = next(tool for tool in tools if tool.name == "artifact_ingest_file")
+    descriptor = ingest_tool.model_dump(by_alias=True)
+    assert descriptor["_meta"]["openai/fileParams"] == ["file"]
+    assert descriptor["inputSchema"]["properties"]["file"]["type"] == "object"
+    assert "download_url" in descriptor["inputSchema"]["properties"]["file"]["properties"]
+
 
 @pytest.mark.asyncio
 async def test_agent_upload_round_trip_over_mcp(tmp_path, monkeypatch) -> None:

@@ -4,7 +4,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from .artifact_ingress import ArtifactUploadManager, ingest_file
+from .artifact_ingress import ArtifactUploadManager, ClientFile, ingest_file
 from .artifact_store import ArtifactStore
 
 
@@ -21,9 +21,13 @@ def register_artifact_tools(
         result["active_uploads"] = ArtifactUploadManager().active_count()
         return result
 
-    @mcp.tool(title="Artifact ingest file", annotations=write_annotations)
+    @mcp.tool(
+        title="Artifact ingest file",
+        annotations=write_annotations,
+        meta={"openai/fileParams": ["file"]},
+    )
     def artifact_ingest_file(
-        file: str,
+        file: ClientFile,
         name: str = "",
         mime_type: str = "",
         expected_size: int | None = None,
@@ -31,10 +35,10 @@ def register_artifact_tools(
     ) -> dict[str, Any]:
         """Ingest a client attachment/file directly into immutable artifact storage.
 
-        Pass the client-visible attachment or local file argument as `file`. A
-        file-capable MCP client may replace that local handle/path with a temporary
-        authorized HTTPS URL before the request reaches Koba. Koba streams the bytes
-        server-side; do not base64-encode chat attachments for this tool.
+        Pass the client-visible attachment/file as `file`. ChatGPT resolves this
+        marked file parameter into a structured payload containing an authorized
+        temporary download URL plus file metadata. Koba streams the bytes server-side;
+        do not base64-encode chat attachments for this tool.
 
         Use artifact_upload_* only as the generic resumable fallback for clients that
         cannot provide a file-capable argument.

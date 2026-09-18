@@ -12,11 +12,20 @@ import uuid
 from contextlib import contextmanager, suppress
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, NotRequired, TypedDict
 
 from .artifact_store import ArtifactError, ArtifactStore, upload_max_bytes
 
 _DEFAULT_CHUNK_BYTES = 1024 * 1024
+
+
+class ClientFile(TypedDict):
+    """ChatGPT/OpenAI file parameter payload."""
+
+    download_url: str
+    file_id: NotRequired[str]
+    mime_type: NotRequired[str]
+    file_name: NotRequired[str]
 
 
 def _now() -> str:
@@ -129,7 +138,7 @@ def _attachment_name(parsed: urllib.parse.SplitResult, requested_name: str) -> s
 
 
 def ingest_file(
-    file: str,
+    file: ClientFile,
     name: str = "",
     mime_type: str = "",
     expected_size: int | None = None,
@@ -138,8 +147,14 @@ def ingest_file(
     """Stream one client-authorized attachment directly into canonical artifact storage."""
     store = ArtifactStore()
     store.ensure()
-    parsed = _validate_remote_file_url(file)
-    clean_name = _attachment_name(parsed, name)
+
+    download_url = str(file.get("download_url", "")).strip()
+    if not download_url:
+        raise ArtifactError("file.download_url is required")
+    parsed = _validate_remote_file_url(download_url)
+
+    file_name = str(file.get("file_name", "")).strip()
+    clean_name = _attachment_name(parsed, name or file_name)
     expected_digest = _validate_sha256(expected_sha256)
 
     if (
@@ -151,13 +166,13 @@ def ingest_file(
         )
 
     request = urllib.request.Request(
-        file,
+        download_url,
         headers={"User-Agent": "koba-mcp-bridge/0.1 artifact-ingress"},
     )
     temporary = store.tmp / f"attachment-{uuid.uuid4().hex}.part"
     digest = hashlib.sha256()
     total = 0
-    detected_mime = mime_type.strip()
+    detected_mime = mime_type.strip() or str(file.get("mime_type", "")).strip()
 
     try:
         try:

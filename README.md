@@ -48,10 +48,12 @@ Physical storage paths are private implementation details and are never used as
 cross-service identifiers.
 
 For client/chat attachments, agents should call `artifact_ingest_file` with the
-attachment/file argument itself. A file-capable client may replace its local
-attachment handle with a temporary authorized HTTPS URL; Koba streams that URL
-directly into canonical storage and returns `artifact_id`. The attachment bytes
-never need to be serialized through model-visible base64.
+attachment/file argument itself. The tool marks `file` in
+`_meta["openai/fileParams"]`, so ChatGPT supplies a structured file payload
+containing `download_url`, `file_id`, and optional MIME/name metadata. Koba
+streams the authorized temporary URL directly into canonical storage and returns
+`artifact_id`. Attachment bytes never need to be serialized through
+model-visible base64.
 
 For generic MCP clients that cannot provide a file-capable argument, Koba also
 provides a resumable fallback protocol:
