@@ -14,6 +14,7 @@ from mcp.types import ToolAnnotations
 
 from . import __version__
 from .artifact_tools import register_artifact_tools
+from .curl_mcp_tools import register_curl_tools
 from .github_actions_tools import register_github_actions_tools
 from .github_agent import github_agent_configured
 from .github_collab_tools import register_github_collab_tools
@@ -192,6 +193,10 @@ def bridge_capabilities() -> dict[str, object]:
         "attachment-file-ingress",
         "artifact-collections",
         "artifact-references",
+        "curl-http-client",
+        "curl-artifact-download",
+        "curl-stream-capture",
+        "curl-browser-header-presets",
     ]
     if _auth is not None:
         features.append("github-oauth")
@@ -316,6 +321,7 @@ register_github_actions_tools(
     _DESTRUCTIVE_EXTERNAL,
 )
 register_artifact_tools(mcp, _READ_ONLY_LOCAL, _WRITE_LOCAL, _DESTRUCTIVE_LOCAL)
+register_curl_tools(mcp, _READ_ONLY_LOCAL, _WRITE_EXTERNAL)
 register_reverse_workflow_tools(mcp, _READ_ONLY_LOCAL, _WRITE_LOCAL)
 
 if github_reviewer_configured():
