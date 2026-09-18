@@ -21,37 +21,46 @@ def test_layout(root):
     assert (root / "scripts").is_dir()
 
 
-def test_path_escape_rejected(root):
+def test_path_escape_and_absolute_path_rejected(root):
     with pytest.raises(artifact_storage.ArtifactError):
         artifact_storage._resolve("../outside")
-
-
-def test_absolute_path_rejected(root):
     with pytest.raises(artifact_storage.ArtifactError):
         artifact_storage._resolve("/etc/passwd")
 
 
-def test_chunk_roundtrip(root):
-    target = artifact_storage._resolve("inbox/test.bin")
-    first = b"abc"
-    second = b"defgh"
+def test_chunk_upload_download_and_hash(root):
+    one = artifact_storage.artifact_upload_chunk_impl(
+        "inbox/test.bin", base64.b64encode(b"abc").decode(), offset=0, truncate=True
+    )
+    two = artifact_storage.artifact_upload_chunk_impl(
+        "inbox/test.bin", base64.b64encode(b"defgh").decode(), offset=one["next_offset"]
+    )
+    assert two["size_bytes"] == 8
 
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(first)
-    assert target.stat().st_size == 3
+    info = artifact_storage.artifact_info_impl("inbox/test.bin", sha256=True)
+    assert len(info["sha256"]) == 64
 
-    current = target.stat().st_size
-    assert current == 3
-    with target.open("ab") as handle:
-        handle.write(second)
-    assert target.read_bytes() == first + second
-    assert artifact_storage._sha256(target)
+    out = artifact_storage.artifact_download_chunk_impl("inbox/test.bin", 0, 4096)
+    assert base64.b64decode(out["data_base64"]) == b"abcdefgh"
+    assert out["eof"] is True
 
 
-def test_base64_validation(root):
-    with pytest.raises(Exception):
-        base64.b64decode("!", validate=True)
+def test_offset_mismatch_rejected(root):
+    artifact_storage.artifact_upload_chunk_impl(
+        "inbox/test.bin", base64.b64encode(b"abc").decode(), offset=0, truncate=True
+    )
+    with pytest.raises(artifact_storage.ArtifactError, match="offset mismatch"):
+        artifact_storage.artifact_upload_chunk_impl(
+            "inbox/test.bin", base64.b64encode(b"x").decode(), offset=1
+        )
+
+
+def test_write_text_and_delete(root):
+    saved = artifact_storage.artifact_write_text_impl("scripts/Probe.java", "class Probe {}")
+    assert saved["path"] == "scripts/Probe.java"
+    assert artifact_storage.artifact_delete_impl("scripts/Probe.java")["deleted"] is True
 
 
 def test_standard_dirs_are_protected(root):
-    assert artifact_storage._rel(artifact_storage._resolve("inbox")) == "inbox"
+    with pytest.raises(artifact_storage.ArtifactError, match="cannot be deleted"):
+        artifact_storage.artifact_delete_impl("inbox", recursive=True)

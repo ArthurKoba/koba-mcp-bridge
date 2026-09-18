@@ -38,11 +38,23 @@ _WRITE_EXTERNAL = ToolAnnotations(
     idempotent_hint=False,
     open_world_hint=True,
 )
+_WRITE_LOCAL = ToolAnnotations(
+    read_only_hint=False,
+    destructive_hint=False,
+    idempotent_hint=False,
+    open_world_hint=False,
+)
 _DESTRUCTIVE_EXTERNAL = ToolAnnotations(
     read_only_hint=False,
     destructive_hint=True,
     idempotent_hint=False,
     open_world_hint=True,
+)
+_DESTRUCTIVE_LOCAL = ToolAnnotations(
+    read_only_hint=False,
+    destructive_hint=True,
+    idempotent_hint=False,
+    open_world_hint=False,
 )
 _CHATGPT_OAUTH_REDIRECT = "https://chatgpt.com/connector_platform_oauth_redirect"
 
@@ -286,7 +298,7 @@ register_github_actions_tools(
     _WRITE_EXTERNAL,
     _DESTRUCTIVE_EXTERNAL,
 )
-register_artifact_tools(mcp, _READ_ONLY_LOCAL, _WRITE_EXTERNAL, _DESTRUCTIVE_EXTERNAL)
+register_artifact_tools(mcp, _READ_ONLY_LOCAL, _WRITE_LOCAL, _DESTRUCTIVE_LOCAL)
 
 if github_reviewer_configured():
     register_github_reviewer_tools(

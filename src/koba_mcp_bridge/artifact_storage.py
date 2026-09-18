@@ -86,6 +86,111 @@ def ensure_artifact_layout() -> None:
         (root / name).mkdir(parents=True, exist_ok=True)
 
 
+def artifact_list_impl(path: str = "") -> dict[str, Any]:
+    target = _resolve(path, allow_root=True)
+    if not target.is_dir():
+        raise ArtifactError("artifact path is not a directory")
+    entries = [_meta(item) for item in sorted(target.iterdir(), key=lambda p: (not p.is_dir(), p.name.casefold()))]
+    return {"path": _rel(target), "entries": entries}
+
+
+def artifact_info_impl(path: str, sha256: bool = True) -> dict[str, Any]:
+    target = _resolve(path)
+    if not target.exists():
+        raise ArtifactError("artifact does not exist")
+    return _meta(target, include_hash=sha256)
+
+
+def artifact_write_text_impl(path: str, content: str, overwrite: bool = True) -> dict[str, Any]:
+    target = _resolve(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists() and not overwrite:
+        raise ArtifactError("artifact already exists")
+    encoded = content.encode("utf-8")
+    if len(encoded) > _max_chunk():
+        raise ArtifactError("text exceeds chunk limit; use artifact_upload_chunk")
+    target.write_bytes(encoded)
+    return {"success": True, **_meta(target, include_hash=True)}
+
+
+def artifact_upload_chunk_impl(path: str, data_base64: str, offset: int = 0, truncate: bool = False) -> dict[str, Any]:
+    if offset < 0:
+        raise ArtifactError("offset must be non-negative")
+    if truncate and offset != 0:
+        raise ArtifactError("truncate=true requires offset=0")
+    try:
+        payload = base64.b64decode(data_base64, validate=True)
+    except Exception as exc:
+        raise ArtifactError("data_base64 is not valid base64") from exc
+    limit = _max_chunk()
+    if len(payload) > limit:
+        raise ArtifactError(f"decoded chunk exceeds {limit} bytes")
+    target = _resolve(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if truncate:
+        mode = "wb"
+    else:
+        current = target.stat().st_size if target.exists() else 0
+        if current != offset:
+            raise ArtifactError(f"offset mismatch: current size is {current}, requested {offset}")
+        mode = "ab"
+    with target.open(mode) as handle:
+        handle.write(payload)
+        handle.flush()
+        os.fsync(handle.fileno())
+    size = target.stat().st_size
+    return {
+        "success": True,
+        "path": _rel(target),
+        "bytes_written": len(payload),
+        "size_bytes": size,
+        "next_offset": size,
+    }
+
+
+def artifact_download_chunk_impl(path: str, offset: int = 0, length: int = _DEFAULT_MAX_CHUNK) -> dict[str, Any]:
+    if offset < 0:
+        raise ArtifactError("offset must be non-negative")
+    limit = _max_chunk()
+    if length <= 0 or length > limit:
+        raise ArtifactError(f"length must be between 1 and {limit}")
+    target = _resolve(path)
+    if not target.is_file():
+        raise ArtifactError("artifact is not a file")
+    size = target.stat().st_size
+    if offset > size:
+        raise ArtifactError("offset exceeds artifact size")
+    with target.open("rb") as handle:
+        handle.seek(offset)
+        payload = handle.read(length)
+    next_offset = offset + len(payload)
+    return {
+        "path": _rel(target),
+        "offset": offset,
+        "bytes_read": len(payload),
+        "next_offset": next_offset,
+        "size_bytes": size,
+        "eof": next_offset >= size,
+        "data_base64": base64.b64encode(payload).decode("ascii"),
+    }
+
+
+def artifact_delete_impl(path: str, recursive: bool = False) -> dict[str, Any]:
+    target = _resolve(path)
+    if not target.exists():
+        return {"success": True, "path": _rel(target), "already_absent": True}
+    rel = _rel(target)
+    if rel in _STANDARD_DIRS:
+        raise ArtifactError("standard artifact directories cannot be deleted")
+    if target.is_dir():
+        if not recursive:
+            raise ArtifactError("directory deletion requires recursive=true")
+        shutil.rmtree(target)
+    else:
+        target.unlink()
+    return {"success": True, "path": rel, "deleted": True}
+
+
 def register_artifact_tools(
     mcp: FastMCP,
     read_annotations: Any,
@@ -109,19 +214,12 @@ def register_artifact_tools(
     @mcp.tool(title="Artifact list", annotations=read_annotations)
     def artifact_list(path: str = "") -> dict[str, Any]:
         """List files/directories below a relative artifact path."""
-        target = _resolve(path, allow_root=True)
-        if not target.is_dir():
-            raise ArtifactError("artifact path is not a directory")
-        entries = [_meta(item) for item in sorted(target.iterdir(), key=lambda p: (not p.is_dir(), p.name.casefold()))]
-        return {"path": _rel(target), "entries": entries}
+        return artifact_list_impl(path)
 
     @mcp.tool(title="Artifact info", annotations=read_annotations)
     def artifact_info(path: str, sha256: bool = True) -> dict[str, Any]:
         """Read artifact metadata and optionally calculate SHA-256."""
-        target = _resolve(path)
-        if not target.exists():
-            raise ArtifactError("artifact does not exist")
-        return _meta(target, include_hash=sha256)
+        return artifact_info_impl(path, sha256)
 
     @mcp.tool(title="Artifact mkdir", annotations=write_annotations)
     def artifact_mkdir(path: str) -> dict[str, Any]:
@@ -135,15 +233,7 @@ def register_artifact_tools(
     @mcp.tool(title="Artifact write text", annotations=write_annotations)
     def artifact_write_text(path: str, content: str, overwrite: bool = True) -> dict[str, Any]:
         """Write UTF-8 text, primarily for scripts/manifests produced by an agent."""
-        target = _resolve(path)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if target.exists() and not overwrite:
-            raise ArtifactError("artifact already exists")
-        encoded = content.encode("utf-8")
-        if len(encoded) > _max_chunk():
-            raise ArtifactError("text exceeds chunk limit; use artifact_upload_chunk")
-        target.write_bytes(encoded)
-        return {"success": True, **_meta(target, include_hash=True)}
+        return artifact_write_text_impl(path, content, overwrite)
 
     @mcp.tool(title="Artifact upload chunk", annotations=write_annotations)
     def artifact_upload_chunk(
@@ -157,39 +247,7 @@ def register_artifact_tools(
         Start with offset=0 and truncate=true. Each next call must use the
         returned next_offset, which prevents sparse or accidentally reordered writes.
         """
-        if offset < 0:
-            raise ArtifactError("offset must be non-negative")
-        if truncate and offset != 0:
-            raise ArtifactError("truncate=true requires offset=0")
-        try:
-            payload = base64.b64decode(data_base64, validate=True)
-        except Exception as exc:
-            raise ArtifactError("data_base64 is not valid base64") from exc
-        limit = _max_chunk()
-        if len(payload) > limit:
-            raise ArtifactError(f"decoded chunk exceeds {limit} bytes")
-
-        target = _resolve(path)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if truncate:
-            mode = "wb"
-        else:
-            current = target.stat().st_size if target.exists() else 0
-            if current != offset:
-                raise ArtifactError(f"offset mismatch: current size is {current}, requested {offset}")
-            mode = "ab"
-        with target.open(mode) as handle:
-            handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
-        size = target.stat().st_size
-        return {
-            "success": True,
-            "path": _rel(target),
-            "bytes_written": len(payload),
-            "size_bytes": size,
-            "next_offset": size,
-        }
+        return artifact_upload_chunk_impl(path, data_base64, offset, truncate)
 
     @mcp.tool(title="Artifact download chunk", annotations=read_annotations)
     def artifact_download_chunk(
@@ -198,44 +256,9 @@ def register_artifact_tools(
         length: int = _DEFAULT_MAX_CHUNK,
     ) -> dict[str, Any]:
         """Download one artifact chunk as base64."""
-        if offset < 0:
-            raise ArtifactError("offset must be non-negative")
-        limit = _max_chunk()
-        if length <= 0 or length > limit:
-            raise ArtifactError(f"length must be between 1 and {limit}")
-        target = _resolve(path)
-        if not target.is_file():
-            raise ArtifactError("artifact is not a file")
-        size = target.stat().st_size
-        if offset > size:
-            raise ArtifactError("offset exceeds artifact size")
-        with target.open("rb") as handle:
-            handle.seek(offset)
-            payload = handle.read(length)
-        next_offset = offset + len(payload)
-        return {
-            "path": _rel(target),
-            "offset": offset,
-            "bytes_read": len(payload),
-            "next_offset": next_offset,
-            "size_bytes": size,
-            "eof": next_offset >= size,
-            "data_base64": base64.b64encode(payload).decode("ascii"),
-        }
+        return artifact_download_chunk_impl(path, offset, length)
 
     @mcp.tool(title="Artifact delete", annotations=destructive_annotations)
     def artifact_delete(path: str, recursive: bool = False) -> dict[str, Any]:
         """Delete one artifact file, or a directory when recursive=true."""
-        target = _resolve(path)
-        if not target.exists():
-            return {"success": True, "path": _rel(target), "already_absent": True}
-        rel = _rel(target)
-        if rel in _STANDARD_DIRS:
-            raise ArtifactError("standard artifact directories cannot be deleted")
-        if target.is_dir():
-            if not recursive:
-                raise ArtifactError("directory deletion requires recursive=true")
-            shutil.rmtree(target)
-        else:
-            target.unlink()
-        return {"success": True, "path": rel, "deleted": True}
+        return artifact_delete_impl(path, recursive)

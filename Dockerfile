@@ -9,6 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     UV_LINK_MODE=copy \
     FASTMCP_HOME=/data/fastmcp \
     ARTIFACT_ROOT=/artifacts \
+    HOME=/home/bridge \
     BUILD_SHA=${BUILD_SHA} \
     BUILD_TIME=${BUILD_TIME}
 
@@ -18,8 +19,8 @@ COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
 
 RUN uv sync --no-dev \
-    && mkdir -p /data/fastmcp /artifacts/inbox /artifacts/exports /artifacts/scripts \
-    && chown -R 1000:1000 /data /artifacts
+    && mkdir -p /data/fastmcp /artifacts/inbox /artifacts/exports /artifacts/scripts /home/bridge \
+    && chown -R 1000:1000 /data /artifacts /home/bridge
 
 USER 1000:1000
 
