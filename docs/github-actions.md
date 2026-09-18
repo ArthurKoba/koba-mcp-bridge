@@ -6,12 +6,13 @@ The GitHub development App exposes Actions diagnostics through `github_agent_*` 
 - read the tail of a job log;
 - list workflow artifacts;
 - download small artifact ZIPs as base64 with SHA-256;
+- dispatch a `workflow_dispatch` workflow with an explicit ref and inputs;
 - re-run one job;
 - re-run only failed jobs in a run;
 - re-run an entire workflow run;
 - cancel an in-progress workflow run.
 
-The App therefore needs **Actions: Read and write** when rerun/cancel tools are required. If Actions permission remains read-only, the read diagnostics continue to work but rerun/cancel operations will be rejected by GitHub.
+The App therefore needs **Actions: Read and write** when workflow dispatch, rerun, or cancel tools are required. If Actions permission remains read-only, the read diagnostics continue to work but rerun/cancel operations will be rejected by GitHub.
 
 The optional independent reviewer App receives only the read side of this surface: workflow run/job metadata, logs, artifact listing, and artifact download. It should keep **Actions: Read-only**.
 
