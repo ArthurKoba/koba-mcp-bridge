@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import io
+import urllib.parse
 
 import pytest
 
@@ -239,3 +241,110 @@ def test_upload_cleanup_removes_only_stale_session_state(
 
     artifact_id = committed["artifact"]["artifact_id"]
     assert ArtifactStore().path_for(artifact_id).read_bytes() == b"z"
+
+
+
+class _FakeAttachmentResponse:
+    def __init__(
+        self,
+        payload: bytes,
+        *,
+        content_type: str = "application/octet-stream",
+    ) -> None:
+        self._buffer = io.BytesIO(payload)
+        self.headers = {
+            "Content-Length": str(len(payload)),
+            "Content-Type": content_type,
+        }
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
+
+    def geturl(self) -> str:
+        return "https://files.example.invalid/download/token"
+
+    def read(self, size: int = -1) -> bytes:
+        return self._buffer.read(size)
+
+
+def test_attachment_ingress_streams_directly_to_artifact_store(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from koba_mcp_bridge import artifact_ingress
+
+    monkeypatch.setenv("ARTIFACT_ROOT", str(tmp_path))
+    monkeypatch.setenv("ARTIFACT_UPLOAD_MAX_BYTES", str(16 * 1024 * 1024))
+
+    payload = b"chat-attachment-bytes"
+    digest = hashlib.sha256(payload).hexdigest()
+
+    monkeypatch.setattr(
+        artifact_ingress,
+        "_validate_remote_file_url",
+        lambda value: urllib.parse.urlsplit(value),
+    )
+    monkeypatch.setattr(
+        artifact_ingress,
+        "_open_remote_file",
+        lambda request: _FakeAttachmentResponse(
+            payload,
+            content_type="application/x-firmware",
+        ),
+    )
+
+    result = artifact_ingress.ingest_file(
+        file="https://files.example.invalid/download/token",
+        name="Sofia",
+        expected_size=len(payload),
+        expected_sha256=digest,
+    )
+
+    artifact = result["artifact"]
+    assert result["transport"] == "client-file"
+    assert artifact["artifact_id"] == f"sha256:{digest}"
+    assert artifact["name"] == "Sofia"
+    assert artifact["mime_type"] == "application/x-firmware"
+    assert ArtifactStore().path_for(artifact["artifact_id"]).read_bytes() == payload
+
+
+def test_attachment_ingress_rejects_checksum_mismatch_without_committing(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from koba_mcp_bridge import artifact_ingress
+
+    monkeypatch.setenv("ARTIFACT_ROOT", str(tmp_path))
+    monkeypatch.setenv("ARTIFACT_UPLOAD_MAX_BYTES", str(16 * 1024 * 1024))
+
+    payload = b"actual"
+    monkeypatch.setattr(
+        artifact_ingress,
+        "_validate_remote_file_url",
+        lambda value: urllib.parse.urlsplit(value),
+    )
+    monkeypatch.setattr(
+        artifact_ingress,
+        "_open_remote_file",
+        lambda request: _FakeAttachmentResponse(payload),
+    )
+
+    with pytest.raises(ArtifactError, match="SHA-256 mismatch"):
+        artifact_ingress.ingest_file(
+            file="https://files.example.invalid/download/token",
+            name="bad.bin",
+            expected_size=len(payload),
+            expected_sha256=hashlib.sha256(b"different").hexdigest(),
+        )
+
+    assert ArtifactStore().list()["total"] == 0
+
+
+def test_attachment_ingress_rejects_non_https_source() -> None:
+    from koba_mcp_bridge.artifact_ingress import _validate_remote_file_url
+
+    with pytest.raises(ArtifactError, match="HTTPS attachment URL"):
+        _validate_remote_file_url("/mnt/data/local.bin")
