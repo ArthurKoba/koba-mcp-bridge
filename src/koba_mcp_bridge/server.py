@@ -21,6 +21,7 @@ from .github_review_tools import register_github_review_tools
 from .github_reviewer import github_reviewer_client_from_env, github_reviewer_configured
 from .github_reviewer_tools import register_github_reviewer_tools
 from .github_tools import register_github_workflow_tools
+from .artifact_storage import register_artifact_tools
 
 _STARTED_AT = datetime.now(UTC).isoformat()
 _READ_ONLY_LOCAL = ToolAnnotations(
@@ -162,7 +163,7 @@ def bridge_build_info() -> dict[str, str]:
 )
 def bridge_capabilities() -> dict[str, object]:
     """Return the currently enabled high-level bridge capabilities."""
-    features = ["mcp", "streamable-http", "opentelemetry", "gateway"]
+    features = ["mcp", "streamable-http", "opentelemetry", "gateway", "artifact-storage"]
     if _auth is not None:
         features.append("github-oauth")
     if github_agent_configured():
@@ -285,6 +286,7 @@ register_github_actions_tools(
     _WRITE_EXTERNAL,
     _DESTRUCTIVE_EXTERNAL,
 )
+register_artifact_tools(mcp, _READ_ONLY_LOCAL, _WRITE_EXTERNAL, _DESTRUCTIVE_EXTERNAL)
 
 if github_reviewer_configured():
     register_github_reviewer_tools(
