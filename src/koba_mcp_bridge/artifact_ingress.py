@@ -142,11 +142,13 @@ def ingest_file(
     clean_name = _attachment_name(parsed, name)
     expected_digest = _validate_sha256(expected_sha256)
 
-    if expected_size is not None:
-        if expected_size < 0 or expected_size > upload_max_bytes():
-            raise ArtifactError(
-                f"expected_size must be between 0 and {upload_max_bytes()}"
-            )
+    if (
+        expected_size is not None
+        and (expected_size < 0 or expected_size > upload_max_bytes())
+    ):
+        raise ArtifactError(
+            f"expected_size must be between 0 and {upload_max_bytes()}"
+        )
 
     request = urllib.request.Request(
         file,
