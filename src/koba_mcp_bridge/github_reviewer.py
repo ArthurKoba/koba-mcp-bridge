@@ -6,19 +6,25 @@ from functools import lru_cache
 
 from .github_agent import GitHubAgentError
 from .github_identity import GitHubPrettyIdentityClient
+from .secrets import resolve_secret
 
 
 def github_reviewer_configured() -> bool:
     return bool(
         os.getenv("GITHUB_REVIEWER_APP_ID", "").strip()
         and (
-            os.getenv("GITHUB_REVIEWER_PRIVATE_KEY", "").strip()
+            os.getenv("GITHUB_REVIEWER_PRIVATE_KEY_REF", "").strip()
+            or os.getenv("GITHUB_REVIEWER_PRIVATE_KEY", "").strip()
             or os.getenv("GITHUB_REVIEWER_PRIVATE_KEY_B64", "").strip()
         )
     )
 
 
 def _reviewer_private_key_from_env() -> str:
+    secret_ref = os.getenv("GITHUB_REVIEWER_PRIVATE_KEY_REF", "").strip()
+    if secret_ref:
+        return resolve_secret(secret_ref).replace("\\n", "\n")
+
     raw = os.getenv("GITHUB_REVIEWER_PRIVATE_KEY", "").strip()
     if raw:
         return raw.replace("\\n", "\n")
