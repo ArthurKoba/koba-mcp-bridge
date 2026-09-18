@@ -51,11 +51,11 @@ Agents transfer arbitrary binary files through a resumable MCP upload protocol:
 
 - `artifact_upload_begin` creates an upload session from file metadata;
 - `artifact_upload_write` appends one bounded base64 chunk at the exact next offset;
-- `artifact_upload_list` enumerates active sessions for autonomous recovery;
+- `artifact_upload_list` enumerates open/completed sessions for autonomous recovery;
 - `artifact_upload_status` resumes interrupted transfers from the server-confirmed offset;
 - `artifact_upload_finish` verifies size and optional SHA-256, commits the immutable
   object, and returns its `artifact_id`;
-- `artifact_upload_gc` finds or discards abandoned sessions by age;
+- `artifact_upload_cleanup` previews or removes stale upload-session state by age without deleting committed artifacts;
 - `artifact_upload_cancel` discards a specific unfinished transfer.
 
 The protocol is transport-only. The agent does not choose a Koba filesystem path
