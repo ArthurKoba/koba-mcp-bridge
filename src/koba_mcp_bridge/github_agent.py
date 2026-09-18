@@ -47,7 +47,7 @@ def _development_app_id() -> str:
         app_id = os.getenv("GITHUB_AGENT_APP_ID", "").strip()
         if app_id:
             return app_id
-        raise GitHubAgentError("GitHub development APP_ID is not configured")
+        raise GitHubAgentError("GitHub development APP_ID is not configured") from None
 
 
 def _private_key_from_env() -> str:
