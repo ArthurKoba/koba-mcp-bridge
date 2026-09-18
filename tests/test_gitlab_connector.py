@@ -10,7 +10,6 @@ import pytest
 from fastmcp import Client
 
 import koba_mcp_bridge.gitlab_client as gitlab_module
-
 from koba_mcp_bridge.gitlab_client import (
     GitLabClient,
     GitLabError,
