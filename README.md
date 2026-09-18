@@ -124,6 +124,30 @@ GHIDRA_MCP_URL=http://ghidra-mcp:8081/mcp
 The mounted backend is namespaced as `ghidra`. Ghidra itself stays on the
 private Docker network.
 
+## Secrets / Infisical
+
+Koba supports internal secret references so provider credentials do not need to be
+stored directly in every connector's Coolify variables.
+
+Supported references:
+
+```text
+env://NAME
+file:///run/secrets/name
+infisical://prod/path/to/folder#SECRET_NAME
+```
+
+The selected central provider is self-hosted Infisical. Runtime workloads authenticate
+with an Infisical Machine Identity using Universal Auth and receive a short-lived access
+token before fetching the provider secret. The bootstrap client ID/client secret are the
+only credentials that need to remain in the deployment system during this phase.
+
+Deployment and migration instructions are in
+[`deploy/infisical/README.md`](deploy/infisical/README.md).
+
+MCP diagnostics expose only provider/configuration status and redacted reference checks;
+there is intentionally no MCP tool that returns secret plaintext.
+
 ## GitLab connector
 
 GitLab is implemented as a reusable subserver rather than another monolithic block of
@@ -140,7 +164,7 @@ each other's context.
 
 Profiles are loaded from `GITLAB_PROFILES_FILE` and/or `GITLAB_PROFILES_JSON`.
 Profile metadata does not contain the token itself. Each profile references exactly one
-runtime secret source with `token_env` or `token_file`.
+runtime secret source with `secret_ref`, `token_env`, or `token_file`.
 
 Example:
 
@@ -151,14 +175,14 @@ Example:
     "label": "GitLab.com / Arthur",
     "base_url": "https://gitlab.com",
     "auth_type": "private_token",
-    "token_env": "GITLAB_TOKEN_GITLAB_COM_ARTHUR"
+    "secret_ref": "infisical://prod/gitlab/accounts/arthur#TOKEN"
   },
   {
     "profile_id": "lab-admin",
     "label": "Self-hosted lab / admin",
     "base_url": "https://gitlab.lab.example",
     "auth_type": "bearer",
-    "token_env": "GITLAB_TOKEN_LAB_ADMIN",
+    "secret_ref": "infisical://prod/gitlab/accounts/lab-admin#TOKEN",
     "verify_tls": true,
     "ca_file": "/run/secrets/lab-ca.pem"
   }
@@ -185,8 +209,8 @@ role, and token-scope settings remain the authoritative server-side access contr
 OAuth is disabled by default so a deployment can be upgraded before credentials are configured. When `OAUTH_ENABLED=true`, the bridge requires all of the following runtime environment variables:
 
 - `OAUTH_GITHUB_CLIENT_ID`
-- `OAUTH_GITHUB_CLIENT_SECRET`
-- `OAUTH_JWT_SIGNING_KEY`
+- `OAUTH_GITHUB_CLIENT_SECRET` or `OAUTH_GITHUB_CLIENT_SECRET_REF`
+- `OAUTH_JWT_SIGNING_KEY` or `OAUTH_JWT_SIGNING_KEY_REF`
 - `OAUTH_ALLOWED_GITHUB_USERS`
 
 The public OAuth base URL defaults to:
@@ -218,7 +242,7 @@ GITHUB_AGENT_APP_ID=<GitHub App numeric App ID>
 GITHUB_AGENT_PRIVATE_KEY_B64=<base64-encoded GitHub App private key PEM>
 ```
 
-`GITHUB_AGENT_PRIVATE_KEY` can be used instead of the base64 form when the deployment system can safely store multiline PEM values.
+`GITHUB_AGENT_PRIVATE_KEY` can be used instead of the base64 form. `GITHUB_AGENT_PRIVATE_KEY_REF` takes precedence and can resolve the key from Infisical.
 
 The GitHub App installation is the single source of truth for repository access. There is no duplicated bridge-side repository allowlist. Adding or removing repositories in the GitHub App installation immediately changes the repository set visible to the bridge without changing Coolify environment variables.
 
@@ -311,7 +335,7 @@ GITHUB_REVIEWER_APP_ID=<reviewer GitHub App numeric App ID>
 GITHUB_REVIEWER_PRIVATE_KEY_B64=<base64-encoded reviewer private key PEM>
 ```
 
-`GITHUB_REVIEWER_PRIVATE_KEY` is also supported for multiline PEM storage.
+`GITHUB_REVIEWER_PRIVATE_KEY` is also supported for multiline PEM storage. `GITHUB_REVIEWER_PRIVATE_KEY_REF` takes precedence and can resolve the key from Infisical.
 
 The reviewer App installation is also the sole source of repository access. `github_reviewer_list_repositories` discovers its current installation repository set directly from GitHub. No reviewer repository list is duplicated in Coolify.
 

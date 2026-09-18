@@ -1,60 +1,53 @@
 # Repository and platform roadmap
 
-This roadmap records direction, not delivery dates.
+This roadmap contains only the active stabilization scope.
 
 ## Phase 0 — documentation and inventory
 
-- establish the documentation index and architecture map;
-- inventory modules, endpoints, credentials and policy sources;
-- document deployment and recovery paths;
-- identify hidden cross-component coupling;
-- create focused issues for missing documentation.
+- maintain the architecture/repository map;
+- inventory public endpoints and runtime ownership;
+- document deployment, rollback and recovery.
 
-## Phase 1 — secret management foundation
+## Phase 1 — Secrets foundation
 
-- evaluate and select the first secret-manager deployment;
-- define secret naming/ownership conventions;
-- define machine identities for connector runtimes;
-- migrate connector credentials away from direct Coolify environment management;
-- document backup, recovery and rotation procedures.
+- deploy a self-hosted Infisical baseline;
+- define secret paths and machine identity conventions;
+- add a shared internal secret resolver;
+- migrate GitHub/GitLab credentials from direct Coolify provider-secret variables;
+- verify backup/recovery and rotation procedures.
 
-The current leading implementation candidate is Infisical, but the decision should be recorded explicitly rather than implied by code.
+Infisical is now the selected implementation for this phase.
 
-## Phase 2 — runtime boundaries
+## Phase 2 — GitHub runtime boundary
 
-Incrementally split runtime entry points while reusing common libraries:
+- reuse existing GitHub modules;
+- move GitHub into an independently deployable runtime;
+- preserve development/reviewer identities and PR policy;
+- keep aggregate gateway compatibility.
 
-- GitHub;
-- GitLab;
-- Files;
-- HTTP;
-- Agents;
-- Ghidra integration/gateway adapters.
+## Phase 3 — GitLab runtime boundary
 
-The aggregate `/mcp` endpoint can remain for compatibility while dedicated endpoints become first-class.
+- preserve explicit `profile_id` routing;
+- move GitLab to an independent runtime;
+- keep gateway compatibility.
 
-## Phase 3 — control plane
+## Phase 4 — Ghidra integration boundary
 
-Introduce a Koba control plane/dashboard for connector profiles and policy metadata. It should reference secrets from the secret manager rather than storing provider tokens itself.
+- keep the Ghidra backend independent;
+- reduce gateway coupling in high-level Ghidra adapters;
+- preserve project-scoped worker routing.
 
-Candidate responsibilities:
+## Phase 5 — Files surface
 
-- provider account/profile inventory;
-- enable/disable state;
-- connector-to-profile assignment;
-- policy bindings;
-- health/status;
-- audit references;
-- administrative workflows.
+- establish Files as the user-facing component name;
+- preserve immutable artifact IDs and collection/reference semantics;
+- make Files independently deployable.
 
-## Phase 4 — common identity
+## Phase 6 — HTTP runtime boundary
 
-Evaluate a shared IdP/SSO layer for human-facing Koba applications and administrative endpoints. Keycloak is one candidate. This is separate from provider API-token storage.
-
-## Phase 5 — domain managers
-
-Add higher-level managers where direct device/tool exposure would create a poor abstraction. Camera Manager is the first identified example.
+- move the existing structured curl engine to an independent runtime;
+- preserve request/download/stream behavior and Files integration.
 
 ## Migration rule
 
-Do not require a flag-day rewrite. Every phase should keep the currently working MCP paths available until the replacement runtime has acceptance coverage and deployment recovery documentation.
+No flag-day rewrite. Existing MCP paths and legacy credential env variables remain available until replacement paths have tests, live acceptance and rollback documentation.

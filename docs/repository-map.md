@@ -19,6 +19,11 @@ koba-mcp-bridge/
 
 ## Current Python areas
 
+### Secrets
+
+- `secrets.py` — secret references, Infisical Universal Auth and internal resolver.
+- `secrets_tools.py` — redacted MCP diagnostics; never returns plaintext values.
+
 ### Server composition
 
 - `server.py` — FastMCP composition, OAuth boundary, local registration, mounted backends and HTTP app wiring.
@@ -71,13 +76,13 @@ A likely future monorepo shape is:
 src/
 ├── koba_common/
 ├── gateway/
-├── connectors/
-│   ├── github/
-│   ├── gitlab/
-│   ├── files/
-│   ├── http/
-│   └── agents/
-└── control_plane/
+├── secrets/
+└── connectors/
+    ├── github/
+    ├── gitlab/
+    ├── files/
+    ├── http/
+    └── ghidra/
 ```
 
 This is a working direction, not an approved migration plan. The split should be performed incrementally with compatibility tests.

@@ -2,18 +2,15 @@
 
 Significant architectural choices should be recorded as Architecture Decision Records (ADRs).
 
-This directory is intentionally only a placeholder today. An ADR should be added when a decision would otherwise be repeatedly re-litigated or is difficult to infer safely from code.
+This directory is intentionally lightweight. Add an ADR when a decision would otherwise be repeatedly re-litigated or cannot be inferred safely from code.
 
-Suggested initial ADR topics:
+Current ADR candidates:
 
-- secret manager selection;
+- Infisical deployment and machine identity model;
 - modular runtime/service boundaries;
 - aggregate gateway compatibility policy;
 - public Files naming versus internal artifact terminology;
-- control-plane ownership and secret references;
-- common IdP/SSO adoption;
-- connector profile identity model;
-- Camera Manager boundary.
+- connector profile identity model.
 
 Suggested filename convention:
 

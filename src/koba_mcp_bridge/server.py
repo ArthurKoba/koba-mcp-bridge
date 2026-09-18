@@ -25,6 +25,8 @@ from .github_reviewer_tools import register_github_reviewer_tools
 from .github_tools import register_github_workflow_tools
 from .gitlab_tools import register_gitlab_tools
 from .reverse_workflow import register_reverse_workflow_tools
+from .secrets import SecretError, resolve_secret
+from .secrets_tools import register_secrets_tools
 
 _STARTED_AT = datetime.now(UTC).isoformat()
 _READ_ONLY_LOCAL = ToolAnnotations(
@@ -76,6 +78,19 @@ def _required_env(name: str) -> str:
     return value
 
 
+def _required_secret(name: str, ref_name: str) -> str:
+    reference = os.getenv(ref_name, "").strip()
+    if reference:
+        try:
+            return resolve_secret(reference)
+        except SecretError:
+            legacy = os.getenv(name, "").strip()
+            if legacy:
+                return legacy
+            raise
+    return _required_env(name)
+
+
 def _allowed_github_users() -> set[str]:
     raw = _required_env("OAUTH_ALLOWED_GITHUB_USERS")
     return {item.strip().casefold() for item in raw.split(",") if item.strip()}
@@ -94,10 +109,16 @@ def _build_auth() -> tuple[GitHubProvider | None, list[AuthMiddleware]]:
 
     provider = GitHubProvider(
         client_id=_required_env("OAUTH_GITHUB_CLIENT_ID"),
-        client_secret=_required_env("OAUTH_GITHUB_CLIENT_SECRET"),
+        client_secret=_required_secret(
+            "OAUTH_GITHUB_CLIENT_SECRET",
+            "OAUTH_GITHUB_CLIENT_SECRET_REF",
+        ),
         base_url=os.getenv("OAUTH_BASE_URL", "https://mcp.koba-nexus.ru"),
         required_scopes=["read:user"],
-        jwt_signing_key=_required_env("OAUTH_JWT_SIGNING_KEY"),
+        jwt_signing_key=_required_secret(
+            "OAUTH_JWT_SIGNING_KEY",
+            "OAUTH_JWT_SIGNING_KEY_REF",
+        ),
         allowed_client_redirect_uris=[_CHATGPT_OAUTH_REDIRECT],
         require_authorization_consent="external",
         enable_cimd=False,
@@ -215,6 +236,8 @@ def bridge_capabilities() -> dict[str, object]:
         "attachment-file-ingress",
         "artifact-collections",
         "artifact-references",
+        "infisical-secrets",
+        "secret-references",
         "curl-http-client",
         "curl-artifact-download",
         "curl-stream-capture",
@@ -348,6 +371,7 @@ register_github_actions_tools(
     _DESTRUCTIVE_EXTERNAL,
 )
 register_artifact_tools(mcp, _READ_ONLY_LOCAL, _WRITE_LOCAL, _DESTRUCTIVE_LOCAL)
+register_secrets_tools(mcp, _READ_EXTERNAL)
 register_curl_tools(mcp, _READ_ONLY_LOCAL, _WRITE_EXTERNAL)
 register_reverse_workflow_tools(mcp, _READ_ONLY_LOCAL, _WRITE_LOCAL)
 

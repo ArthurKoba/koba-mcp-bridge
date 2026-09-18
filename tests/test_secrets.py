@@ -1,0 +1,280 @@
+from __future__ import annotations
+
+import json
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
+
+import pytest
+from fastmcp import Client
+
+import koba_mcp_bridge.github_agent as github_agent
+import koba_mcp_bridge.github_reviewer as github_reviewer
+import koba_mcp_bridge.gitlab_client as gitlab_client
+from koba_mcp_bridge.gitlab_client import GitLabProfileRegistry
+from koba_mcp_bridge.secrets import (
+    InfisicalClient,
+    InfisicalConfig,
+    SecretError,
+    SecretReference,
+    SecretResolver,
+)
+from koba_mcp_bridge.server import mcp
+
+
+class _InfisicalHandler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+    login_count = 0
+    secret_count = 0
+
+    def log_message(self, format, *args):  # noqa: A002
+        return
+
+    def _json(self, status: int, payload: dict) -> None:
+        data = json.dumps(payload, separators=(",", ":")).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+        self.wfile.flush()
+
+    def do_POST(self):
+        if self.path != "/api/v1/auth/universal-auth/login":
+            self._json(404, {"message": "not found"})
+            return
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        body = self.rfile.read(length).decode()
+        form = parse_qs(body)
+        if form.get("clientId") != ["client-id"] or form.get("clientSecret") != [
+            "client-secret"
+        ]:
+            self._json(403, {"message": "invalid credentials"})
+            return
+        type(self).login_count += 1
+        self._json(
+            200,
+            {
+                "accessToken": "short-lived-token",
+                "expiresIn": 7200,
+                "accessTokenMaxTTL": 7200,
+                "tokenType": "Bearer",
+            },
+        )
+
+    def do_GET(self):
+        parsed = urlsplit(self.path)
+        if not parsed.path.startswith("/api/v4/secrets/"):
+            self._json(404, {"message": "not found"})
+            return
+        if self.headers.get("Authorization") != "Bearer short-lived-token":
+            self._json(401, {"message": "missing bearer token"})
+            return
+        query = parse_qs(parsed.query)
+        assert query["projectId"] == ["project-123"]
+        assert query["environment"] == ["prod"]
+        assert query["secretPath"] == ["/github/development"]
+        type(self).secret_count += 1
+        self._json(
+            200,
+            {
+                "secret": {
+                    "id": "secret-id",
+                    "secretKey": "PRIVATE_KEY_PEM",
+                    "secretValue": "super-secret-private-key",
+                    "secretPath": "/github/development",
+                    "version": 4,
+                    "updatedAt": "2026-09-18T00:00:00.000Z",
+                }
+            },
+        )
+
+
+@pytest.fixture
+def infisical_server():
+    _InfisicalHandler.login_count = 0
+    _InfisicalHandler.secret_count = 0
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _InfisicalHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        host, port = server.server_address
+        yield f"http://{host}:{port}"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def _client(infisical_server: str) -> InfisicalClient:
+    return InfisicalClient(
+        InfisicalConfig(
+            host=infisical_server,
+            project_id="project-123",
+            client_id="client-id",
+            client_secret="client-secret",
+            verify_tls=True,
+        )
+    )
+
+
+def test_secret_reference_parsing() -> None:
+    env_ref = SecretReference.parse("env://GITHUB_TOKEN")
+    assert env_ref.scheme == "env"
+    assert env_ref.env_name == "GITHUB_TOKEN"
+
+    file_ref = SecretReference.parse("file:///run/secrets/github.pem")
+    assert file_ref.scheme == "file"
+    assert file_ref.file_path == "/run/secrets/github.pem"
+
+    inf_ref = SecretReference.parse(
+        "infisical://prod/github/development#PRIVATE_KEY_PEM"
+    )
+    assert inf_ref.scheme == "infisical"
+    assert inf_ref.environment == "prod"
+    assert inf_ref.secret_path == "/github/development"
+    assert inf_ref.secret_name == "PRIVATE_KEY_PEM"
+
+
+def test_infisical_universal_auth_and_secret_fetch_are_cached(infisical_server) -> None:
+    client = _client(infisical_server)
+
+    first, metadata = client.get_secret(
+        "PRIVATE_KEY_PEM",
+        environment="prod",
+        secret_path="/github/development",
+    )
+    second, _ = client.get_secret(
+        "PRIVATE_KEY_PEM",
+        environment="prod",
+        secret_path="/github/development",
+    )
+
+    assert first == "super-secret-private-key"
+    assert second == first
+    assert metadata["version"] == 4
+    assert _InfisicalHandler.login_count == 1
+    assert _InfisicalHandler.secret_count == 2
+
+
+def test_resolver_never_returns_value_from_check(infisical_server) -> None:
+    resolver = SecretResolver(_client(infisical_server))
+    result = resolver.check(
+        "infisical://prod/github/development#PRIVATE_KEY_PEM"
+    )
+
+    serialized = json.dumps(result)
+    assert result["available"] is True
+    assert "value" not in result
+    assert "super-secret-private-key" not in serialized
+
+
+def test_env_and_file_refs(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("KOBA_TEST_SECRET", "env-value")
+    secret_file = tmp_path / "secret.txt"
+    secret_file.write_text("file-value\n", encoding="utf-8")
+    resolver = SecretResolver(_client("http://127.0.0.1:1"))
+
+    assert resolver.resolve("env://KOBA_TEST_SECRET") == "env-value"
+    assert resolver.resolve(f"file://{secret_file}") == "file-value"
+
+
+def test_infisical_config_supports_bootstrap_files(tmp_path: Path, monkeypatch) -> None:
+    client_id = tmp_path / "client-id"
+    client_secret = tmp_path / "client-secret"
+    client_id.write_text("id-from-file\n", encoding="utf-8")
+    client_secret.write_text("secret-from-file\n", encoding="utf-8")
+
+    monkeypatch.setenv("INFISICAL_HOST", "https://secrets.example.test")
+    monkeypatch.setenv("INFISICAL_PROJECT_ID", "project")
+    monkeypatch.setenv("INFISICAL_CLIENT_ID_FILE", str(client_id))
+    monkeypatch.setenv("INFISICAL_CLIENT_SECRET_FILE", str(client_secret))
+    monkeypatch.delenv("INFISICAL_CLIENT_ID", raising=False)
+    monkeypatch.delenv("INFISICAL_CLIENT_SECRET", raising=False)
+
+    config = InfisicalConfig.from_env()
+    assert config.configured() is True
+    assert config.client_id == "id-from-file"
+    assert config.client_secret == "secret-from-file"
+    public = config.public()
+    assert public["client_secret_source"].startswith("file:")
+    assert "secret-from-file" not in json.dumps(public)
+
+
+def test_gitlab_profile_can_use_secret_reference(monkeypatch) -> None:
+    monkeypatch.setenv("GITLAB_PROFILES_FILE", "/nonexistent")
+    monkeypatch.setenv(
+        "GITLAB_PROFILES_JSON",
+        json.dumps(
+            [
+                {
+                    "profile_id": "main",
+                    "base_url": "https://gitlab.example.test",
+                    "auth_type": "private_token",
+                    "secret_ref": "infisical://prod/gitlab/accounts/main#TOKEN",
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        gitlab_client,
+        "resolve_secret",
+        lambda ref: "resolved-gitlab-token",
+    )
+
+    profile = GitLabProfileRegistry.from_env().get("main")
+    assert profile.token() == "resolved-gitlab-token"
+    public = profile.public()
+    assert public["credential_source"]["type"] == "secret_ref"
+    assert "resolved-gitlab-token" not in json.dumps(public)
+
+
+def test_github_agent_private_key_ref(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_AGENT_APP_ID", "123")
+    monkeypatch.setenv(
+        "GITHUB_AGENT_PRIVATE_KEY_REF",
+        "infisical://prod/github/development#PRIVATE_KEY_PEM",
+    )
+    monkeypatch.delenv("GITHUB_AGENT_PRIVATE_KEY", raising=False)
+    monkeypatch.delenv("GITHUB_AGENT_PRIVATE_KEY_B64", raising=False)
+    monkeypatch.setattr(
+        github_agent,
+        "resolve_secret",
+        lambda ref: "-----BEGIN KEY-----\\nabc\\n-----END KEY-----",
+    )
+
+    assert github_agent.github_agent_configured() is True
+    assert "BEGIN KEY" in github_agent._private_key_from_env()
+
+
+def test_github_reviewer_private_key_ref(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_REVIEWER_APP_ID", "123")
+    monkeypatch.setenv(
+        "GITHUB_REVIEWER_PRIVATE_KEY_REF",
+        "infisical://prod/github/reviewer#PRIVATE_KEY_PEM",
+    )
+    monkeypatch.delenv("GITHUB_REVIEWER_PRIVATE_KEY", raising=False)
+    monkeypatch.delenv("GITHUB_REVIEWER_PRIVATE_KEY_B64", raising=False)
+    monkeypatch.setattr(
+        github_reviewer,
+        "resolve_secret",
+        lambda ref: "-----BEGIN KEY-----\\nabc\\n-----END KEY-----",
+    )
+
+    assert github_reviewer.github_reviewer_configured() is True
+    assert "BEGIN KEY" in github_reviewer._reviewer_private_key_from_env()
+
+
+def test_invalid_secret_reference_is_rejected() -> None:
+    with pytest.raises(SecretError, match="scheme"):
+        SecretReference.parse("plaintext-secret")
+
+
+@pytest.mark.asyncio
+async def test_secrets_diagnostics_are_registered() -> None:
+    async with Client(mcp) as client:
+        tools = await client.list_tools()
+    names = {tool.name for tool in tools}
+    assert "secrets_status" in names
+    assert "secrets_check_reference" in names
