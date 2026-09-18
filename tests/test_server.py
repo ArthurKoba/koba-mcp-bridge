@@ -39,6 +39,7 @@ async def test_artifact_tools_are_registered() -> None:
     names = {tool.name for tool in tools}
     expected = {
         "artifact_status",
+        "artifact_ingest_file",
         "artifact_upload_begin",
         "artifact_upload_list",
         "artifact_upload_status",
