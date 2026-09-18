@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import io
+import tarfile
 
 import pytest
 
@@ -73,3 +75,81 @@ def test_list_is_paginated(root):
     assert page["total"] == 2
     assert len(page["entries"]) == 1
     assert page["truncated"] is False
+
+
+
+class _FakeResponse:
+    def __init__(self, payload: bytes) -> None:
+        self._buffer = io.BytesIO(payload)
+        self.headers = {"Content-Length": str(len(payload))}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
+
+    def geturl(self) -> str:
+        return "https://files.example.invalid/attachment.bin"
+
+    def read(self, size: int = -1) -> bytes:
+        return self._buffer.read(size)
+
+
+def test_import_file_from_https_source(root, monkeypatch):
+    payload = b"firmware-bytes"
+    monkeypatch.setattr(
+        artifact_storage,
+        "_validate_https_source",
+        lambda source: None,
+    )
+    monkeypatch.setattr(
+        artifact_storage.urllib.request,
+        "urlopen",
+        lambda request, timeout: _FakeResponse(payload),
+    )
+
+    result = artifact_storage.artifact_import_file_impl(
+        "https://files.example.invalid/attachment.bin",
+        "inbox/attachment.bin",
+    )
+
+    assert result["success"] is True
+    assert result["size_bytes"] == len(payload)
+    assert (root / "inbox" / "attachment.bin").read_bytes() == payload
+
+
+def test_extract_tgz_on_artifact_storage(root):
+    archive = root / "inbox" / "workspace.tgz"
+    payload = b"ELF-test"
+    with tarfile.open(archive, mode="w:gz") as handle:
+        info = tarfile.TarInfo("rootfs/usr/bin/Sofia")
+        info.size = len(payload)
+        handle.addfile(info, io.BytesIO(payload))
+
+    result = artifact_storage.artifact_extract_archive_impl(
+        "inbox/workspace.tgz",
+        "workspaces/svi252b",
+    )
+
+    assert result["files"] == 1
+    assert result["total_bytes"] == len(payload)
+    extracted = root / "workspaces" / "svi252b" / "rootfs" / "usr" / "bin" / "Sofia"
+    assert extracted.read_bytes() == payload
+
+
+def test_extract_archive_rejects_path_traversal(root):
+    archive = root / "inbox" / "bad.tgz"
+    with tarfile.open(archive, mode="w:gz") as handle:
+        payload = b"x"
+        info = tarfile.TarInfo("../escape")
+        info.size = len(payload)
+        handle.addfile(info, io.BytesIO(payload))
+
+    with pytest.raises(artifact_storage.ArtifactError, match="escapes destination"):
+        artifact_storage.artifact_extract_archive_impl(
+            "inbox/bad.tgz",
+            "workspaces/bad",
+        )
+
+    assert not (root / "workspaces" / "bad").exists()
