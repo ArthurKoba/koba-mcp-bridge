@@ -31,7 +31,9 @@ physical paths only inside trusted server-side adapters.
 `artifact_extract` accepts a tar or zip artifact. Every regular member is
 content-addressed independently and a deterministic collection manifest maps
 archive-relative paths to artifact IDs. Traversal paths and unsupported member
-types are rejected.
+types are rejected. Collections have their own lifecycle: deleting a collection
+removes only its manifest relationships, after which unreferenced member/source
+artifacts become eligible for garbage collection.
 
 ## References and cleanup
 

@@ -70,6 +70,11 @@ def register_artifact_tools(
             limit=limit,
         )
 
+    @mcp.tool(title="Artifact collection delete", annotations=destructive_annotations)
+    def artifact_collection_delete(collection_id: str) -> dict[str, Any]:
+        """Delete a collection manifest while leaving its immutable member artifacts intact."""
+        return ArtifactStore().collection_delete(collection_id)
+
     @mcp.tool(title="Artifact collection resolve", annotations=read_annotations)
     def artifact_collection_resolve(
         collection_id: str,

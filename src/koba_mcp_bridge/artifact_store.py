@@ -7,6 +7,7 @@ import mimetypes
 import os
 import shutil
 import sqlite3
+import stat
 import tarfile
 import tempfile
 import uuid
@@ -612,8 +613,10 @@ class ArtifactStore:
                     raise ArtifactError("archive exceeds configured file-count limit")
                 for member in regular:
                     mode = (member.external_attr >> 16) & 0o170000
-                    if mode == 0o120000:
-                        raise ArtifactError(f"archive symlink is not allowed: {member.filename}")
+                    if mode and not stat.S_ISREG(mode):
+                        raise ArtifactError(
+                            f"unsupported archive member type: {member.filename}"
+                        )
                     path = _safe_collection_path(member.filename)
                     total_bytes += int(member.file_size)
                     if total_bytes > byte_limit:
@@ -675,7 +678,8 @@ class ArtifactStore:
             sort_keys=True,
             separators=(",", ":"),
         ).encode("utf-8")
-        collection_id = f"collection:{hashlib.sha256(manifest).hexdigest()}"
+        collection_identity = source["artifact_id"].encode("utf-8") + b"\0" + manifest
+        collection_id = f"collection:{hashlib.sha256(collection_identity).hexdigest()}"
 
         with self._connect() as db:
             db.execute(
@@ -753,6 +757,50 @@ class ArtifactStore:
             "limit": limit,
             "total": total,
             "truncated": offset + len(rows) < total,
+        }
+
+    def collection_delete(self, collection_id: str) -> dict[str, Any]:
+        if not collection_id.startswith("collection:"):
+            raise ArtifactError("invalid collection_id")
+        self.ensure()
+        with self._connect() as db:
+            row = db.execute(
+                """
+                SELECT source_artifact_id
+                FROM collections
+                WHERE collection_id = ?
+                """,
+                (collection_id,),
+            ).fetchone()
+            if row is None:
+                return {
+                    "collection_id": collection_id,
+                    "already_absent": True,
+                }
+            item_count = int(
+                db.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM collection_items
+                    WHERE collection_id = ?
+                    """,
+                    (collection_id,),
+                ).fetchone()[0]
+            )
+            source_artifact_id = str(row["source_artifact_id"])
+            db.execute(
+                "DELETE FROM collection_items WHERE collection_id = ?",
+                (collection_id,),
+            )
+            db.execute(
+                "DELETE FROM collections WHERE collection_id = ?",
+                (collection_id,),
+            )
+        return {
+            "collection_id": collection_id,
+            "source_artifact_id": source_artifact_id,
+            "released_items": item_count,
+            "deleted": True,
         }
 
     def collection_resolve(self, collection_id: str, path: str) -> dict[str, Any]:
