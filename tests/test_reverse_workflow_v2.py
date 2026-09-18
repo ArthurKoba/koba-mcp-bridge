@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from koba_mcp_bridge.artifact_store import ArtifactStore
-from koba_mcp_bridge.reverse_workflow import _decode_result, ghidra_import_artifact_impl
+from koba_mcp_bridge.reverse_workflow import (
+    _decode_call_result,
+    _decode_result,
+    ghidra_import_artifact_impl,
+)
 
 
 @pytest.mark.asyncio
@@ -58,3 +64,42 @@ def test_decode_result_parses_proxy_wrapped_ghidra_json_string() -> None:
 
     assert result["has_project"] is True
     assert result["project_name"] == "camera"
+
+
+
+def test_decode_call_result_falls_back_to_text_content() -> None:
+    result = SimpleNamespace(
+        data=None,
+        structured_content=None,
+        content=[
+            SimpleNamespace(
+                text=(
+                    '{"has_project":true,"project_name":"spezvision",'
+                    '"file_count":0,"program_count":0}'
+                )
+            )
+        ],
+    )
+
+    decoded = _decode_call_result(result)
+
+    assert decoded["has_project"] is True
+    assert decoded["project_name"] == "spezvision"
+
+
+def test_decode_call_result_handles_structured_proxy_wrapper() -> None:
+    result = SimpleNamespace(
+        data=None,
+        structured_content={
+            "result": (
+                '{"has_project":true,"project_name":"camera",'
+                '"file_count":1,"program_count":1}'
+            )
+        },
+        content=[],
+    )
+
+    decoded = _decode_call_result(result)
+
+    assert decoded["has_project"] is True
+    assert decoded["project_name"] == "camera"

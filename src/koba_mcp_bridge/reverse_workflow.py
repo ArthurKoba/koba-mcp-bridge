@@ -29,9 +29,29 @@ def _decode_result(data: Any) -> Any:
     return data
 
 
+def _decode_call_result(result: Any) -> Any:
+    """Decode FastMCP results across structured and legacy content forms."""
+    candidates = [
+        getattr(result, "data", None),
+        getattr(result, "structured_content", None),
+    ]
+    for block in getattr(result, "content", None) or []:
+        text = getattr(block, "text", None)
+        if text is not None:
+            candidates.append(text)
+
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        decoded = _decode_result(candidate)
+        if decoded is not None:
+            return decoded
+    return None
+
+
 async def _current_project(client: Client) -> dict[str, Any]:
     result = await client.call_tool("get_project_info", {})
-    info = _decode_result(result.data)
+    info = _decode_call_result(result)
     if not isinstance(info, dict) or not info.get("has_project"):
         raise ArtifactError("no Ghidra project is open")
     project_name = str(info.get("project_name", "")).strip()
@@ -89,7 +109,7 @@ async def ghidra_import_artifact_impl(
         "artifact_id": artifact["artifact_id"],
         "name": artifact["name"],
         "project_name": project_name,
-        "ghidra_result": _decode_result(result.data),
+        "ghidra_result": _decode_call_result(result),
     }
 
 
@@ -157,7 +177,7 @@ async def _export_to_artifact(
             "success": True,
             "artifact": artifact,
             "project_name": str(project["project_name"]),
-            "ghidra_result": _decode_result(result.data),
+            "ghidra_result": _decode_call_result(result),
         }
     finally:
         if temporary.exists():
