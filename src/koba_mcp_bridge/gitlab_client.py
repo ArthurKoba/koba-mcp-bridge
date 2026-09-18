@@ -162,10 +162,7 @@ class GitLabProfileRegistry:
             path = f"gitlab/accounts/{profile_id}"
             try:
                 base_url = resolve_config_secret(path, "BASE_URL").strip().rstrip("/")
-                token_probe = resolve_config_secret(path, "TOKEN")
             except SecretError:
-                continue
-            if not token_probe:
                 continue
 
             auth_type = cls._optional_secret(
