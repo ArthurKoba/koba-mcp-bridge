@@ -72,6 +72,63 @@ def test_repository_selector_only_validates_owner_name_shape() -> None:
             client._assert_allowed(invalid)
 
 
+def test_request_reuses_persistent_github_https_connection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created = []
+    targets = []
+
+    class FakeResponse:
+        status = 200
+        will_close = False
+
+        def read(self) -> bytes:
+            return b'{"ok":true}'
+
+    class FakeConnection:
+        def __init__(self, host, *, timeout, context):
+            assert host == "api.github.com"
+            assert timeout == 30
+            assert context is not None
+            created.append(self)
+
+        def request(self, method, target, *, body=None, headers=None):
+            assert method == "GET"
+            assert body is None
+            assert headers["User-Agent"] == "koba-mcp-bridge"
+            targets.append(target)
+
+        def getresponse(self):
+            return FakeResponse()
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(
+        github_agent.http.client,
+        "HTTPSConnection",
+        FakeConnection,
+    )
+
+    client = GitHubAppClient(app_id="123", private_key="key")
+    first = client._request(
+        "GET",
+        "https://api.github.com/repos/ArthurKoba/koba-mcp-bridge?probe=1",
+    )
+    second = client._request(
+        "GET",
+        "https://api.github.com/repos/ArthurKoba/koba-mcp-bridge?probe=2",
+    )
+
+    assert first == (200, {"ok": True})
+    assert second == (200, {"ok": True})
+    assert len(created) == 1
+    assert targets == [
+        "/repos/ArthurKoba/koba-mcp-bridge?probe=1",
+        "/repos/ArthurKoba/koba-mcp-bridge?probe=2",
+    ]
+
+
 class RecordingInstallationClient(GitHubAppClient):
     def _app_jwt(self) -> str:
         return "app-jwt"
