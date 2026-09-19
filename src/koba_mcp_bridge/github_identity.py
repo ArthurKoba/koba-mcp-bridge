@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from .github_actions import GitHubActionsClient
