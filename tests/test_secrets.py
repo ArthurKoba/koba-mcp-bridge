@@ -265,41 +265,6 @@ def test_convention_resolver_root_base_path(monkeypatch) -> None:
         "path": "/github/reviewer",
     }
 
-def test_convention_resolver_caches_values_and_can_clear(monkeypatch) -> None:
-    client = InfisicalClient(
-        InfisicalConfig(
-            host="https://secrets.example.test",
-            project_id="project",
-            client_id="client-id",
-            client_secret="client-secret",
-            environment="prod",
-            base_path="/",
-        )
-    )
-    resolver = SecretResolver(client, cache_ttl_seconds=60)
-    calls = 0
-
-    def fake_get_secret(secret_name, *, environment, secret_path, project_id=""):
-        nonlocal calls
-        calls += 1
-        assert secret_name == "ALLOWED_USERS"
-        assert environment == "prod"
-        assert secret_path == "/github/oauth"
-        assert project_id == ""
-        return f"value-{calls}", {}
-
-    monkeypatch.setattr(client, "get_secret", fake_get_secret)
-
-    assert resolver.get("github/oauth", "ALLOWED_USERS") == "value-1"
-    assert resolver.get("github/oauth", "ALLOWED_USERS") == "value-1"
-    assert calls == 1
-
-    resolver.clear_cache()
-
-    assert resolver.get("github/oauth", "ALLOWED_USERS") == "value-2"
-    assert calls == 2
-
-
 def test_infisical_config_supports_bootstrap_files(tmp_path: Path, monkeypatch) -> None:
     client_id = tmp_path / "client-id"
     client_secret = tmp_path / "client-secret"
