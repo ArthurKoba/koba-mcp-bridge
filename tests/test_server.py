@@ -172,3 +172,20 @@ def test_mounted_backend_negotiates_protocol_independently(
     assert _mount_backends(DummyServer()) == {"ghidra": url}  # type: ignore[arg-type]
     assert calls == [(url, {"name": "ghidra-backend", "mode": "auto"})]
     assert mounted == [(proxy, "ghidra")]
+
+def test_github_oauth_failure_preserves_infisical_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_secret(path: str, name: str) -> str:
+        del path, name
+        raise server_module.SecretError("Infisical API HTTP 403: denied")
+
+    monkeypatch.setattr(server_module, "resolve_config_secret", fail_secret)
+    monkeypatch.delenv("OAUTH_GITHUB_CLIENT_ID", raising=False)
+
+    with pytest.raises(RuntimeError, match="Infisical API HTTP 403"):
+        server_module._github_oauth_value(
+            "CLIENT_ID",
+            "OAUTH_GITHUB_CLIENT_ID",
+        )
+

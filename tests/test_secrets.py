@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -231,7 +233,7 @@ def test_convention_resolver_joins_base_path(monkeypatch) -> None:
             "secret_name": "APP_ID",
             "environment": "prod",
             "secret_path": "/koba/github/development",
-            "project_id": "",
+            "project_id": "project",
         }
     ]
 
@@ -363,3 +365,114 @@ async def test_secrets_diagnostics_are_registered() -> None:
     names = {tool.name for tool in tools}
     assert "secrets_status" in names
     assert "secrets_check_reference" in names
+
+def test_convention_secret_cache_reuses_value_until_cleared(monkeypatch) -> None:
+    client = _client("http://127.0.0.1:1")
+    calls = 0
+
+    def fake_get_secret(
+        secret_name,
+        *,
+        environment,
+        secret_path,
+        project_id="",
+    ):
+        nonlocal calls
+        del secret_name, environment, secret_path, project_id
+        calls += 1
+        return "cached-value", {}
+
+    monkeypatch.setattr(client, "get_secret", fake_get_secret)
+    resolver = SecretResolver(client, cache_ttl_seconds=60)
+
+    assert resolver.get("github/oauth", "ALLOWED_USERS") == "cached-value"
+    assert resolver.get("github/oauth", "ALLOWED_USERS") == "cached-value"
+    assert calls == 1
+
+    resolver.clear_cache()
+    assert resolver.get("github/oauth", "ALLOWED_USERS") == "cached-value"
+    assert calls == 2
+
+
+def test_explicit_infisical_reference_uses_same_cache(monkeypatch) -> None:
+    client = _client("http://127.0.0.1:1")
+    calls = 0
+
+    def fake_get_secret(
+        secret_name,
+        *,
+        environment,
+        secret_path,
+        project_id="",
+    ):
+        nonlocal calls
+        del secret_name, environment, secret_path, project_id
+        calls += 1
+        return "explicit-value", {}
+
+    monkeypatch.setattr(client, "get_secret", fake_get_secret)
+    resolver = SecretResolver(client, cache_ttl_seconds=60)
+    reference = "infisical://prod/github/development#PRIVATE_KEY_PEM"
+
+    assert resolver.resolve(reference) == "explicit-value"
+    assert resolver.resolve(reference) == "explicit-value"
+    assert calls == 1
+
+
+def test_concurrent_secret_cache_miss_is_single_flight(monkeypatch) -> None:
+    client = _client("http://127.0.0.1:1")
+    calls = 0
+    calls_lock = threading.Lock()
+
+    def fake_get_secret(
+        secret_name,
+        *,
+        environment,
+        secret_path,
+        project_id="",
+    ):
+        nonlocal calls
+        del secret_name, environment, secret_path, project_id
+        with calls_lock:
+            calls += 1
+        time.sleep(0.05)
+        return "shared-value", {}
+
+    monkeypatch.setattr(client, "get_secret", fake_get_secret)
+    resolver = SecretResolver(client, cache_ttl_seconds=60)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(
+            pool.map(
+                lambda _: resolver.get("github/oauth", "ALLOWED_USERS"),
+                range(8),
+            )
+        )
+
+    assert results == ["shared-value"] * 8
+    assert calls == 1
+
+
+def test_zero_ttl_disables_secret_value_cache(monkeypatch) -> None:
+    client = _client("http://127.0.0.1:1")
+    calls = 0
+
+    def fake_get_secret(
+        secret_name,
+        *,
+        environment,
+        secret_path,
+        project_id="",
+    ):
+        nonlocal calls
+        del secret_name, environment, secret_path, project_id
+        calls += 1
+        return f"value-{calls}", {}
+
+    monkeypatch.setattr(client, "get_secret", fake_get_secret)
+    resolver = SecretResolver(client, cache_ttl_seconds=0)
+
+    assert resolver.get("github/oauth", "ALLOWED_USERS") == "value-1"
+    assert resolver.get("github/oauth", "ALLOWED_USERS") == "value-2"
+    assert calls == 2
+

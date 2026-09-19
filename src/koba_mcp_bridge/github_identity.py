@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from .github_actions import GitHubActionsClient
@@ -112,11 +113,25 @@ class GitHubPrettyIdentityClient(GitHubActionsClient):
         )
 
     def list_repositories(self) -> dict[str, object]:
-        result = super().list_repositories()
-        result["app_identity"] = self._app_identity()
-        return result
+        base_list = super().list_repositories
+        with ThreadPoolExecutor(
+            max_workers=2,
+            thread_name_prefix="github-list",
+        ) as pool:
+            repositories_future = pool.submit(base_list)
+            identity_future = pool.submit(self._app_identity)
+            result = repositories_future.result()
+            result["app_identity"] = identity_future.result()
+            return result
 
     def status(self, repository: str) -> dict[str, object]:
-        result = super().status(repository)
-        result["app_identity"] = self._app_identity()
-        return result
+        base_status = super().status
+        with ThreadPoolExecutor(
+            max_workers=2,
+            thread_name_prefix="github-status",
+        ) as pool:
+            status_future = pool.submit(base_status, repository)
+            identity_future = pool.submit(self._app_identity)
+            result = status_future.result()
+            result["app_identity"] = identity_future.result()
+            return result

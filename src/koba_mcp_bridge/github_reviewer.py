@@ -28,23 +28,32 @@ def github_reviewer_configured() -> bool:
 
 
 def _reviewer_app_id() -> str:
+    infisical_error: SecretError | None = None
     try:
         return resolve_config_secret("github/reviewer", "APP_ID").strip()
-    except SecretError:
-        app_id = os.getenv("GITHUB_REVIEWER_APP_ID", "").strip()
-        if app_id:
-            return app_id
-        raise GitHubAgentError("GitHub reviewer APP_ID is not configured") from None
+    except SecretError as exc:
+        infisical_error = exc
+
+    app_id = os.getenv("GITHUB_REVIEWER_APP_ID", "").strip()
+    if app_id:
+        return app_id
+    if infisical_error is not None:
+        raise GitHubAgentError(
+            "unable to load GitHub reviewer APP_ID from Infisical: "
+            f"{infisical_error}"
+        ) from infisical_error
+    raise GitHubAgentError("GitHub reviewer APP_ID is not configured")
 
 
 def _reviewer_private_key_from_env() -> str:
+    infisical_error: SecretError | None = None
     try:
         return resolve_config_secret(
             "github/reviewer",
             "PRIVATE_KEY_PEM",
         ).replace("\\n", "\n")
-    except SecretError:
-        pass
+    except SecretError as exc:
+        infisical_error = exc
 
     secret_ref = os.getenv("GITHUB_REVIEWER_PRIVATE_KEY_REF", "").strip()
     raw = os.getenv("GITHUB_REVIEWER_PRIVATE_KEY", "").strip()
@@ -53,9 +62,12 @@ def _reviewer_private_key_from_env() -> str:
     if secret_ref:
         try:
             return resolve_secret(secret_ref).replace("\\n", "\n")
-        except SecretError:
+        except SecretError as exc:
             if not raw and not encoded:
-                raise
+                raise GitHubAgentError(
+                    "unable to resolve GITHUB_REVIEWER_PRIVATE_KEY_REF: "
+                    f"{exc}"
+                ) from exc
 
     if raw:
         return raw.replace("\\n", "\n")
@@ -63,11 +75,16 @@ def _reviewer_private_key_from_env() -> str:
     if encoded:
         try:
             return base64.b64decode(encoded).decode("utf-8")
-        except Exception as exc:  # pragma: no cover - defensive configuration path
+        except Exception as exc:
             raise GitHubAgentError(
                 "GITHUB_REVIEWER_PRIVATE_KEY_B64 is not valid base64 UTF-8"
             ) from exc
 
+    if infisical_error is not None:
+        raise GitHubAgentError(
+            "unable to load GitHub reviewer PRIVATE_KEY_PEM from Infisical: "
+            f"{infisical_error}"
+        ) from infisical_error
     raise GitHubAgentError("GitHub reviewer private key is not configured")
 
 @lru_cache(maxsize=1)

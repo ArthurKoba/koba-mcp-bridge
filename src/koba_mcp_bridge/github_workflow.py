@@ -816,16 +816,8 @@ class GitHubDevClient(GitHubAppClient):
         # own branch protection/rulesets remain the final merge authority.
         configured_names = set(required)
         if configured_names and not configured_names.intersection(by_name):
-            _, repository_info = self._repo_request(
-                repository,
-                "GET",
-                f"/repos/{repository}",
-            )
-            default_branch = (
-                str(repository_info.get("default_branch", ""))
-                if isinstance(repository_info, dict)
-                else ""
-            )
+            repository_info = self._repository_metadata(repository)
+            default_branch = str(repository_info.get("default_branch", ""))
             baseline_names: set[str] = set()
             if default_branch:
                 baseline = self.check_runs(repository, default_branch)
