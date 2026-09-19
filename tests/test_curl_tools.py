@@ -12,6 +12,8 @@ import pytest
 from koba_mcp_bridge.artifact_store import ArtifactStore
 from koba_mcp_bridge.curl_tools import (
     CurlError,
+    _curl_failure_diagnostic,
+    _http_status_diagnostic,
     curl_download_impl,
     curl_presets_impl,
     curl_request_impl,
@@ -60,6 +62,9 @@ class _Handler(BaseHTTPRequestHandler):
         parsed = urlsplit(self.path)
         if parsed.path == "/echo":
             self._echo()
+            return
+        if parsed.path == "/unauthorized":
+            self._json(401, {"error": "bad credentials"})
             return
         if parsed.path == "/redirect":
             self.send_response(302)
@@ -275,3 +280,23 @@ def test_rejects_multiple_body_sources(http_server) -> None:
             body_text="a",
             body_json={"b": 1},
         )
+
+def test_http_auth_failure_is_classified(http_server) -> None:
+    result = curl_request_impl(f"{http_server}/unauthorized")
+
+    assert result["status"] == 401
+    assert result["ok"] is False
+    assert result["error"]["error_type"] == "http_authentication"
+    assert "HTTP 401" in result["error"]["error_hint"]
+
+
+def test_curl_transport_failure_categories_are_actionable() -> None:
+    assert _curl_failure_diagnostic(6, "resolve failed")["error_type"] == "dns"
+    assert _curl_failure_diagnostic(7, "connect failed")["error_type"] == "connect"
+    assert _curl_failure_diagnostic(28, "timed out")["error_type"] == "timeout"
+    assert _curl_failure_diagnostic(60, "certificate problem")["error_type"] == (
+        "tls_certificate"
+    )
+    assert _http_status_diagnostic(403)["error_type"] == "http_forbidden"
+    assert _http_status_diagnostic(429)["error_type"] == "http_rate_limit"
+
