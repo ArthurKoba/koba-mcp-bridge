@@ -401,8 +401,16 @@ class InfisicalClient:
 
 
 class SecretResolver:
-    def __init__(self, infisical: InfisicalClient | None = None) -> None:
+    def __init__(
+        self,
+        infisical: InfisicalClient | None = None,
+        *,
+        cache_ttl_seconds: float = 60.0,
+    ) -> None:
         self.infisical = infisical or InfisicalClient()
+        self.cache_ttl_seconds = max(0.0, float(cache_ttl_seconds))
+        self._config_cache: dict[tuple[str, str, str], tuple[float, str]] = {}
+        self._config_cache_lock = threading.Lock()
 
     def _config_path(self, relative_path: str) -> str:
         base = self.infisical.config.base_path.strip("/")
@@ -410,12 +418,38 @@ class SecretResolver:
         parts = [part for part in (base, relative) if part]
         return "/" + "/".join(parts) if parts else "/"
 
+    def clear_cache(self) -> None:
+        with self._config_cache_lock:
+            self._config_cache.clear()
+
     def get(self, relative_path: str, secret_name: str) -> str:
+        environment = self.infisical.config.environment
+        secret_path = self._config_path(relative_path)
+        name = secret_name.strip()
+        cache_key = (environment, secret_path, name)
+        now = time.monotonic()
+
+        if self.cache_ttl_seconds > 0:
+            with self._config_cache_lock:
+                cached = self._config_cache.get(cache_key)
+                if cached is not None:
+                    expires_at, value = cached
+                    if expires_at > now:
+                        return value
+                    self._config_cache.pop(cache_key, None)
+
         value, _metadata = self.infisical.get_secret(
-            secret_name,
-            environment=self.infisical.config.environment,
-            secret_path=self._config_path(relative_path),
+            name,
+            environment=environment,
+            secret_path=secret_path,
         )
+
+        if self.cache_ttl_seconds > 0:
+            with self._config_cache_lock:
+                self._config_cache[cache_key] = (
+                    time.monotonic() + self.cache_ttl_seconds,
+                    value,
+                )
         return value
 
     def list_folders(self, relative_path: str) -> list[dict[str, Any]]:
