@@ -4,6 +4,7 @@ import base64
 import http.client
 import json
 import os
+import queue
 import ssl
 import threading
 import time
@@ -108,8 +109,15 @@ class GitHubAppClient:
     _installation_ids: dict[str, int] = field(default_factory=dict)
     _tokens: dict[int, tuple[str, float]] = field(default_factory=dict)
     repository_cache_ttl_seconds: float = 30.0
-    _thread_local: threading.local = field(
-        default_factory=threading.local,
+    max_connections: int = 8
+    _connection_pool: queue.LifoQueue[http.client.HTTPSConnection] = field(
+        default_factory=queue.LifoQueue,
+        init=False,
+        repr=False,
+    )
+    _connection_count: int = field(default=0, init=False, repr=False)
+    _pool_lock: threading.Lock = field(
+        default_factory=threading.Lock,
         init=False,
         repr=False,
     )
@@ -187,24 +195,54 @@ class GitHubAppClient:
             target += "?" + parsed.query
         return target
 
-    def _connection_for_request(self) -> http.client.HTTPSConnection:
-        connection = getattr(self._thread_local, "connection", None)
-        if connection is None:
-            connection = http.client.HTTPSConnection(
-                "api.github.com",
-                timeout=30,
-                context=ssl.create_default_context(),
-            )
-            self._thread_local.connection = connection
-        return connection
+    def _new_connection(self) -> http.client.HTTPSConnection:
+        return http.client.HTTPSConnection(
+            "api.github.com",
+            timeout=30,
+            context=ssl.create_default_context(),
+        )
 
-    def _reset_connection(self) -> None:
-        connection = getattr(self._thread_local, "connection", None)
-        if connection is not None:
+    def _acquire_connection(self) -> http.client.HTTPSConnection:
+        try:
+            return self._connection_pool.get_nowait()
+        except queue.Empty:
+            pass
+
+        create_new = False
+        with self._pool_lock:
+            if self._connection_count < max(1, self.max_connections):
+                self._connection_count += 1
+                create_new = True
+
+        if create_new:
             try:
-                connection.close()
-            finally:
-                self._thread_local.connection = None
+                return self._new_connection()
+            except Exception:
+                with self._pool_lock:
+                    self._connection_count -= 1
+                raise
+
+        try:
+            return self._connection_pool.get(timeout=30)
+        except queue.Empty as exc:
+            raise GitHubAgentError(
+                "timed out waiting for an available GitHub API connection"
+            ) from exc
+
+    def _release_connection(
+        self,
+        connection: http.client.HTTPSConnection,
+        *,
+        reusable: bool,
+    ) -> None:
+        if reusable:
+            self._connection_pool.put(connection)
+            return
+        try:
+            connection.close()
+        finally:
+            with self._pool_lock:
+                self._connection_count = max(0, self._connection_count - 1)
 
     @staticmethod
     def _github_error_message(status: int, url: str, data: bytes) -> str:
@@ -254,17 +292,19 @@ class GitHubAppClient:
         data = b""
         status = 0
         for attempt in range(2):
+            connection = self._acquire_connection()
             try:
-                connection = self._connection_for_request()
                 connection.request(method, target, body=body, headers=headers)
                 response = connection.getresponse()
                 data = response.read()
                 status = response.status
-                if response.will_close:
-                    self._reset_connection()
+                self._release_connection(
+                    connection,
+                    reusable=not response.will_close,
+                )
                 break
             except (OSError, http.client.HTTPException) as exc:
-                self._reset_connection()
+                self._release_connection(connection, reusable=False)
                 if attempt:
                     raise GitHubAgentError(
                         f"GitHub API transport error after reconnect: {exc}"
