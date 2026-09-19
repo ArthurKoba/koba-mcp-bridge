@@ -4,8 +4,11 @@ import base64
 import hashlib
 
 import pytest
+from fastmcp import Client, FastMCP
+from mcp.types import ToolAnnotations
 
 from koba_mcp_bridge.github_actions import GitHubActionsClient
+from koba_mcp_bridge.github_actions_tools import register_github_actions_tools
 from koba_mcp_bridge.github_agent import GitHubAgentError
 
 
@@ -246,3 +249,29 @@ def test_protected_pull_request_merge_requires_administrator(
 
     with pytest.raises(GitHubAgentError, match="requires administrator"):
         client.merge_pull_request("ArthurKoba/koba-mcp-bridge", 7)
+
+@pytest.mark.asyncio
+async def test_dispatch_workflow_is_exposed_on_fastmcp_surface() -> None:
+    server = FastMCP("github-actions-surface")
+    read = ToolAnnotations(read_only_hint=True, open_world_hint=True)
+    write = ToolAnnotations(read_only_hint=False, open_world_hint=True)
+    destructive = ToolAnnotations(
+        read_only_hint=False,
+        destructive_hint=True,
+        open_world_hint=True,
+    )
+    client = RecordingActionsClient()
+
+    register_github_actions_tools(
+        server,
+        lambda: client,
+        read,
+        write,
+        destructive,
+    )
+
+    async with Client(server) as mcp_client:
+        names = {tool.name for tool in await mcp_client.list_tools()}
+
+    assert "github_agent_dispatch_workflow" in names
+

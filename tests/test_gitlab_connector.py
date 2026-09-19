@@ -10,6 +10,7 @@ import pytest
 from fastmcp import Client
 
 import koba_mcp_bridge.gitlab_client as gitlab_module
+import koba_mcp_bridge.gitlab_tools as gitlab_tools
 from koba_mcp_bridge.gitlab_client import (
     GitLabClient,
     GitLabError,
@@ -428,3 +429,83 @@ async def test_dedicated_gitlab_server_exposes_unprefixed_tools() -> None:
 def test_http_app_mounts_dedicated_gitlab_endpoint() -> None:
     paths = {getattr(route, "path", "") for route in app.routes}
     assert "/gitlab" in paths
+
+def test_runtime_reuses_registry_and_client(
+    configured_profiles,
+    monkeypatch,
+) -> None:
+    gitlab_tools._clear_runtime_cache()
+    monkeypatch.setenv("GITLAB_REGISTRY_CACHE_TTL_SECONDS", "60")
+    original = GitLabProfileRegistry.from_env
+    calls = 0
+
+    def counted_from_env():
+        nonlocal calls
+        calls += 1
+        return original()
+
+    monkeypatch.setattr(
+        gitlab_tools.GitLabProfileRegistry,
+        "from_env",
+        counted_from_env,
+    )
+
+    first = gitlab_tools._client("local-alice")
+    second = gitlab_tools._client("local-alice")
+
+    assert first is second
+    assert calls == 1
+    gitlab_tools._clear_runtime_cache()
+
+
+def test_gitlab_client_reuses_persistent_connection(configured_profiles) -> None:
+    client = GitLabClient(GitLabProfileRegistry.from_env().get("local-alice"))
+
+    client.project_status("group/project")
+    client.project_status("group/project")
+
+    assert client._connection_count == 1
+    assert client._connection_pool.qsize() == 1
+
+
+def test_gitlab_401_has_profile_credential_diagnostic(
+    monkeypatch,
+    gitlab_server,
+) -> None:
+    monkeypatch.setenv("GITLAB_BAD_TOKEN", "wrong-token")
+    profile = gitlab_module.GitLabProfile(
+        profile_id="bad-auth",
+        base_url=gitlab_server,
+        auth_type="private_token",
+        token_env="GITLAB_BAD_TOKEN",
+    )
+    client = GitLabClient(profile)
+
+    with pytest.raises(
+        GitLabError,
+        match="authentication failed.*bad-auth.*private_token",
+    ):
+        client.profile_status()
+
+
+def test_infisical_profile_discovery_failure_is_not_silenced(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("INFISICAL_HOST", "https://secrets.example.test")
+    monkeypatch.setenv("INFISICAL_PROJECT_ID", "project")
+    monkeypatch.setenv("INFISICAL_CLIENT_ID", "client-id")
+    monkeypatch.setenv("INFISICAL_CLIENT_SECRET", "client-secret")
+    monkeypatch.setattr(
+        gitlab_module,
+        "list_config_folders",
+        lambda path: (_ for _ in ()).throw(
+            gitlab_module.SecretError("Infisical API HTTP 403: denied")
+        ),
+    )
+
+    with pytest.raises(
+        GitLabError,
+        match="discover GitLab profiles.*HTTP 403",
+    ):
+        GitLabProfileRegistry.from_env()
+

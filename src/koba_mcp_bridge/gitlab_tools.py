@@ -1,15 +1,97 @@
 from __future__ import annotations
 
+import os
+import threading
+import time
+from pathlib import Path
 from typing import Any
 
 from fastmcp import FastMCP
 
 from .gitlab_client import GitLabClient, GitLabProfileRegistry
 
+_registry_lock = threading.Lock()
+_registry_cache: tuple[float, tuple[object, ...], GitLabProfileRegistry] | None = None
+_client_cache: dict[str, GitLabClient] = {}
+
+
+def _cache_ttl_seconds() -> float:
+    raw = os.getenv("GITLAB_REGISTRY_CACHE_TTL_SECONDS", "60").strip()
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise RuntimeError("GITLAB_REGISTRY_CACHE_TTL_SECONDS must be a number") from exc
+    if value < 0 or value > 3600:
+        raise RuntimeError(
+            "GITLAB_REGISTRY_CACHE_TTL_SECONDS must be between 0 and 3600"
+        )
+    return value
+
+
+def _registry_fingerprint() -> tuple[object, ...]:
+    path = os.getenv("GITLAB_PROFILES_FILE", "/data/fastmcp/gitlab-profiles.json").strip()
+    try:
+        stat = Path(path).stat() if path else None
+    except OSError:
+        stat = None
+
+    return (
+        os.getenv("GITLAB_PROFILES_JSON", ""),
+        path,
+        getattr(stat, "st_mtime_ns", None),
+        getattr(stat, "st_size", None),
+        os.getenv("INFISICAL_HOST", ""),
+        os.getenv("INFISICAL_PROJECT_ID", ""),
+        os.getenv("INFISICAL_ENVIRONMENT", "prod"),
+        os.getenv("INFISICAL_BASE_PATH", "/"),
+        os.getenv("INFISICAL_CLIENT_ID", ""),
+        os.getenv("INFISICAL_CLIENT_ID_FILE", ""),
+        os.getenv("INFISICAL_CLIENT_SECRET_FILE", ""),
+        os.getenv("INFISICAL_VERIFY_TLS", "true"),
+        os.getenv("INFISICAL_CA_FILE", ""),
+    )
+
+
+def _registry() -> GitLabProfileRegistry:
+    global _registry_cache
+
+    ttl = _cache_ttl_seconds()
+    fingerprint = _registry_fingerprint()
+    now = time.monotonic()
+
+    with _registry_lock:
+        cached = _registry_cache
+        if (
+            ttl > 0
+            and cached is not None
+            and cached[0] > now
+            and cached[1] == fingerprint
+        ):
+            return cached[2]
+
+        registry = GitLabProfileRegistry.from_env()
+        _registry_cache = (now + ttl, fingerprint, registry)
+        return registry
+
 
 def _client(profile_id: str) -> GitLabClient:
-    registry = GitLabProfileRegistry.from_env()
-    return GitLabClient(registry.get(profile_id))
+    profile = _registry().get(profile_id)
+    key = profile.profile_id.casefold()
+
+    with _registry_lock:
+        cached = _client_cache.get(key)
+        if cached is not None and cached.profile == profile:
+            return cached
+        client = GitLabClient(profile)
+        _client_cache[key] = client
+        return client
+
+
+def _clear_runtime_cache() -> None:
+    global _registry_cache
+    with _registry_lock:
+        _registry_cache = None
+        _client_cache.clear()
 
 
 def register_gitlab_tools(
@@ -21,7 +103,7 @@ def register_gitlab_tools(
     @mcp.tool(title="GitLab profiles", annotations=read_annotations)
     def profiles() -> dict[str, Any]:
         """List configured GitLab connection/account profiles without exposing tokens."""
-        return GitLabProfileRegistry.from_env().list()
+        return _registry().list()
 
     @mcp.tool(title="GitLab profile status", annotations=read_annotations)
     def profile_status(profile_id: str) -> dict[str, Any]:
