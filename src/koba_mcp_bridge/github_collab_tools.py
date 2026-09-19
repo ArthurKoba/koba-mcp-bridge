@@ -6,8 +6,6 @@ from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 from .github_collab import GitHubCollabClient
-from .github_reviewer import github_reviewer_client_from_env, github_reviewer_configured
-from .github_reviewer_tools import register_github_reviewer_tools
 
 
 def register_github_collab_tools(
@@ -119,10 +117,3 @@ def register_github_collab_tools(
         """Verify configured independent reviewer approvals before merge."""
         return client_factory().assert_required_reviews(repository, number)
 
-    if github_reviewer_configured():
-        register_github_reviewer_tools(
-            mcp,
-            github_reviewer_client_from_env,
-            read_annotations,
-            write_annotations,
-        )

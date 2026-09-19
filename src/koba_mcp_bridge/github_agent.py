@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import base64
+import http.client
 import json
 import os
+import ssl
+import threading
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -89,6 +90,16 @@ class GitHubAppClient:
     private_key: str
     _installation_ids: dict[str, int] = field(default_factory=dict)
     _tokens: dict[int, tuple[str, float]] = field(default_factory=dict)
+    _connection: http.client.HTTPSConnection | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
+    _connection_lock: threading.Lock = field(
+        default_factory=threading.Lock,
+        init=False,
+        repr=False,
+    )
 
     @classmethod
     def from_env(cls) -> GitHubAppClient:
@@ -124,6 +135,30 @@ class GitHubAppClient:
             return {}
         return json.loads(data.decode("utf-8"))
 
+    @staticmethod
+    def _request_target(url: str) -> str:
+        parsed = urllib.parse.urlsplit(url)
+        if parsed.scheme != "https" or parsed.netloc != "api.github.com":
+            raise GitHubAgentError("GitHub API request must target https://api.github.com")
+        target = parsed.path or "/"
+        if parsed.query:
+            target += "?" + parsed.query
+        return target
+
+    def _connection_for_request(self) -> http.client.HTTPSConnection:
+        if self._connection is None:
+            self._connection = http.client.HTTPSConnection(
+                "api.github.com",
+                timeout=30,
+                context=ssl.create_default_context(),
+            )
+        return self._connection
+
+    def _reset_connection(self) -> None:
+        if self._connection is not None:
+            self._connection.close()
+            self._connection = None
+
     def _request(
         self,
         method: str,
@@ -144,22 +179,36 @@ class GitHubAppClient:
         if body is not None:
             headers["Content-Type"] = "application/json"
 
-        request = urllib.request.Request(url, data=body, method=method, headers=headers)
-        try:
-            with urllib.request.urlopen(request, timeout=30) as response:
-                return response.status, self._decode_json(response.read())
-        except urllib.error.HTTPError as exc:
-            data = exc.read()
-            if allowed_errors and exc.code in allowed_errors:
+        target = self._request_target(url)
+        with self._connection_lock:
+            for attempt in range(2):
+                try:
+                    connection = self._connection_for_request()
+                    connection.request(method, target, body=body, headers=headers)
+                    response = connection.getresponse()
+                    data = response.read()
+                    status = response.status
+                    if response.will_close:
+                        self._reset_connection()
+                    break
+                except (OSError, http.client.HTTPException) as exc:
+                    self._reset_connection()
+                    if attempt:
+                        raise GitHubAgentError(
+                            f"GitHub API transport error: {exc}"
+                        ) from exc
+
+        if status >= 400:
+            if allowed_errors and status in allowed_errors:
                 try:
                     parsed = self._decode_json(data)
                 except Exception:
                     parsed = {"message": data.decode("utf-8", "replace")}
-                return exc.code, parsed
+                return status, parsed
             detail = data[:4096].decode("utf-8", "replace")
-            raise GitHubAgentError(f"GitHub API HTTP {exc.code}: {detail}") from exc
-        except urllib.error.URLError as exc:
-            raise GitHubAgentError(f"GitHub API transport error: {exc.reason}") from exc
+            raise GitHubAgentError(f"GitHub API HTTP {status}: {detail}")
+
+        return status, self._decode_json(data)
 
     def _installation_id(self, repository: str) -> int:
         repository = self._assert_allowed(repository)
