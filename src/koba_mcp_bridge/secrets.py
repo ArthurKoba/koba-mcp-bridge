@@ -24,6 +24,27 @@ def _env_bool(name: str, default: bool = True) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _env_float(
+    name: str,
+    default: float,
+    *,
+    minimum: float = 0.0,
+    maximum: float = 3600.0,
+) -> float:
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise SecretError(f"{name} must be a number") from exc
+    if value < minimum or value > maximum:
+        raise SecretError(
+            f"{name} must be between {minimum:g} and {maximum:g} seconds"
+        )
+    return value
+
+
 def _read_bootstrap_value(env_name: str, file_env_name: str) -> tuple[str, str]:
     raw = os.getenv(env_name, "").strip()
     file_path = os.getenv(file_env_name, "").strip()
@@ -409,8 +430,15 @@ class SecretResolver:
     ) -> None:
         self.infisical = infisical or InfisicalClient()
         self.cache_ttl_seconds = max(0.0, float(cache_ttl_seconds))
-        self._config_cache: dict[tuple[str, str, str], tuple[float, str]] = {}
-        self._config_cache_lock = threading.Lock()
+        self._secret_cache: dict[
+            tuple[str, str, str, str],
+            tuple[float, str],
+        ] = {}
+        self._inflight: dict[
+            tuple[str, str, str, str],
+            threading.Event,
+        ] = {}
+        self._cache_lock = threading.Lock()
 
     def _config_path(self, relative_path: str) -> str:
         base = self.infisical.config.base_path.strip("/")
@@ -419,38 +447,80 @@ class SecretResolver:
         return "/" + "/".join(parts) if parts else "/"
 
     def clear_cache(self) -> None:
-        with self._config_cache_lock:
-            self._config_cache.clear()
+        with self._cache_lock:
+            self._secret_cache.clear()
 
-    def get(self, relative_path: str, secret_name: str) -> str:
-        environment = self.infisical.config.environment
-        secret_path = self._config_path(relative_path)
+    def _get_infisical_cached(
+        self,
+        secret_name: str,
+        *,
+        environment: str,
+        secret_path: str,
+        project_id: str = "",
+    ) -> str:
         name = secret_name.strip()
-        cache_key = (environment, secret_path, name)
-        now = time.monotonic()
+        env = environment.strip()
+        path = secret_path.strip() or "/"
+        if not path.startswith("/"):
+            path = "/" + path
+        project = project_id.strip() or self.infisical.config.project_id
+        key = (project, env, path, name)
 
-        if self.cache_ttl_seconds > 0:
-            with self._config_cache_lock:
-                cached = self._config_cache.get(cache_key)
+        while True:
+            now = time.monotonic()
+            leader = False
+            with self._cache_lock:
+                cached = self._secret_cache.get(key)
                 if cached is not None:
                     expires_at, value = cached
                     if expires_at > now:
                         return value
-                    self._config_cache.pop(cache_key, None)
+                    self._secret_cache.pop(key, None)
 
-        value, _metadata = self.infisical.get_secret(
-            name,
-            environment=environment,
-            secret_path=secret_path,
-        )
+                event = self._inflight.get(key)
+                if event is None:
+                    event = threading.Event()
+                    self._inflight[key] = event
+                    leader = True
 
-        if self.cache_ttl_seconds > 0:
-            with self._config_cache_lock:
-                self._config_cache[cache_key] = (
+            if leader:
+                break
+            if not event.wait(timeout=30):
+                raise SecretError(
+                    "timed out waiting for concurrent Infisical secret fetch"
+                )
+
+        try:
+            value, _metadata = self.infisical.get_secret(
+                name,
+                environment=env,
+                secret_path=path,
+                project_id=project,
+            )
+        except Exception:
+            with self._cache_lock:
+                event = self._inflight.pop(key, None)
+                if event is not None:
+                    event.set()
+            raise
+
+        with self._cache_lock:
+            if self.cache_ttl_seconds > 0:
+                self._secret_cache[key] = (
                     time.monotonic() + self.cache_ttl_seconds,
                     value,
                 )
+            event = self._inflight.pop(key, None)
+            if event is not None:
+                event.set()
         return value
+
+    def get(self, relative_path: str, secret_name: str) -> str:
+        return self._get_infisical_cached(
+            secret_name,
+            environment=self.infisical.config.environment,
+            secret_path=self._config_path(relative_path),
+        )
 
     def list_folders(self, relative_path: str) -> list[dict[str, Any]]:
         return self.infisical.list_folders(
@@ -477,13 +547,12 @@ class SecretResolver:
                 raise SecretError("secret file is empty")
             return value.rstrip("\r\n")
 
-        value, _metadata = self.infisical.get_secret(
+        return self._get_infisical_cached(
             ref.secret_name,
             environment=ref.environment,
             secret_path=ref.secret_path,
             project_id=ref.project_id,
         )
-        return value
 
     def check(self, reference: str) -> dict[str, Any]:
         ref = SecretReference.parse(reference)
@@ -494,7 +563,14 @@ class SecretResolver:
         }
 
 
-_default_resolver = SecretResolver()
+_default_resolver = SecretResolver(
+    cache_ttl_seconds=_env_float(
+        "INFISICAL_CACHE_TTL_SECONDS",
+        60.0,
+        minimum=0.0,
+        maximum=3600.0,
+    )
+)
 
 
 def resolve_secret(reference: str) -> str:
