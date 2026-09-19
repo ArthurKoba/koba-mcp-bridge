@@ -94,13 +94,13 @@ def _required_secret(name: str, ref_name: str) -> str:
 def _github_oauth_value(secret_name: str, legacy_env: str) -> str:
     try:
         return resolve_config_secret("github/oauth", secret_name).strip()
-    except SecretError:
+    except SecretError as exc:
         legacy = os.getenv(legacy_env, "").strip()
         if legacy:
             return legacy
         raise RuntimeError(
-            f"GitHub OAuth value {secret_name!r} is not configured"
-        ) from None
+            f"unable to load GitHub OAuth {secret_name!r} from Infisical: {exc}"
+        ) from exc
 
 
 def _allowed_github_users() -> set[str]:
