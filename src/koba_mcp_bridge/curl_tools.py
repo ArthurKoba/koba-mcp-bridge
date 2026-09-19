@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import time
 from email.message import Message
+from functools import lru_cache
 from http.cookies import SimpleCookie
 from pathlib import Path
 from typing import Any
@@ -113,6 +114,14 @@ def curl_presets_impl() -> dict[str, Any]:
     }
 
 
+@lru_cache(maxsize=1)
+def _system_curl_binary() -> str:
+    found = shutil.which("curl")
+    if not found:
+        raise CurlError("curl executable is not installed")
+    return found
+
+
 def _curl_binary() -> str:
     configured = os.getenv("KOBA_CURL_BINARY", "").strip()
     if configured:
@@ -120,11 +129,7 @@ def _curl_binary() -> str:
         if not path.is_file():
             raise CurlError("KOBA_CURL_BINARY does not point to a file")
         return str(path)
-    found = shutil.which("curl")
-    if not found:
-        raise CurlError("curl executable is not installed")
-    return found
-
+    return _system_curl_binary()
 
 def _validate_method(method: str) -> str:
     value = method.strip().upper()
@@ -304,8 +309,6 @@ def _body_source(
     path = Path(raw)
     with os.fdopen(fd, "wb") as handle:
         handle.write(data)
-        handle.flush()
-        os.fsync(handle.fileno())
     return path, path
 
 
@@ -639,6 +642,88 @@ def _execute_curl(
     return metadata, header_path, output_path
 
 
+def _curl_failure_diagnostic(
+    exit_code: int,
+    error: str,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, str] | None:
+    code = int(exit_code)
+    if code == 0:
+        return None
+
+    categories = {
+        5: (
+            "proxy_dns",
+            "curl could not resolve the configured proxy hostname",
+        ),
+        6: (
+            "dns",
+            "curl could not resolve the target hostname",
+        ),
+        7: (
+            "connect",
+            "curl could not establish a TCP connection to the target",
+        ),
+        28: (
+            "timeout",
+            "the request exceeded the configured connect or total timeout",
+        ),
+        35: (
+            "tls_handshake",
+            "the TLS handshake failed; check protocol/cipher compatibility",
+        ),
+        47: (
+            "redirect_loop",
+            "the request exceeded the configured redirect limit",
+        ),
+        51: (
+            "tls_identity",
+            "the TLS certificate hostname/identity did not match",
+        ),
+        52: (
+            "empty_reply",
+            "the peer closed the connection without returning an HTTP response",
+        ),
+        55: (
+            "send",
+            "curl failed while sending request data",
+        ),
+        56: (
+            "receive",
+            "curl failed while receiving response data",
+        ),
+        60: (
+            "tls_certificate",
+            "TLS certificate verification failed; check CA trust and certificate validity",
+        ),
+        63: (
+            "max_bytes",
+            "the response exceeded the configured maximum response size",
+        ),
+    }
+    error_type, hint = categories.get(
+        code,
+        ("curl", "curl failed before completing the HTTP request"),
+    )
+    result = {
+        "error_type": error_type,
+        "error_hint": hint,
+    }
+    clean_error = error.strip()
+    if clean_error:
+        result["error_detail"] = clean_error[:2048]
+
+    meta = metadata or {}
+    if code == 28:
+        connect = meta.get("time_connect")
+        total = meta.get("time_total")
+        if connect is not None or total is not None:
+            result["error_hint"] += (
+                f"; time_connect={connect!s}, time_total={total!s}"
+            )
+    return result
+
+
 def _http_result(
     *,
     metadata: dict[str, Any],
@@ -704,6 +789,13 @@ def _http_result(
             "headers": metadata.get("request_headers", []),
         },
     }
+    diagnostic = _curl_failure_diagnostic(
+        int(metadata.get("curl_exit_code") or 0),
+        str(metadata.get("curl_error") or ""),
+        metadata,
+    )
+    if diagnostic is not None:
+        result["error"] = diagnostic
     result.update(_preview(data, final_block, metadata, preview_bytes))
     if result["body_is_text"] and not truncated:
         charset = str(result.get("body_encoding") or "utf-8")
@@ -832,10 +924,17 @@ def curl_download_impl(
     exit_code = int(metadata.get("curl_exit_code") or 0)
     try:
         if exit_code != 0:
-            raise CurlError(
-                f"curl download failed with exit code {exit_code}: "
-                f"{metadata.get('curl_error', '')}"
+            diagnostic = _curl_failure_diagnostic(
+                exit_code,
+                str(metadata.get("curl_error") or ""),
+                metadata,
             )
+            detail = (
+                f"{diagnostic['error_type']}: {diagnostic['error_hint']}"
+                if diagnostic is not None
+                else f"curl exit code {exit_code}"
+            )
+            raise CurlError(f"curl download failed: {detail}")
         if not store_http_errors and not (200 <= status < 400):
             raise CurlError(f"HTTP {status} response was not stored as an artifact")
         size = output_path.stat().st_size
@@ -1043,6 +1142,11 @@ def curl_stream_capture_impl(
             "artifact": artifact,
             "curl_exit_code": int(proc.returncode or 0),
             "curl_error": stderr.strip(),
+            "error": _curl_failure_diagnostic(
+                int(proc.returncode or 0),
+                stderr.strip(),
+                metadata,
+            ),
             "redirect_follow_blocked_sensitive": bool(
                 follow_redirects
                 and sensitive_redirect_state
