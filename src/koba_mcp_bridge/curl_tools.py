@@ -724,6 +724,41 @@ def _curl_failure_diagnostic(
     return result
 
 
+def _http_status_diagnostic(status: int) -> dict[str, str] | None:
+    code = int(status)
+    if code < 400:
+        return None
+    if code == 401:
+        return {
+            "error_type": "http_authentication",
+            "error_hint": "the server rejected authentication credentials (HTTP 401)",
+        }
+    if code == 403:
+        return {
+            "error_type": "http_forbidden",
+            "error_hint": "the server understood the request but denied permission (HTTP 403)",
+        }
+    if code == 407:
+        return {
+            "error_type": "proxy_authentication",
+            "error_hint": "the configured proxy requires authentication (HTTP 407)",
+        }
+    if code == 429:
+        return {
+            "error_type": "http_rate_limit",
+            "error_hint": "the server rate-limited the request (HTTP 429)",
+        }
+    if 500 <= code <= 599:
+        return {
+            "error_type": "http_server",
+            "error_hint": f"the remote server returned HTTP {code}",
+        }
+    return {
+        "error_type": "http_client",
+        "error_hint": f"the remote server returned HTTP {code}",
+    }
+
+
 def _http_result(
     *,
     metadata: dict[str, Any],
@@ -794,6 +829,8 @@ def _http_result(
         str(metadata.get("curl_error") or ""),
         metadata,
     )
+    if diagnostic is None:
+        diagnostic = _http_status_diagnostic(status)
     if diagnostic is not None:
         result["error"] = diagnostic
     result.update(_preview(data, final_block, metadata, preview_bytes))
@@ -936,7 +973,11 @@ def curl_download_impl(
             )
             raise CurlError(f"curl download failed: {detail}")
         if not store_http_errors and not (200 <= status < 400):
-            raise CurlError(f"HTTP {status} response was not stored as an artifact")
+            diagnostic = _http_status_diagnostic(status)
+            hint = diagnostic["error_hint"] if diagnostic else f"HTTP {status}"
+            raise CurlError(
+                f"HTTP response was not stored as an artifact: {hint}"
+            )
         size = output_path.stat().st_size
         if size > max_bytes:
             raise CurlError("download exceeded max_bytes")
@@ -1142,10 +1183,13 @@ def curl_stream_capture_impl(
             "artifact": artifact,
             "curl_exit_code": int(proc.returncode or 0),
             "curl_error": stderr.strip(),
-            "error": _curl_failure_diagnostic(
-                int(proc.returncode or 0),
-                stderr.strip(),
-                metadata,
+            "error": (
+                _curl_failure_diagnostic(
+                    int(proc.returncode or 0),
+                    stderr.strip(),
+                    metadata,
+                )
+                or _http_status_diagnostic(status)
             ),
             "redirect_follow_blocked_sensitive": bool(
                 follow_redirects
