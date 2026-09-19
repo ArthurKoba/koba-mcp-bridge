@@ -233,7 +233,7 @@ def test_convention_resolver_joins_base_path(monkeypatch) -> None:
             "secret_name": "APP_ID",
             "environment": "prod",
             "secret_path": "/koba/github/development",
-            "project_id": "",
+            "project_id": "project",
         }
     ]
 
