@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import base64
+import http.client
 import json
 import os
+import queue
 import re
 import ssl
-import urllib.error
+import threading
 import urllib.parse
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -72,14 +73,27 @@ class GitLabProfile:
 
     def token(self) -> str:
         if self.convention_path:
-            return resolve_config_secret(self.convention_path, "TOKEN")
+            try:
+                return resolve_config_secret(self.convention_path, "TOKEN")
+            except SecretError as exc:
+                raise GitLabError(
+                    f"unable to resolve TOKEN for GitLab profile {self.profile_id!r} "
+                    f"from Infisical convention path {self.convention_path!r}: {exc}"
+                ) from exc
         if self.secret_ref:
-            return resolve_secret(self.secret_ref)
+            try:
+                return resolve_secret(self.secret_ref)
+            except SecretError as exc:
+                raise GitLabError(
+                    f"unable to resolve credential for GitLab profile "
+                    f"{self.profile_id!r}: {exc}"
+                ) from exc
         if self.token_env:
             value = os.getenv(self.token_env, "").strip()
             if not value:
                 raise GitLabError(
-                    f"credential environment variable {self.token_env!r} is not configured"
+                    f"credential environment variable {self.token_env!r} is not configured "
+                    f"for GitLab profile {self.profile_id!r}"
                 )
             return value
         if self.token_file:
@@ -151,8 +165,10 @@ class GitLabProfileRegistry:
             return []
         try:
             folders = list_config_folders("gitlab/accounts")
-        except SecretError:
-            return []
+        except SecretError as exc:
+            raise GitLabError(
+                f"unable to discover GitLab profiles from Infisical: {exc}"
+            ) from exc
 
         profiles: list[GitLabProfile] = []
         for folder in folders:
@@ -162,8 +178,10 @@ class GitLabProfileRegistry:
             path = f"gitlab/accounts/{profile_id}"
             try:
                 base_url = resolve_config_secret(path, "BASE_URL").strip().rstrip("/")
-            except SecretError:
-                continue
+            except SecretError as exc:
+                raise GitLabError(
+                    f"GitLab profile {profile_id!r} is missing/unreadable BASE_URL: {exc}"
+                ) from exc
 
             auth_type = cls._optional_secret(
                 path,
@@ -319,11 +337,25 @@ class GitLabResponse:
 
 
 class GitLabClient:
-    def __init__(self, profile: GitLabProfile) -> None:
+    def __init__(self, profile: GitLabProfile, *, max_connections: int = 4) -> None:
         self.profile = profile
+        self.max_connections = max(1, int(max_connections))
+        parsed = urllib.parse.urlsplit(profile.base_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise GitLabError(
+                f"profile {profile.profile_id!r} has invalid base_url"
+            )
+        self._scheme = parsed.scheme
+        self._hostname = parsed.hostname
+        self._port = parsed.port
+        self._connection_pool: queue.LifoQueue[
+            http.client.HTTPConnection
+        ] = queue.LifoQueue()
+        self._connection_count = 0
+        self._pool_lock = threading.Lock()
 
     def _ssl_context(self) -> ssl.SSLContext | None:
-        if not self.profile.base_url.startswith("https://"):
+        if self._scheme != "https":
             return None
         if not self.profile.verify_tls:
             return ssl._create_unverified_context()
@@ -347,7 +379,7 @@ class GitLabClient:
             headers["Content-Type"] = "application/json"
         return headers
 
-    def _url(
+    def _target(
         self,
         path: str,
         query: dict[str, Any] | None = None,
@@ -365,7 +397,136 @@ class GitLabClient:
                 else:
                     pairs.append((key, str(value)))
         encoded = urllib.parse.urlencode(pairs, doseq=True)
-        return self.profile.api_url + path + (f"?{encoded}" if encoded else "")
+        return "/api/v4" + path + (f"?{encoded}" if encoded else "")
+
+    def _url(
+        self,
+        path: str,
+        query: dict[str, Any] | None = None,
+    ) -> str:
+        return self.profile.base_url.rstrip("/") + self._target(path, query)
+
+    def _new_connection(self) -> http.client.HTTPConnection:
+        if self._scheme == "https":
+            return http.client.HTTPSConnection(
+                self._hostname,
+                self._port,
+                timeout=45,
+                context=self._ssl_context(),
+            )
+        return http.client.HTTPConnection(
+            self._hostname,
+            self._port,
+            timeout=45,
+        )
+
+    def _acquire_connection(self) -> http.client.HTTPConnection:
+        try:
+            return self._connection_pool.get_nowait()
+        except queue.Empty:
+            pass
+
+        create_new = False
+        with self._pool_lock:
+            if self._connection_count < self.max_connections:
+                self._connection_count += 1
+                create_new = True
+
+        if create_new:
+            try:
+                return self._new_connection()
+            except Exception:
+                with self._pool_lock:
+                    self._connection_count -= 1
+                raise
+
+        try:
+            return self._connection_pool.get(timeout=45)
+        except queue.Empty as exc:
+            raise GitLabError(
+                f"timed out waiting for a GitLab connection for profile "
+                f"{self.profile.profile_id!r}"
+            ) from exc
+
+    def _release_connection(
+        self,
+        connection: http.client.HTTPConnection,
+        *,
+        reusable: bool,
+    ) -> None:
+        if reusable:
+            self._connection_pool.put(connection)
+            return
+        try:
+            connection.close()
+        finally:
+            with self._pool_lock:
+                self._connection_count = max(0, self._connection_count - 1)
+
+    def _perform(
+        self,
+        method: str,
+        target: str,
+        *,
+        body: bytes | None,
+        headers: dict[str, str],
+    ) -> tuple[int, dict[str, str], bytes]:
+        for attempt in range(2):
+            connection = self._acquire_connection()
+            try:
+                connection.request(method, target, body=body, headers=headers)
+                response = connection.getresponse()
+                raw = response.read()
+                status = response.status
+                response_headers = {k: v for k, v in response.headers.items()}
+                self._release_connection(
+                    connection,
+                    reusable=not response.will_close,
+                )
+                return status, response_headers, raw
+            except (OSError, http.client.HTTPException) as exc:
+                self._release_connection(connection, reusable=False)
+                if attempt:
+                    raise GitLabError(
+                        f"GitLab API transport error after reconnect for profile "
+                        f"{self.profile.profile_id!r}: {exc}"
+                    ) from exc
+        raise AssertionError("unreachable")
+
+    def _error_message(self, status: int, target: str, data: Any) -> str:
+        detail = json.dumps(data, ensure_ascii=False)[:4096]
+        if status == 401:
+            return (
+                f"GitLab authentication failed for profile {self.profile.profile_id!r} "
+                f"(HTTP 401); check its {self.profile.auth_type} credential"
+            )
+        if status == 403:
+            return (
+                f"GitLab denied the operation for profile {self.profile.profile_id!r} "
+                f"(HTTP 403); check token scopes, project membership, and role: {detail}"
+            )
+        if status == 429:
+            return (
+                f"GitLab rate limit exceeded for profile {self.profile.profile_id!r} "
+                f"(HTTP 429) on {target}"
+            )
+        return f"GitLab API HTTP {status}: {detail}"
+
+    @staticmethod
+    def _decode_response(raw: bytes, headers: dict[str, str]) -> Any:
+        if not raw:
+            return {}
+        content_type = ""
+        for key, value in headers.items():
+            if key.casefold() == "content-type":
+                content_type = value
+                break
+        if "json" in content_type.casefold():
+            try:
+                return json.loads(raw.decode("utf-8"))
+            except json.JSONDecodeError as exc:
+                raise GitLabError("GitLab returned invalid JSON") from exc
+        return raw.decode("utf-8", "replace")
 
     def request(
         self,
@@ -377,70 +538,30 @@ class GitLabClient:
         allowed_errors: set[int] | None = None,
     ) -> GitLabResponse:
         body = None if payload is None else json.dumps(payload).encode("utf-8")
-        request = urllib.request.Request(
-            self._url(path, query),
-            data=body,
-            method=method,
+        target = self._target(path, query)
+        status, headers, raw = self._perform(
+            method,
+            target,
+            body=body,
             headers=self._headers(has_body=body is not None),
         )
-        try:
-            with urllib.request.urlopen(
-                request,
-                timeout=45,
-                context=self._ssl_context(),
-            ) as response:
-                raw = response.read()
-                data: Any = {}
-                if raw:
-                    ctype = response.headers.get("Content-Type", "")
-                    if "json" in ctype:
-                        data = json.loads(raw.decode("utf-8"))
-                    else:
-                        data = raw.decode("utf-8", "replace")
-                return GitLabResponse(
-                    response.status,
-                    data,
-                    {k: v for k, v in response.headers.items()},
-                )
-        except urllib.error.HTTPError as exc:
-            raw = exc.read()
-            try:
-                data = json.loads(raw.decode("utf-8")) if raw else {}
-            except Exception:
-                data = raw.decode("utf-8", "replace")
-            if allowed_errors and exc.code in allowed_errors:
-                return GitLabResponse(
-                    exc.code,
-                    data,
-                    {k: v for k, v in exc.headers.items()},
-                )
-            detail = json.dumps(data, ensure_ascii=False)[:4096]
-            raise GitLabError(f"GitLab API HTTP {exc.code}: {detail}") from exc
-        except urllib.error.URLError as exc:
-            raise GitLabError(f"GitLab API transport error: {exc.reason}") from exc
+        data = self._decode_response(raw, headers)
+        if status >= 400 and not (allowed_errors and status in allowed_errors):
+            raise GitLabError(self._error_message(status, target, data))
+        return GitLabResponse(status, data, headers)
 
     def request_text(self, method: str, path: str) -> GitLabResponse:
-        request = urllib.request.Request(
-            self._url(path),
-            method=method,
+        target = self._target(path)
+        status, headers, raw = self._perform(
+            method,
+            target,
+            body=None,
             headers=self._headers(),
         )
-        try:
-            with urllib.request.urlopen(
-                request,
-                timeout=45,
-                context=self._ssl_context(),
-            ) as response:
-                return GitLabResponse(
-                    response.status,
-                    response.read().decode("utf-8", "replace"),
-                    {k: v for k, v in response.headers.items()},
-                )
-        except urllib.error.HTTPError as exc:
-            detail = exc.read()[:4096].decode("utf-8", "replace")
-            raise GitLabError(f"GitLab API HTTP {exc.code}: {detail}") from exc
-        except urllib.error.URLError as exc:
-            raise GitLabError(f"GitLab API transport error: {exc.reason}") from exc
+        text = raw.decode("utf-8", "replace")
+        if status >= 400:
+            raise GitLabError(self._error_message(status, target, text))
+        return GitLabResponse(status, text, headers)
 
     @staticmethod
     def project_selector(project: str | int) -> str:
