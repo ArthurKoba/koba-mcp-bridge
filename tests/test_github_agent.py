@@ -1,4 +1,5 @@
 import base64
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -133,3 +134,151 @@ def test_list_repositories_uses_github_installation_scope() -> None:
     ]
     assert client._installation_ids["arthurkoba/ghidra-mcp"] == 99
     assert client._installation_ids["arthurkoba/koba-mcp-bridge"] == 99
+
+def test_app_id_must_be_positive_numeric() -> None:
+    client = GitHubAppClient(app_id="not-an-id", private_key="unused")
+    with pytest.raises(GitHubAgentError, match="positive numeric"):
+        client._app_jwt()
+
+
+def test_invalid_private_key_reports_actionable_error() -> None:
+    client = GitHubAppClient(app_id="123", private_key="not-a-pem")
+    with pytest.raises(GitHubAgentError, match="PRIVATE_KEY_PEM.*RSA private key"):
+        client._app_jwt()
+
+
+def test_github_401_diagnostics_distinguish_app_and_installation_auth() -> None:
+    app_message = GitHubAppClient._github_error_message(
+        401,
+        "https://api.github.com/app",
+        b'{"message":"Bad credentials"}',
+    )
+    installation_message = GitHubAppClient._github_error_message(
+        401,
+        "https://api.github.com/repos/owner/repo",
+        b'{"message":"Bad credentials"}',
+    )
+
+    assert "APP_ID" in app_message
+    assert "PRIVATE_KEY_PEM" in app_message
+    assert "installation token" in installation_message
+
+
+def test_github_403_diagnostic_mentions_permissions() -> None:
+    message = GitHubAppClient._github_error_message(
+        403,
+        "https://api.github.com/repos/owner/repo/actions/runs",
+        b'{"message":"Resource not accessible by integration"}',
+    )
+    assert "permissions" in message
+    assert "HTTP 403" in message
+
+
+def test_missing_installation_has_actionable_error() -> None:
+    class MissingInstallationClient(GitHubAppClient):
+        def _app_jwt(self) -> str:
+            return "app-jwt"
+
+        def _request(
+            self,
+            method: str,
+            url: str,
+            *,
+            token: str | None = None,
+            payload: object | None = None,
+            allowed_errors: set[int] | None = None,
+        ) -> tuple[int, object]:
+            del method, url, token, payload, allowed_errors
+            return 404, {"message": "Not Found"}
+
+    client = MissingInstallationClient(app_id="123", private_key="unused")
+    with pytest.raises(GitHubAgentError, match="not installed.*add it"):
+        client._installation_id("owner/repo")
+
+
+def test_repository_metadata_is_cached_until_refresh() -> None:
+    class MetadataClient(GitHubAppClient):
+        def __init__(self) -> None:
+            super().__init__(
+                app_id="123",
+                private_key="unused",
+                repository_cache_ttl_seconds=60,
+            )
+            self.calls = 0
+            self._installation_ids["owner/repo"] = 7
+
+        def _repo_request(
+            self,
+            repository: str,
+            method: str,
+            path: str,
+            *,
+            payload: object | None = None,
+            allowed_errors: set[int] | None = None,
+        ) -> tuple[int, object]:
+            del repository, method, path, payload, allowed_errors
+            self.calls += 1
+            return 200, {
+                "full_name": "owner/repo",
+                "default_branch": "main",
+                "private": False,
+                "archived": False,
+                "fork": False,
+            }
+
+    client = MetadataClient()
+    first = client.status("owner/repo")
+    second = client.status("owner/repo")
+
+    assert first == second
+    assert client.calls == 1
+
+    refreshed = client._repository_metadata("owner/repo", refresh=True)
+    assert refreshed["repository"] == "owner/repo"
+    assert client.calls == 2
+
+
+def test_github_connections_are_thread_local(monkeypatch: pytest.MonkeyPatch) -> None:
+    created = []
+
+    class DummyConnection:
+        def close(self) -> None:
+            return None
+
+    def fake_connection(*args, **kwargs):
+        del args, kwargs
+        connection = DummyConnection()
+        created.append(connection)
+        return connection
+
+    monkeypatch.setattr(
+        github_agent.http.client,
+        "HTTPSConnection",
+        fake_connection,
+    )
+
+    client = GitHubAppClient(app_id="123", private_key="unused")
+    main_first = client._connection_for_request()
+    main_second = client._connection_for_request()
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        worker_connection = pool.submit(client._connection_for_request).result()
+
+    assert main_first is main_second
+    assert worker_connection is not main_first
+    assert len(created) == 2
+
+
+def test_infisical_credential_failure_preserves_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_secret(path: str, name: str) -> str:
+        del path, name
+        raise github_agent.SecretError("Infisical API HTTP 403: denied")
+
+    monkeypatch.setattr(github_agent, "resolve_config_secret", fail_secret)
+    monkeypatch.delenv("GITHUB_AGENT_APP_ID", raising=False)
+
+    with pytest.raises(GitHubAgentError, match="Infisical API HTTP 403"):
+        github_agent._development_app_id()
+
