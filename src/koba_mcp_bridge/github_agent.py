@@ -181,17 +181,22 @@ class GitHubAppClient:
 
         target = self._request_target(url)
         with self._connection_lock:
-            try:
-                connection = self._connection_for_request()
-                connection.request(method, target, body=body, headers=headers)
-                response = connection.getresponse()
-                data = response.read()
-                status = response.status
-                if response.will_close:
+            for attempt in range(2):
+                try:
+                    connection = self._connection_for_request()
+                    connection.request(method, target, body=body, headers=headers)
+                    response = connection.getresponse()
+                    data = response.read()
+                    status = response.status
+                    if response.will_close:
+                        self._reset_connection()
+                    break
+                except (OSError, http.client.HTTPException) as exc:
                     self._reset_connection()
-            except (OSError, http.client.HTTPException) as exc:
-                self._reset_connection()
-                raise GitHubAgentError(f"GitHub API transport error: {exc}") from exc
+                    if attempt:
+                        raise GitHubAgentError(
+                            f"GitHub API transport error: {exc}"
+                        ) from exc
 
         if status >= 400:
             if allowed_errors and status in allowed_errors:
