@@ -391,6 +391,7 @@ class GitHubDevClient(GitHubAppClient):
             raise GitHubAgentError("parent commit has no tree sha")
 
         tree_entries: list[dict[str, object]] = []
+        copy_ref_cache: dict[str, str] = {}
         for change in changes:
             path = str(change.get("path", "")).strip("/")
             if not path:
@@ -400,6 +401,57 @@ class GitHubDevClient(GitHubAppClient):
             if operation == "delete":
                 tree_entries.append(
                     {"path": path, "mode": mode, "type": "blob", "sha": None}
+                )
+                continue
+            if operation == "copy":
+                source_path = str(change.get("source_path", "")).strip("/")
+                source_ref = str(change.get("source_ref", "")).strip()
+                if not source_path or not source_ref:
+                    raise GitHubAgentError(
+                        "copy changes require source_path and source_ref"
+                    )
+
+                source_sha = copy_ref_cache.get(source_ref)
+                if source_sha is None:
+                    _, source_commit = self._repo_request(
+                        repository,
+                        "GET",
+                        f"/repos/{repository}/commits/{self._quote(source_ref)}",
+                    )
+                    if (
+                        not isinstance(source_commit, dict)
+                        or not source_commit.get("sha")
+                    ):
+                        raise GitHubAgentError(
+                            f"unable to resolve source_ref: {source_ref}"
+                        )
+                    source_sha = str(source_commit["sha"])
+                    copy_ref_cache[source_ref] = source_sha
+
+                _, source = self._repo_request(
+                    repository,
+                    "GET",
+                    (
+                        f"/repos/{repository}/contents/{self._path(source_path)}"
+                        f"?ref={self._quote(source_sha)}"
+                    ),
+                )
+                if not isinstance(source, dict) or source.get("type") != "file":
+                    raise GitHubAgentError(
+                        f"copy source is not a regular file: {source_path}"
+                    )
+                blob_sha = str(source.get("sha", ""))
+                if not blob_sha:
+                    raise GitHubAgentError(
+                        f"copy source has no blob sha: {source_path}"
+                    )
+                tree_entries.append(
+                    {
+                        "path": path,
+                        "mode": mode,
+                        "type": "blob",
+                        "sha": blob_sha,
+                    }
                 )
                 continue
             if operation not in {"upsert", "create", "update"}:

@@ -95,6 +95,132 @@ def test_empty_atomic_commit_is_blocked() -> None:
         )
 
 
+def test_atomic_commit_copy_reuses_existing_blob_sha(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dev = client()
+    calls: list[tuple[str, str, object | None]] = []
+
+    def fake_repo_request(
+        repository: str,
+        method: str,
+        endpoint: str,
+        *,
+        payload: object | None = None,
+        allowed_errors: set[int] | None = None,
+    ) -> tuple[int, object]:
+        calls.append((method, endpoint, payload))
+        if endpoint.endswith("/git/ref/heads/feature%2Ftest"):
+            return 200, {"object": {"sha": "head-sha"}}
+        if endpoint.endswith("/git/commits/head-sha"):
+            return 200, {"tree": {"sha": "base-tree"}}
+        if endpoint.endswith("/commits/files"):
+            return 200, {"sha": "source-commit-sha"}
+        if "/contents/source.bin?ref=source-commit-sha" in endpoint:
+            return 200, {
+                "type": "file",
+                "sha": "existing-blob-sha",
+                "size": 1048576,
+            }
+        if endpoint.endswith("/git/trees"):
+            assert payload == {
+                "base_tree": "base-tree",
+                "tree": [
+                    {
+                        "path": "firmware/stock/dump.bin",
+                        "mode": "100644",
+                        "type": "blob",
+                        "sha": "existing-blob-sha",
+                    }
+                ],
+            }
+            return 201, {"sha": "tree-sha"}
+        if endpoint.endswith("/git/commits"):
+            return 201, {"sha": "commit-sha"}
+        if endpoint.endswith("/git/refs/heads/feature%2Ftest"):
+            assert payload == {"sha": "commit-sha", "force": False}
+            return 200, {}
+        raise AssertionError(f"unexpected request: {method} {endpoint}")
+
+    monkeypatch.setattr(dev, "_repo_request", fake_repo_request)
+
+    result = dev.commit_files(
+        "ArthurKoba/koba-mcp-bridge",
+        "feature/test",
+        "copy evidence",
+        [
+            {
+                "operation": "copy",
+                "path": "firmware/stock/dump.bin",
+                "source_ref": "files",
+                "source_path": "source.bin",
+            }
+        ],
+        expected_head_sha="head-sha",
+    )
+
+    assert result["commit_sha"] == "commit-sha"
+    assert not any(endpoint.endswith("/git/blobs") for _, endpoint, _ in calls)
+
+
+def test_atomic_commit_copy_pins_source_ref_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dev = client()
+    source_resolutions = 0
+
+    def fake_repo_request(
+        repository: str,
+        method: str,
+        endpoint: str,
+        *,
+        payload: object | None = None,
+        allowed_errors: set[int] | None = None,
+    ) -> tuple[int, object]:
+        nonlocal source_resolutions
+        if endpoint.endswith("/git/ref/heads/feature%2Ftest"):
+            return 200, {"object": {"sha": "head-sha"}}
+        if endpoint.endswith("/git/commits/head-sha"):
+            return 200, {"tree": {"sha": "base-tree"}}
+        if endpoint.endswith("/commits/files"):
+            source_resolutions += 1
+            return 200, {"sha": "source-commit-sha"}
+        if "?ref=source-commit-sha" in endpoint:
+            name = endpoint.split("/contents/", 1)[1].split("?", 1)[0]
+            return 200, {"type": "file", "sha": f"blob-{name}", "size": 1}
+        if endpoint.endswith("/git/trees"):
+            return 201, {"sha": "tree-sha"}
+        if endpoint.endswith("/git/commits"):
+            return 201, {"sha": "commit-sha"}
+        if endpoint.endswith("/git/refs/heads/feature%2Ftest"):
+            return 200, {}
+        raise AssertionError(f"unexpected request: {method} {endpoint}")
+
+    monkeypatch.setattr(dev, "_repo_request", fake_repo_request)
+
+    dev.commit_files(
+        "ArthurKoba/koba-mcp-bridge",
+        "feature/test",
+        "copy evidence",
+        [
+            {
+                "operation": "copy",
+                "path": "a.bin",
+                "source_ref": "files",
+                "source_path": "a.bin",
+            },
+            {
+                "operation": "copy",
+                "path": "b.bin",
+                "source_ref": "files",
+                "source_path": "b.bin",
+            },
+        ],
+    )
+
+    assert source_resolutions == 1
+
+
 def test_invalid_binary_content_is_blocked() -> None:
     with pytest.raises(GitHubAgentError, match="valid base64"):
         client().put_binary_file(
