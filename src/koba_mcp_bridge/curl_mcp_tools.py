@@ -11,11 +11,11 @@ def register_curl_tools(
     write_annotations: Any,
 ) -> None:
     from .curl_tools import (
+        DEFAULT_CURL_PRESET,
         curl_download_impl,
         curl_presets_impl,
         curl_request_impl,
         curl_stream_capture_impl,
-        DEFAULT_CURL_PRESET,
     )
 
     @mcp.tool(title="Curl presets", annotations=read_annotations)
@@ -51,7 +51,8 @@ def register_curl_tools(
 
         For large or binary responses prefer curl_download. body_artifact_id sends
         immutable artifact bytes directly from server-side storage without model-visible
-        base64. Chrome Desktop is the default preset. Browser presets reproduce HTTP headers only; they are not browser engines.
+        base64. Chrome Desktop is the default preset. Browser presets reproduce HTTP
+        headers only; they are not browser engines.
         """
         return curl_request_impl(
             url=url,
