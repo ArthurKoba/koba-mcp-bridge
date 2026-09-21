@@ -53,6 +53,32 @@ def register_github_workflow_tools(
             branch,
         )
 
+    @mcp.tool(
+        title="GitHub agent copy/move blob",
+        annotations=destructive_annotations,
+    )
+    def github_agent_copy_blob(
+        repository: str,
+        source_path: str,
+        destination_path: str,
+        message: str,
+        branch: str,
+        operation: str = "copy",
+        overwrite: bool = False,
+        expected_head_sha: str | None = None,
+    ) -> dict[str, object]:
+        """Copy or move an existing Git blob server-side without transferring its bytes."""
+        return client_factory().copy_blob(
+            repository,
+            source_path,
+            destination_path,
+            message,
+            branch,
+            operation,
+            overwrite,
+            expected_head_sha,
+        )
+
     @mcp.tool(title="GitHub agent atomic commit", annotations=write_annotations)
     def github_agent_commit_files(
         repository: str,

@@ -194,3 +194,192 @@ def test_required_checks_stay_strict_when_repository_uses_configured_names(
 
     with pytest.raises(GitHubAgentError, match="missing=\\['docker'\\]"):
         dev.assert_required_checks("ArthurKoba/koba-mcp-bridge", "head-sha")
+
+
+class BlobCopyClient(GitHubDevClient):
+    def __init__(
+        self,
+        *,
+        destination_exists: bool = False,
+        second_head: str = "head-old",
+    ) -> None:
+        super().__init__(app_id="123", private_key="unused")
+        self.destination_exists = destination_exists
+        self.second_head = second_head
+        self.calls: list[tuple[str, str, object | None]] = []
+        self.ref_reads = 0
+
+    def _repo_request(
+        self,
+        repository: str,
+        method: str,
+        endpoint: str,
+        *,
+        payload: object | None = None,
+        allowed_errors: set[int] | None = None,
+    ) -> tuple[int, object]:
+        del repository, allowed_errors
+        self.calls.append((method, endpoint, payload))
+
+        if method == "GET" and endpoint.endswith("/git/ref/heads/feature%2Flarge-file"):
+            self.ref_reads += 1
+            sha = "head-old" if self.ref_reads == 1 else self.second_head
+            return 200, {"object": {"sha": sha}}
+        if method == "GET" and endpoint.endswith("/git/commits/head-old"):
+            return 200, {"tree": {"sha": "tree-root"}}
+        if method == "GET" and endpoint.endswith("/git/trees/tree-root"):
+            return 200, {
+                "tree": [
+                    {"path": "assets", "type": "tree", "sha": "tree-assets", "mode": "040000"},
+                    {"path": "archive", "type": "tree", "sha": "tree-archive", "mode": "040000"},
+                ]
+            }
+        if method == "GET" and endpoint.endswith("/git/trees/tree-assets"):
+            return 200, {
+                "tree": [
+                    {
+                        "path": "large.bin",
+                        "type": "blob",
+                        "sha": "blob-large",
+                        "mode": "100755",
+                    }
+                ]
+            }
+        if method == "GET" and endpoint.endswith("/git/trees/tree-archive"):
+            entries = []
+            if self.destination_exists:
+                entries.append(
+                    {
+                        "path": "large.bin",
+                        "type": "blob",
+                        "sha": "blob-existing",
+                        "mode": "100644",
+                    }
+                )
+            return 200, {"tree": entries}
+        if method == "POST" and endpoint.endswith("/git/trees"):
+            return 201, {"sha": "tree-new"}
+        if method == "POST" and endpoint.endswith("/git/commits"):
+            return 201, {"sha": "commit-new"}
+        if method == "PATCH" and endpoint.endswith("/git/refs/heads/feature%2Flarge-file"):
+            return 200, {"object": {"sha": "commit-new"}}
+        raise AssertionError(f"unexpected request: {method} {endpoint} payload={payload!r}")
+
+
+def test_copy_blob_reuses_existing_sha_without_blob_upload() -> None:
+    dev = BlobCopyClient()
+
+    result = dev.copy_blob(
+        "ArthurKoba/koba-mcp-bridge",
+        "assets/large.bin",
+        "archive/large.bin",
+        "copy large binary",
+        "feature/large-file",
+        expected_head_sha="head-old",
+    )
+
+    assert result["operation"] == "copy"
+    assert result["reused_blob_sha"] == "blob-large"
+    assert result["mode"] == "100755"
+    tree_call = next(
+        call
+        for call in dev.calls
+        if call[0] == "POST" and call[1].endswith("/git/trees")
+    )
+    assert tree_call[2] == {
+        "base_tree": "tree-root",
+        "tree": [
+            {
+                "path": "archive/large.bin",
+                "mode": "100755",
+                "type": "blob",
+                "sha": "blob-large",
+            }
+        ],
+    }
+    assert not any(
+        method == "POST" and endpoint.endswith("/git/blobs")
+        for method, endpoint, _ in dev.calls
+    )
+
+
+def test_move_blob_is_atomic_copy_plus_source_delete() -> None:
+    dev = BlobCopyClient()
+
+    result = dev.copy_blob(
+        "ArthurKoba/koba-mcp-bridge",
+        "assets/large.bin",
+        "archive/large.bin",
+        "rename large binary",
+        "feature/large-file",
+        operation="move",
+    )
+
+    assert result["operation"] == "move"
+    tree_call = next(
+        call
+        for call in dev.calls
+        if call[0] == "POST" and call[1].endswith("/git/trees")
+    )
+    assert tree_call[2] == {
+        "base_tree": "tree-root",
+        "tree": [
+            {
+                "path": "archive/large.bin",
+                "mode": "100755",
+                "type": "blob",
+                "sha": "blob-large",
+            },
+            {
+                "path": "assets/large.bin",
+                "mode": "100755",
+                "type": "blob",
+                "sha": None,
+            },
+        ],
+    }
+
+
+def test_copy_blob_refuses_existing_destination_without_overwrite() -> None:
+    dev = BlobCopyClient(destination_exists=True)
+
+    with pytest.raises(GitHubAgentError, match="destination_path already exists"):
+        dev.copy_blob(
+            "ArthurKoba/koba-mcp-bridge",
+            "assets/large.bin",
+            "archive/large.bin",
+            "copy",
+            "feature/large-file",
+        )
+
+    assert not any(method == "POST" for method, _, _ in dev.calls)
+
+
+def test_copy_blob_rechecks_branch_head_before_update() -> None:
+    dev = BlobCopyClient(second_head="head-raced")
+
+    with pytest.raises(GitHubAgentError, match="branch head changed before update"):
+        dev.copy_blob(
+            "ArthurKoba/koba-mcp-bridge",
+            "assets/large.bin",
+            "archive/large.bin",
+            "copy",
+            "feature/large-file",
+        )
+
+    assert not any(method == "PATCH" for method, _, _ in dev.calls)
+
+
+def test_copy_blob_respects_protected_branch_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GITHUB_AGENT_PROTECTED_BRANCHES", raising=False)
+    with pytest.raises(GitHubAgentError, match="protected branch"):
+        client().copy_blob(
+            "ArthurKoba/koba-mcp-bridge",
+            "a.bin",
+            "b.bin",
+            "move",
+            "main",
+            operation="move",
+        )

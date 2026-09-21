@@ -263,6 +263,9 @@ Core repository/files:
 - binary file read/write using base64;
 - repository-scoped code search;
 - atomic multi-file commits through Git Data blobs/trees/commits;
+- server-side copy/move of an existing Git blob between repository paths without
+  downloading or re-uploading file bytes, preserving its Git mode and supporting
+  `overwrite` plus `expected_head_sha` CAS gating;
 - optimistic branch-head verification with `expected_head_sha`.
 
 Branches, commits, and tags:
