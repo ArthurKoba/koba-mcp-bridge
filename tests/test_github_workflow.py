@@ -106,6 +106,141 @@ def test_invalid_binary_content_is_blocked() -> None:
         )
 
 
+
+def test_copy_files_requires_entries() -> None:
+    with pytest.raises(GitHubAgentError, match="copies must not be empty"):
+        client().copy_files(
+            "ArthurKoba/koba-mcp-bridge",
+            "files",
+            "feature/test",
+            "copy",
+            [],
+        )
+
+
+def test_copy_files_reuses_existing_blob_sha(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dev = client()
+    calls: list[tuple[str, str, object | None]] = []
+
+    def fake_repo_request(
+        repository: str,
+        method: str,
+        endpoint: str,
+        *,
+        payload: object | None = None,
+        allowed_errors: set[int] | None = None,
+    ) -> tuple[int, object]:
+        calls.append((method, endpoint, payload))
+        if endpoint.endswith("/commits/files"):
+            return 200, {"sha": "source-commit-sha"}
+        if method == "GET" and endpoint.endswith("/git/ref/heads/feature%2Ftest"):
+            return 200, {"object": {"sha": "head-sha"}}
+        if endpoint.endswith("/git/commits/head-sha"):
+            return 200, {"tree": {"sha": "base-tree"}}
+        if "/contents/source.bin?ref=source-commit-sha" in endpoint:
+            return 200, {
+                "type": "file",
+                "sha": "existing-blob-sha",
+                "size": 1048576,
+            }
+        if endpoint.endswith("/git/trees"):
+            assert payload == {
+                "base_tree": "base-tree",
+                "tree": [
+                    {
+                        "path": "nested/destination.bin",
+                        "mode": "100644",
+                        "type": "blob",
+                        "sha": "existing-blob-sha",
+                    }
+                ],
+            }
+            return 201, {"sha": "new-tree"}
+        if endpoint.endswith("/git/commits"):
+            return 201, {"sha": "new-commit"}
+        if method == "PATCH" and endpoint.endswith("/git/refs/heads/feature%2Ftest"):
+            assert payload == {"sha": "new-commit", "force": False}
+            return 200, {}
+        raise AssertionError(f"unexpected request: {method} {endpoint}")
+
+    monkeypatch.setattr(dev, "_repo_request", fake_repo_request)
+
+    result = dev.copy_files(
+        "ArthurKoba/koba-mcp-bridge",
+        "files",
+        "feature/test",
+        "copy evidence",
+        [
+            {
+                "source_path": "source.bin",
+                "destination_path": "nested/destination.bin",
+            }
+        ],
+        expected_head_sha="head-sha",
+    )
+
+    assert result["commit_sha"] == "new-commit"
+    assert result["source_sha"] == "source-commit-sha"
+    assert result["copied"] == [
+        {
+            "source_path": "source.bin",
+            "destination_path": "nested/destination.bin",
+            "sha": "existing-blob-sha",
+            "size": 1048576,
+        }
+    ]
+    assert not any(endpoint.endswith("/git/blobs") for _, endpoint, _ in calls)
+
+
+def test_copy_files_detects_branch_race(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dev = client()
+    ref_reads = 0
+
+    def fake_repo_request(
+        repository: str,
+        method: str,
+        endpoint: str,
+        *,
+        payload: object | None = None,
+        allowed_errors: set[int] | None = None,
+    ) -> tuple[int, object]:
+        nonlocal ref_reads
+        if endpoint.endswith("/commits/files"):
+            return 200, {"sha": "source-commit-sha"}
+        if method == "GET" and endpoint.endswith("/git/ref/heads/feature%2Ftest"):
+            ref_reads += 1
+            sha = "head-sha" if ref_reads == 1 else "changed-head"
+            return 200, {"object": {"sha": sha}}
+        if endpoint.endswith("/git/commits/head-sha"):
+            return 200, {"tree": {"sha": "base-tree"}}
+        if "/contents/source.bin?ref=source-commit-sha" in endpoint:
+            return 200, {"type": "file", "sha": "blob-sha", "size": 7}
+        if endpoint.endswith("/git/trees"):
+            return 201, {"sha": "new-tree"}
+        if endpoint.endswith("/git/commits"):
+            return 201, {"sha": "new-commit"}
+        raise AssertionError(f"unexpected request: {method} {endpoint}")
+
+    monkeypatch.setattr(dev, "_repo_request", fake_repo_request)
+
+    with pytest.raises(GitHubAgentError, match="branch head changed before update"):
+        dev.copy_files(
+            "ArthurKoba/koba-mcp-bridge",
+            "files",
+            "feature/test",
+            "copy evidence",
+            [
+                {
+                    "source_path": "source.bin",
+                    "destination_path": "destination.bin",
+                }
+            ],
+        )
+
 def test_invalid_review_event_is_blocked() -> None:
     with pytest.raises(GitHubAgentError, match="event must be"):
         client().create_review(

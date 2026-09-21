@@ -53,6 +53,25 @@ def register_github_workflow_tools(
             branch,
         )
 
+    @mcp.tool(title="GitHub agent copy existing files", annotations=write_annotations)
+    def github_agent_copy_files(
+        repository: str,
+        source_ref: str,
+        branch: str,
+        message: str,
+        copies: list[dict[str, Any]],
+        expected_head_sha: str | None = None,
+    ) -> dict[str, object]:
+        """Copy existing Git blobs between paths/refs without model-visible file content."""
+        return client_factory().copy_files(
+            repository,
+            source_ref,
+            branch,
+            message,
+            copies,
+            expected_head_sha,
+        )
+
     @mcp.tool(title="GitHub agent atomic commit", annotations=write_annotations)
     def github_agent_commit_files(
         repository: str,
