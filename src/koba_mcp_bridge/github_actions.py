@@ -283,6 +283,30 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
             "content_base64": base64.b64encode(data).decode("ascii"),
         }
 
+    def enable_workflow(
+        self,
+        repository: str,
+        workflow_id: str,
+    ) -> dict[str, object]:
+        """Enable one GitHub Actions workflow in an installed repository."""
+        repository = self._assert_allowed(repository)
+        workflow = workflow_id.strip()
+        if not workflow:
+            raise GitHubAgentError("workflow_id must not be empty")
+
+        workflow_q = urllib.parse.quote(workflow, safe="")
+        status, _ = self._repo_request(
+            repository,
+            "PUT",
+            f"/repos/{repository}/actions/workflows/{workflow_q}/enable",
+        )
+        return {
+            "repository": repository,
+            "workflow_id": workflow,
+            "status": status,
+            "enabled": status in {200, 204},
+        }
+
     def dispatch_workflow(
         self,
         repository: str,

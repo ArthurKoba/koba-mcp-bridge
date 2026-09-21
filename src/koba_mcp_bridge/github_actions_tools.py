@@ -166,6 +166,14 @@ def register_github_actions_tools(
             max_bytes,
         )
 
+    @mcp.tool(title="GitHub agent enable workflow", annotations=write_annotations)
+    def github_agent_enable_workflow(
+        repository: str,
+        workflow_id: str,
+    ) -> dict[str, object]:
+        """Enable one GitHub Actions workflow."""
+        return client_factory().enable_workflow(repository, workflow_id)
+
     @mcp.tool(title="GitHub agent dispatch workflow", annotations=write_annotations)
     def github_agent_dispatch_workflow(
         repository: str,

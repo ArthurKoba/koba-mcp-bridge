@@ -116,6 +116,38 @@ def test_download_artifact_returns_base64_and_hash() -> None:
 
 
 
+def test_enable_workflow_uses_actions_enable_endpoint() -> None:
+    class EnableClient(RecordingActionsClient):
+        def _repo_request(
+            self,
+            repository: str,
+            method: str,
+            path: str,
+            *,
+            payload: object | None = None,
+            allowed_errors: set[int] | None = None,
+        ) -> tuple[int, object]:
+            del repository, payload, allowed_errors
+            self.calls.append((method, path))
+            return 204, {}
+
+    client = EnableClient()
+    result = client.enable_workflow(
+        "ArthurKoba/ghidra",
+        "build-ghidra-multi-platform-artifact.yml",
+    )
+
+    assert result["enabled"] is True
+    assert result["status"] == 204
+    assert client.calls == [
+        (
+            "PUT",
+            "/repos/ArthurKoba/ghidra/actions/workflows/"
+            "build-ghidra-multi-platform-artifact.yml/enable",
+        )
+    ]
+
+
 def test_dispatch_workflow_uses_workflow_dispatch_endpoint() -> None:
     class DispatchClient(RecordingActionsClient):
         def __init__(self) -> None:
@@ -273,5 +305,6 @@ async def test_dispatch_workflow_is_exposed_on_fastmcp_surface() -> None:
     async with Client(server) as mcp_client:
         names = {tool.name for tool in await mcp_client.list_tools()}
 
+    assert "github_agent_enable_workflow" in names
     assert "github_agent_dispatch_workflow" in names
 
