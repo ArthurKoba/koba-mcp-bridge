@@ -53,7 +53,10 @@ def register_github_workflow_tools(
             branch,
         )
 
-    @mcp.tool(title="GitHub agent copy existing files", annotations=write_annotations)
+    @mcp.tool(
+        title="GitHub agent copy/move existing files",
+        annotations=destructive_annotations,
+    )
     def github_agent_copy_files(
         repository: str,
         source_ref: str,
@@ -61,8 +64,10 @@ def register_github_workflow_tools(
         message: str,
         copies: list[dict[str, Any]],
         expected_head_sha: str | None = None,
+        operation: str = "copy",
+        overwrite: bool = False,
     ) -> dict[str, object]:
-        """Copy existing Git blobs between paths/refs without model-visible file content."""
+        """Copy or move existing Git blobs between paths/refs without transferring bytes."""
         return client_factory().copy_files(
             repository,
             source_ref,
@@ -70,6 +75,8 @@ def register_github_workflow_tools(
             message,
             copies,
             expected_head_sha,
+            operation,
+            overwrite,
         )
 
     @mcp.tool(title="GitHub agent atomic commit", annotations=write_annotations)

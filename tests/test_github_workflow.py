@@ -265,12 +265,33 @@ def test_copy_files_reuses_existing_blob_sha(
             return 200, {"object": {"sha": "head-sha"}}
         if endpoint.endswith("/git/commits/head-sha"):
             return 200, {"tree": {"sha": "base-tree"}}
-        if "/contents/source.bin?ref=source-commit-sha" in endpoint:
+        if endpoint.endswith("/git/commits/source-commit-sha"):
+            return 200, {"tree": {"sha": "source-tree"}}
+        if endpoint.endswith("/git/trees/source-tree"):
             return 200, {
-                "type": "file",
-                "sha": "existing-blob-sha",
-                "size": 1048576,
+                "tree": [
+                    {
+                        "path": "source.bin",
+                        "type": "blob",
+                        "sha": "existing-blob-sha",
+                        "mode": "100644",
+                        "size": 1048576,
+                    }
+                ]
             }
+        if endpoint.endswith("/git/trees/base-tree"):
+            return 200, {
+                "tree": [
+                    {
+                        "path": "nested",
+                        "type": "tree",
+                        "sha": "nested-tree",
+                        "mode": "040000",
+                    }
+                ]
+            }
+        if endpoint.endswith("/git/trees/nested-tree"):
+            return 200, {"tree": []}
         if endpoint.endswith("/git/trees"):
             assert payload == {
                 "base_tree": "base-tree",
@@ -314,9 +335,12 @@ def test_copy_files_reuses_existing_blob_sha(
             "source_path": "source.bin",
             "destination_path": "nested/destination.bin",
             "sha": "existing-blob-sha",
+            "mode": "100644",
             "size": 1048576,
         }
     ]
+    assert result["moved"] == []
+    assert not any("/contents/" in endpoint for _, endpoint, _ in calls)
     assert not any(endpoint.endswith("/git/blobs") for _, endpoint, _ in calls)
 
 
@@ -343,8 +367,22 @@ def test_copy_files_detects_branch_race(
             return 200, {"object": {"sha": sha}}
         if endpoint.endswith("/git/commits/head-sha"):
             return 200, {"tree": {"sha": "base-tree"}}
-        if "/contents/source.bin?ref=source-commit-sha" in endpoint:
-            return 200, {"type": "file", "sha": "blob-sha", "size": 7}
+        if endpoint.endswith("/git/commits/source-commit-sha"):
+            return 200, {"tree": {"sha": "source-tree"}}
+        if endpoint.endswith("/git/trees/source-tree"):
+            return 200, {
+                "tree": [
+                    {
+                        "path": "source.bin",
+                        "type": "blob",
+                        "sha": "blob-sha",
+                        "mode": "100644",
+                        "size": 7,
+                    }
+                ]
+            }
+        if endpoint.endswith("/git/trees/base-tree"):
+            return 200, {"tree": []}
         if endpoint.endswith("/git/trees"):
             return 201, {"sha": "new-tree"}
         if endpoint.endswith("/git/commits"):
@@ -366,6 +404,7 @@ def test_copy_files_detects_branch_race(
                 }
             ],
         )
+
 
 def test_invalid_review_event_is_blocked() -> None:
     with pytest.raises(GitHubAgentError, match="event must be"):

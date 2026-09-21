@@ -261,7 +261,7 @@ Core repository/files:
 - UTF-8 file read/write/delete;
 - directory listing;
 - binary file read/write using base64;
-- server-side copy of existing Git blobs between refs/paths without serializing binary contents through MCP;
+- server-side copy/move of existing Git blobs between paths without serializing binary contents through MCP; copy may read from another ref, while atomic move/rename requires `source_ref` to resolve to the destination branch HEAD;
 - repository-scoped code search;
 - atomic multi-file commits through Git Data blobs/trees/commits;
 - atomic commit changes may use `operation: copy` to reuse an existing file blob from another ref without transporting its contents;
