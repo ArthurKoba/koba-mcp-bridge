@@ -264,6 +264,7 @@ Core repository/files:
 - server-side copy of existing Git blobs between refs/paths without serializing binary contents through MCP;
 - repository-scoped code search;
 - atomic multi-file commits through Git Data blobs/trees/commits;
+- atomic commit changes may use `operation: copy` to reuse an existing file blob from another ref without transporting its contents;
 - optimistic branch-head verification with `expected_head_sha`.
 
 Branches, commits, and tags:
