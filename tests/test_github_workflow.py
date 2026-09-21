@@ -494,3 +494,136 @@ def test_required_checks_stay_strict_when_repository_uses_configured_names(
 
     with pytest.raises(GitHubAgentError, match="missing=\\['docker'\\]"):
         dev.assert_required_checks("ArthurKoba/koba-mcp-bridge", "head-sha")
+
+
+
+class BranchResetClient(GitHubDevClient):
+    def __init__(
+        self,
+        *,
+        comparison_status: str = "ahead",
+        second_head: str = "head-sha",
+    ) -> None:
+        super().__init__(app_id="123", private_key="unused")
+        self.comparison_status = comparison_status
+        self.second_head = second_head
+        self.ref_reads = 0
+        self.calls: list[tuple[str, str, object | None]] = []
+
+    def _repo_request(
+        self,
+        repository: str,
+        method: str,
+        endpoint: str,
+        *,
+        payload: object | None = None,
+        allowed_errors: set[int] | None = None,
+    ) -> tuple[int, object]:
+        del repository, allowed_errors
+        self.calls.append((method, endpoint, payload))
+        if method == "GET" and endpoint.endswith("/git/ref/heads/main"):
+            self.ref_reads += 1
+            sha = "head-sha" if self.ref_reads == 1 else self.second_head
+            return 200, {"object": {"sha": sha}}
+        if method == "GET" and endpoint.endswith("/commits/base-sha"):
+            return 200, {"sha": "base-sha"}
+        if method == "GET" and endpoint.endswith("/compare/base-sha...head-sha"):
+            return 200, {
+                "status": self.comparison_status,
+                "ahead_by": 5 if self.comparison_status == "ahead" else 0,
+                "behind_by": 0 if self.comparison_status == "ahead" else 1,
+            }
+        if method == "PATCH" and endpoint.endswith("/git/refs/heads/main"):
+            return 200, {"object": {"sha": "base-sha"}}
+        raise AssertionError(f"unexpected request: {method} {endpoint}")
+
+
+def test_reset_branch_defaults_to_dry_run_and_allows_explicit_protected_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GITHUB_AGENT_PROTECTED_BRANCHES", raising=False)
+    dev = BranchResetClient()
+
+    result = dev.reset_branch(
+        "ArthurKoba/ghidra-mcp",
+        "main",
+        "base-sha",
+        "head-sha",
+        allow_protected_branch=True,
+    )
+
+    assert result["dry_run"] is True
+    assert result["target_sha"] == "base-sha"
+    assert not any(method == "PATCH" for method, _, _ in dev.calls)
+
+
+def test_reset_branch_blocks_protected_branch_without_explicit_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GITHUB_AGENT_PROTECTED_BRANCHES", raising=False)
+
+    with pytest.raises(GitHubAgentError, match="allow_protected_branch=true"):
+        BranchResetClient().reset_branch(
+            "ArthurKoba/ghidra-mcp",
+            "main",
+            "base-sha",
+            "head-sha",
+        )
+
+
+def test_reset_branch_refuses_non_ancestor_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GITHUB_AGENT_PROTECTED_BRANCHES", raising=False)
+    dev = BranchResetClient(comparison_status="diverged")
+
+    with pytest.raises(GitHubAgentError, match="ancestor"):
+        dev.reset_branch(
+            "ArthurKoba/ghidra-mcp",
+            "main",
+            "base-sha",
+            "head-sha",
+            allow_protected_branch=True,
+            dry_run=False,
+        )
+
+    assert not any(method == "PATCH" for method, _, _ in dev.calls)
+
+
+def test_reset_branch_force_updates_after_second_head_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GITHUB_AGENT_PROTECTED_BRANCHES", raising=False)
+    dev = BranchResetClient()
+
+    result = dev.reset_branch(
+        "ArthurKoba/ghidra-mcp",
+        "main",
+        "base-sha",
+        "head-sha",
+        allow_protected_branch=True,
+        dry_run=False,
+    )
+
+    assert result["dry_run"] is False
+    patch = next(call for call in dev.calls if call[0] == "PATCH")
+    assert patch[2] == {"sha": "base-sha", "force": True}
+
+
+def test_reset_branch_detects_race_before_force_update(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GITHUB_AGENT_PROTECTED_BRANCHES", raising=False)
+    dev = BranchResetClient(second_head="raced-head")
+
+    with pytest.raises(GitHubAgentError, match="branch head changed before reset"):
+        dev.reset_branch(
+            "ArthurKoba/ghidra-mcp",
+            "main",
+            "base-sha",
+            "head-sha",
+            allow_protected_branch=True,
+            dry_run=False,
+        )
+
+    assert not any(method == "PATCH" for method, _, _ in dev.calls)

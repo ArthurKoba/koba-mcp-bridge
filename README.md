@@ -287,6 +287,7 @@ Branches, commits, and tags:
 
 - branch list/create/delete/rename;
 - non-force fast-forward of non-protected branches;
+- guarded ancestor-only branch reset with expected-head CAS, dry-run by default, and explicit protected-branch override for intentional history repair;
 - working-branch merge while protected targets remain blocked;
 - ref comparison;
 - commit history filtered by ref/path;
