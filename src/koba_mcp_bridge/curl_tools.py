@@ -42,6 +42,7 @@ _MAX_REQUEST_MAX_BYTES = 16 * 1024 * 1024
 _DEFAULT_DOWNLOAD_MAX_BYTES = 1024 * 1024 * 1024
 _MAX_DURATION_SECONDS = 300
 _MAX_REDIRECTS = 20
+DEFAULT_CURL_PRESET = "chrome-desktop"
 
 
 _PRESETS: dict[str, dict[str, Any]] = {
@@ -58,13 +59,23 @@ _PRESETS: dict[str, dict[str, Any]] = {
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/140.0.0.0 Safari/537.36"
+                "Chrome/153.0.0.0 Safari/537.36"
             ),
             "Accept": (
                 "text/html,application/xhtml+xml,application/xml;q=0.9,"
                 "image/avif,image/webp,image/apng,*/*;q=0.8"
             ),
             "Accept-Language": "en-US,en;q=0.9",
+            "Sec-CH-UA": (
+                '"Chromium";v="153", "Not_A Brand";v="99", '
+                '"Google Chrome";v="153"'
+            ),
+            "Sec-CH-UA-Mobile": "?0",
+            "Sec-CH-UA-Platform": '"Windows"',
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-User": "?1",
+            "Sec-Fetch-Dest": "document",
             "Upgrade-Insecure-Requests": "1",
         },
     },
@@ -77,13 +88,23 @@ _PRESETS: dict[str, dict[str, Any]] = {
             "User-Agent": (
                 "Mozilla/5.0 (Linux; Android 15; Pixel 9) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/140.0.0.0 Mobile Safari/537.36"
+                "Chrome/153.0.0.0 Mobile Safari/537.36"
             ),
             "Accept": (
                 "text/html,application/xhtml+xml,application/xml;q=0.9,"
                 "image/avif,image/webp,image/apng,*/*;q=0.8"
             ),
             "Accept-Language": "en-US,en;q=0.9",
+            "Sec-CH-UA": (
+                '"Chromium";v="153", "Not_A Brand";v="99", '
+                '"Google Chrome";v="153"'
+            ),
+            "Sec-CH-UA-Mobile": "?1",
+            "Sec-CH-UA-Platform": '"Android"',
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-User": "?1",
+            "Sec-Fetch-Dest": "document",
             "Upgrade-Insecure-Requests": "1",
         },
     },
@@ -103,6 +124,7 @@ _PRESETS: dict[str, dict[str, Any]] = {
 
 def curl_presets_impl() -> dict[str, Any]:
     return {
+        "default_preset": DEFAULT_CURL_PRESET,
         "presets": [
             {
                 "name": name,
@@ -194,7 +216,7 @@ def _validate_header(name: str, value: str) -> tuple[str, str]:
 
 
 def _merged_headers(preset: str, headers: dict[str, str] | None) -> dict[str, str]:
-    preset_name = preset.strip().casefold() or "curl"
+    preset_name = preset.strip().casefold() or DEFAULT_CURL_PRESET
     if preset_name not in _PRESETS:
         raise CurlError("preset must be one of: " + ", ".join(sorted(_PRESETS)))
     result: dict[str, tuple[str, str]] = {}
@@ -856,7 +878,7 @@ def curl_request_impl(
     body_base64: str | None = None,
     body_artifact_id: str | None = None,
     body_content_type: str = "",
-    preset: str = "curl",
+    preset: str = DEFAULT_CURL_PRESET,
     follow_redirects: bool = True,
     max_redirects: int = 10,
     timeout_seconds: float = 60,
@@ -920,7 +942,7 @@ def curl_download_impl(
     body_artifact_id: str | None = None,
     body_content_type: str = "",
     artifact_name: str = "",
-    preset: str = "curl",
+    preset: str = DEFAULT_CURL_PRESET,
     follow_redirects: bool = True,
     max_redirects: int = 10,
     timeout_seconds: float = 300,
@@ -1032,7 +1054,7 @@ def curl_stream_capture_impl(
     body_artifact_id: str | None = None,
     body_content_type: str = "",
     artifact_name: str = "",
-    preset: str = "curl",
+    preset: str = DEFAULT_CURL_PRESET,
     follow_redirects: bool = True,
     max_redirects: int = 10,
     duration_seconds: float = 15,

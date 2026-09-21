@@ -15,11 +15,12 @@ def register_curl_tools(
         curl_presets_impl,
         curl_request_impl,
         curl_stream_capture_impl,
+        DEFAULT_CURL_PRESET,
     )
 
     @mcp.tool(title="Curl presets", annotations=read_annotations)
     def curl_presets() -> dict[str, Any]:
-        """List built-in HTTP header presets for the structured curl tools."""
+        """List built-in HTTP header presets and the active default preset."""
         return curl_presets_impl()
 
     @mcp.tool(title="Curl request", annotations=write_annotations)
@@ -35,7 +36,7 @@ def register_curl_tools(
         body_base64: str | None = None,
         body_artifact_id: str | None = None,
         body_content_type: str = "",
-        preset: str = "curl",
+        preset: str = DEFAULT_CURL_PRESET,
         follow_redirects: bool = True,
         max_redirects: int = 10,
         timeout_seconds: float = 60,
@@ -50,7 +51,7 @@ def register_curl_tools(
 
         For large or binary responses prefer curl_download. body_artifact_id sends
         immutable artifact bytes directly from server-side storage without model-visible
-        base64. Browser presets reproduce HTTP headers only; they are not browser engines.
+        base64. Chrome Desktop is the default preset. Browser presets reproduce HTTP headers only; they are not browser engines.
         """
         return curl_request_impl(
             url=url,
@@ -90,7 +91,7 @@ def register_curl_tools(
         body_artifact_id: str | None = None,
         body_content_type: str = "",
         artifact_name: str = "",
-        preset: str = "curl",
+        preset: str = DEFAULT_CURL_PRESET,
         follow_redirects: bool = True,
         max_redirects: int = 10,
         timeout_seconds: float = 300,
@@ -148,7 +149,7 @@ def register_curl_tools(
         body_artifact_id: str | None = None,
         body_content_type: str = "",
         artifact_name: str = "",
-        preset: str = "curl",
+        preset: str = DEFAULT_CURL_PRESET,
         follow_redirects: bool = True,
         max_redirects: int = 10,
         duration_seconds: float = 15,
