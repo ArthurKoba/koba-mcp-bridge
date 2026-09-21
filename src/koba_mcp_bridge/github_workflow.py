@@ -195,6 +195,15 @@ class GitHubDevClient(GitHubAppClient):
         if not copies:
             raise GitHubAgentError("copies must not be empty")
 
+        _, source_commit = self._repo_request(
+            repository,
+            "GET",
+            f"/repos/{repository}/commits/{self._quote(source_ref)}",
+        )
+        if not isinstance(source_commit, dict) or not source_commit.get("sha"):
+            raise GitHubAgentError("unable to resolve source_ref")
+        source_sha = str(source_commit["sha"])
+
         branch_q = self._quote(branch)
         _, ref = self._repo_request(
             repository,
@@ -225,7 +234,7 @@ class GitHubDevClient(GitHubAppClient):
         tree_entries: list[dict[str, object]] = []
         seen_destinations: set[str] = set()
         copied: list[dict[str, object]] = []
-        source_ref_q = self._quote(source_ref)
+        source_ref_q = self._quote(source_sha)
 
         for item in copies:
             source_path = str(item.get("source_path", "")).strip("/")
@@ -323,6 +332,7 @@ class GitHubDevClient(GitHubAppClient):
         return {
             "repository": repository,
             "source_ref": source_ref,
+            "source_sha": source_sha,
             "branch": branch,
             "previous_head_sha": head_sha,
             "commit_sha": commit_sha,

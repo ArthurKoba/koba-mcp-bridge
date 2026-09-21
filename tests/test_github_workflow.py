@@ -133,11 +133,13 @@ def test_copy_files_reuses_existing_blob_sha(
         allowed_errors: set[int] | None = None,
     ) -> tuple[int, object]:
         calls.append((method, endpoint, payload))
-        if endpoint.endswith("/git/ref/heads/feature%2Ftest"):
+        if endpoint.endswith("/commits/files"):
+            return 200, {"sha": "source-commit-sha"}
+        if method == "GET" and endpoint.endswith("/git/ref/heads/feature%2Ftest"):
             return 200, {"object": {"sha": "head-sha"}}
         if endpoint.endswith("/git/commits/head-sha"):
             return 200, {"tree": {"sha": "base-tree"}}
-        if "/contents/source.bin?ref=files" in endpoint:
+        if "/contents/source.bin?ref=source-commit-sha" in endpoint:
             return 200, {
                 "type": "file",
                 "sha": "existing-blob-sha",
@@ -158,7 +160,7 @@ def test_copy_files_reuses_existing_blob_sha(
             return 201, {"sha": "new-tree"}
         if endpoint.endswith("/git/commits"):
             return 201, {"sha": "new-commit"}
-        if endpoint.endswith("/git/refs/heads/feature%2Ftest"):
+        if method == "PATCH" and endpoint.endswith("/git/refs/heads/feature%2Ftest"):
             assert payload == {"sha": "new-commit", "force": False}
             return 200, {}
         raise AssertionError(f"unexpected request: {method} {endpoint}")
@@ -180,6 +182,7 @@ def test_copy_files_reuses_existing_blob_sha(
     )
 
     assert result["commit_sha"] == "new-commit"
+    assert result["source_sha"] == "source-commit-sha"
     assert result["copied"] == [
         {
             "source_path": "source.bin",
@@ -206,13 +209,15 @@ def test_copy_files_detects_branch_race(
         allowed_errors: set[int] | None = None,
     ) -> tuple[int, object]:
         nonlocal ref_reads
-        if endpoint.endswith("/git/ref/heads/feature%2Ftest"):
+        if endpoint.endswith("/commits/files"):
+            return 200, {"sha": "source-commit-sha"}
+        if method == "GET" and endpoint.endswith("/git/ref/heads/feature%2Ftest"):
             ref_reads += 1
             sha = "head-sha" if ref_reads == 1 else "changed-head"
             return 200, {"object": {"sha": sha}}
         if endpoint.endswith("/git/commits/head-sha"):
             return 200, {"tree": {"sha": "base-tree"}}
-        if "/contents/source.bin?ref=files" in endpoint:
+        if "/contents/source.bin?ref=source-commit-sha" in endpoint:
             return 200, {"type": "file", "sha": "blob-sha", "size": 7}
         if endpoint.endswith("/git/trees"):
             return 201, {"sha": "new-tree"}
