@@ -98,6 +98,22 @@ Consumers hold durable references to source artifacts. Normal deletion refuses
 to remove referenced objects; garbage collection only targets objects with no
 consumer or collection references.
 
+## Curl HTTP client
+
+The structured curl tools use the `chrome-desktop` HTTP header preset by
+default. This applies to `curl_request`, `curl_download`, and
+`curl_stream_capture`, so ordinary requests present a current desktop Chrome
+User-Agent and matching browser navigation headers unless the caller selects a
+different preset.
+
+Use `preset="curl"` for native curl-style defaults, `preset="json-api"` for
+JSON APIs, or `preset="none"` when only explicitly supplied headers should be
+sent. Caller-provided headers always override preset headers.
+
+Browser presets reproduce HTTP request headers only. They do not emulate Chrome
+JavaScript execution, cookies/session state beyond what the caller supplies,
+TLS fingerprints, or browser HTTP/2 settings.
+
 ## Ghidra integration
 
 Ghidra is a consumer of the artifact service, not the owner of uploaded files.

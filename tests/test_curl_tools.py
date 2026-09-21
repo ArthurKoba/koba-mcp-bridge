@@ -11,6 +11,7 @@ import pytest
 
 from koba_mcp_bridge.artifact_store import ArtifactStore
 from koba_mcp_bridge.curl_tools import (
+    DEFAULT_CURL_PRESET,
     CurlError,
     _curl_failure_diagnostic,
     _http_status_diagnostic,
@@ -300,3 +301,30 @@ def test_curl_transport_failure_categories_are_actionable() -> None:
     assert _http_status_diagnostic(403)["error_type"] == "http_forbidden"
     assert _http_status_diagnostic(429)["error_type"] == "http_rate_limit"
 
+
+
+
+def test_chrome_desktop_is_the_default_preset(http_server) -> None:
+    assert DEFAULT_CURL_PRESET == "chrome-desktop"
+    presets = curl_presets_impl()
+    assert presets["default_preset"] == "chrome-desktop"
+
+    result = curl_request_impl(f"{http_server}/echo")
+    payload = json.loads(result["body_text"])
+    headers = payload["headers"]
+
+    assert "Chrome/153.0.0.0" in headers["user-agent"]
+    assert '"Google Chrome";v="153"' in headers["sec-ch-ua"]
+    assert headers["sec-ch-ua-mobile"] == "?0"
+    assert headers["sec-ch-ua-platform"] == '"Windows"'
+    assert headers["sec-fetch-mode"] == "navigate"
+    assert headers["sec-fetch-dest"] == "document"
+    assert result["request"]["preset"] == "chrome-desktop"
+
+
+def test_explicit_native_curl_preset_still_overrides_default(http_server) -> None:
+    result = curl_request_impl(f"{http_server}/echo", preset="curl")
+    payload = json.loads(result["body_text"])
+
+    assert result["request"]["preset"] == "curl"
+    assert "Chrome/" not in payload["headers"].get("user-agent", "")
