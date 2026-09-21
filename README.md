@@ -261,6 +261,7 @@ Core repository/files:
 - UTF-8 file read/write/delete;
 - directory listing;
 - binary file read/write using base64;
+- server-side copy of existing Git blobs between refs/paths without serializing binary contents through MCP;
 - repository-scoped code search;
 - atomic multi-file commits through Git Data blobs/trees/commits;
 - optimistic branch-head verification with `expected_head_sha`.
