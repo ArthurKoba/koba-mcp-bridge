@@ -734,6 +734,116 @@ class GitHubDevClient(GitHubAppClient):
         self._assert_mutable_branch(branch)
         return super().fast_forward(repository, branch, to_ref)
 
+    def reset_branch(
+        self,
+        repository: str,
+        branch: str,
+        target_ref: str,
+        expected_head_sha: str,
+        allow_protected_branch: bool = False,
+        dry_run: bool = True,
+    ) -> dict[str, object]:
+        """Force-reset a branch to an existing ancestor commit with CAS safeguards."""
+        repository = self._assert_allowed(repository)
+        branch = branch.strip()
+        target_ref = target_ref.strip()
+        expected_head_sha = expected_head_sha.strip()
+        if not branch:
+            raise GitHubAgentError("branch must not be empty")
+        if not target_ref:
+            raise GitHubAgentError("target_ref must not be empty")
+        if not expected_head_sha:
+            raise GitHubAgentError("expected_head_sha must not be empty")
+        if (
+            branch.casefold() in protected_branches_from_env()
+            and not allow_protected_branch
+        ):
+            raise GitHubAgentError(
+                f"reset of protected branch requires allow_protected_branch=true: {branch}"
+            )
+
+        branch_q = self._quote(branch)
+        _, ref = self._repo_request(
+            repository,
+            "GET",
+            f"/repos/{repository}/git/ref/heads/{branch_q}",
+        )
+        if not isinstance(ref, dict) or not isinstance(ref.get("object"), dict):
+            raise GitHubAgentError("unable to resolve branch head")
+        head_sha = str(ref["object"].get("sha", ""))
+        if not head_sha:
+            raise GitHubAgentError("branch head has no sha")
+        if head_sha != expected_head_sha:
+            raise GitHubAgentError(
+                f"branch head changed: expected {expected_head_sha}, found {head_sha}"
+            )
+
+        _, target = self._repo_request(
+            repository,
+            "GET",
+            f"/repos/{repository}/commits/{self._quote(target_ref)}",
+        )
+        if not isinstance(target, dict) or not target.get("sha"):
+            raise GitHubAgentError("unable to resolve target_ref")
+        target_sha = str(target["sha"])
+
+        if target_sha != head_sha:
+            _, comparison = self._repo_request(
+                repository,
+                "GET",
+                (
+                    f"/repos/{repository}/compare/"
+                    f"{self._quote(target_sha)}...{self._quote(head_sha)}"
+                ),
+            )
+            if not isinstance(comparison, dict):
+                raise GitHubAgentError("unexpected compare response")
+            if (
+                str(comparison.get("status", "")) != "ahead"
+                or int(comparison.get("behind_by", 0)) != 0
+            ):
+                raise GitHubAgentError(
+                    "target_ref must resolve to an ancestor of the current branch head"
+                )
+
+        result = {
+            "repository": repository,
+            "branch": branch,
+            "previous_head_sha": head_sha,
+            "target_ref": target_ref,
+            "target_sha": target_sha,
+            "protected_branch_override": allow_protected_branch,
+            "dry_run": dry_run,
+        }
+        if dry_run or target_sha == head_sha:
+            return result
+
+        _, current_ref = self._repo_request(
+            repository,
+            "GET",
+            f"/repos/{repository}/git/ref/heads/{branch_q}",
+        )
+        current_object = (
+            current_ref.get("object")
+            if isinstance(current_ref, dict)
+            and isinstance(current_ref.get("object"), dict)
+            else {}
+        )
+        current_head_sha = str(current_object.get("sha", ""))
+        if current_head_sha != head_sha:
+            raise GitHubAgentError(
+                f"branch head changed before reset: expected {head_sha}, "
+                f"found {current_head_sha}"
+            )
+
+        _, updated = self._repo_request(
+            repository,
+            "PATCH",
+            f"/repos/{repository}/git/refs/heads/{branch_q}",
+            payload={"sha": target_sha, "force": True},
+        )
+        return {**result, "dry_run": False, "result": updated}
+
     def list_tags(
         self,
         repository: str,
