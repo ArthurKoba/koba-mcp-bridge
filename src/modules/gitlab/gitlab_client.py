@@ -315,7 +315,7 @@ class GitLabClient:
         return f"GitLab API HTTP {status}: {detail}"
 
     @staticmethod
-    def _decode_response(raw: bytes, headers: dict[str, str]) -> Any:
+    def _decode_response(raw: bytes, headers: dict[str, str]) -> JsonValue:
         if not raw:
             return {}
         content_type = ""
