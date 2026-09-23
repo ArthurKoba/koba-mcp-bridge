@@ -4,7 +4,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from .file_ingress import FileUploadManager, ClientFile, ingest_file
+from .file_ingress import ClientFile, FileUploadManager, ingest_file
 from .file_store import FileStore
 
 
