@@ -99,19 +99,49 @@ def _build_auth() -> tuple[GitHubProvider | None, list[AuthMiddleware]]:
     return provider, [AuthMiddleware(auth=_github_user_allowed)]
 
 
-def _configured_backends() -> dict[str, str]:
-    backends: dict[str, str] = {}
+def _gateway_mode() -> str:
+    mode = os.getenv("KOBA_GATEWAY_MODE", "embedded").strip().casefold()
+    if mode not in {"embedded", "proxy"}:
+        raise RuntimeError("KOBA_GATEWAY_MODE must be embedded or proxy")
+    return mode
+
+
+def _configured_backends() -> dict[str, dict[str, str]]:
+    backends: dict[str, dict[str, str]] = {}
+
     ghidra_url = os.getenv("GHIDRA_MCP_URL", "").strip()
     if ghidra_url:
-        backends["ghidra"] = ghidra_url
+        backends["ghidra"] = {"url": ghidra_url, "namespace": "ghidra"}
+
+    if _gateway_mode() == "proxy":
+        for name, env_name, namespace in (
+            ("github", "GITHUB_MCP_URL", ""),
+            ("gitlab", "GITLAB_MCP_URL", "gitlab"),
+            ("files", "FILES_MCP_URL", ""),
+            ("http", "HTTP_MCP_URL", ""),
+        ):
+            url = os.getenv(env_name, "").strip()
+            if not url:
+                raise RuntimeError(
+                    f"{env_name} is required when KOBA_GATEWAY_MODE=proxy"
+                )
+            backends[name] = {"url": url, "namespace": namespace}
     return backends
 
 
-def _mount_backends(server: FastMCP) -> dict[str, str]:
+def _mount_backends(server: FastMCP) -> dict[str, dict[str, str]]:
     backends = _configured_backends()
-    for namespace, url in backends.items():
-        proxy = create_proxy(url, name=f"{namespace}-backend", mode="auto")
-        server.mount(server=proxy, namespace=namespace)
+    for name, config in backends.items():
+        proxy = create_proxy(
+            config["url"],
+            name=f"{name}-backend",
+            mode="auto",
+        )
+        namespace = config["namespace"]
+        if namespace:
+            server.mount(server=proxy, namespace=namespace)
+        else:
+            server.mount(server=proxy)
     return backends
 
 
@@ -152,13 +182,14 @@ gitlab_mcp = FastMCP(
     auth=_auth,
     middleware=_auth_middleware,
 )
-register_gitlab_tools(
-    gitlab_mcp,
-    READ_EXTERNAL,
-    WRITE_EXTERNAL,
-    DESTRUCTIVE_EXTERNAL,
-)
-mcp.mount(gitlab_mcp, namespace="gitlab")
+if _gateway_mode() == "embedded":
+    register_gitlab_tools(
+        gitlab_mcp,
+        READ_EXTERNAL,
+        WRITE_EXTERNAL,
+        DESTRUCTIVE_EXTERNAL,
+    )
+    mcp.mount(gitlab_mcp, namespace="gitlab")
 
 
 @mcp.tool(
@@ -235,6 +266,7 @@ def bridge_capabilities() -> dict[str, object]:
     if github_reviewer_configured():
         features.append("github-independent-reviewer")
     return {
+        "gateway_mode": _gateway_mode(),
         "backends": sorted(_MOUNTED_BACKENDS),
         "workers": [],
         "features": features,
@@ -242,46 +274,47 @@ def bridge_capabilities() -> dict[str, object]:
     }
 
 
-register_github_core_tools(
-    mcp,
-    _github_agent_client,
-    READ_EXTERNAL,
-    WRITE_EXTERNAL,
-    DESTRUCTIVE_EXTERNAL,
-)
+if _gateway_mode() == "embedded":
+    register_github_core_tools(
+        mcp,
+        _github_agent_client,
+        READ_EXTERNAL,
+        WRITE_EXTERNAL,
+        DESTRUCTIVE_EXTERNAL,
+    )
+    register_github_workflow_tools(
+        mcp,
+        _github_agent_client,
+        READ_EXTERNAL,
+        WRITE_EXTERNAL,
+        DESTRUCTIVE_EXTERNAL,
+    )
+    register_github_review_tools(
+        mcp,
+        _github_agent_client,
+        READ_EXTERNAL,
+        WRITE_EXTERNAL,
+    )
+    register_github_collab_tools(
+        mcp,
+        _github_agent_client,
+        READ_EXTERNAL,
+        WRITE_EXTERNAL,
+    )
+    register_github_actions_tools(
+        mcp,
+        _github_agent_client,
+        READ_EXTERNAL,
+        WRITE_EXTERNAL,
+        DESTRUCTIVE_EXTERNAL,
+    )
+    register_file_tools(mcp, READ_ONLY_LOCAL, WRITE_LOCAL, DESTRUCTIVE_LOCAL)
+    register_curl_tools(mcp, READ_ONLY_LOCAL, WRITE_EXTERNAL)
 
-register_github_workflow_tools(
-    mcp,
-    _github_agent_client,
-    READ_EXTERNAL,
-    WRITE_EXTERNAL,
-    DESTRUCTIVE_EXTERNAL,
-)
-register_github_review_tools(
-    mcp,
-    _github_agent_client,
-    READ_EXTERNAL,
-    WRITE_EXTERNAL,
-)
-register_github_collab_tools(
-    mcp,
-    _github_agent_client,
-    READ_EXTERNAL,
-    WRITE_EXTERNAL,
-)
-register_github_actions_tools(
-    mcp,
-    _github_agent_client,
-    READ_EXTERNAL,
-    WRITE_EXTERNAL,
-    DESTRUCTIVE_EXTERNAL,
-)
-register_file_tools(mcp, READ_ONLY_LOCAL, WRITE_LOCAL, DESTRUCTIVE_LOCAL)
 register_secrets_tools(mcp, READ_EXTERNAL)
-register_curl_tools(mcp, READ_ONLY_LOCAL, WRITE_EXTERNAL)
 register_reverse_workflow_tools(mcp, READ_ONLY_LOCAL, WRITE_LOCAL)
 
-if github_reviewer_configured():
+if _gateway_mode() == "embedded" and github_reviewer_configured():
     register_github_reviewer_tools(
         mcp,
         github_reviewer_client_from_env,
