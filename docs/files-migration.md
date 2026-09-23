@@ -31,13 +31,13 @@ file_id=sha256:<digest>
 Internet / ChatGPT
         |
         v
-mcp-gateway :8000
+gateway :8000
         |
-        +-- github-mcp   :8000 (private)
-        +-- gitlab-mcp   :8000 (private)
-        +-- files-mcp    :8000 (private)
-        +-- http-mcp     :8000 (private)
-        +-- analysis-mcp :8000 (private)
+        +-- github   :8000 (private)
+        +-- gitlab   :8000 (private)
+        +-- files    :8000 (private)
+        +-- curl     :8000 (private)
+        +-- analysis :8000 (private)
                               |
                               +-- ghidra-mcp :8081 (native/private)
 ```
