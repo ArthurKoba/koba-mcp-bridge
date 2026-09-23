@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Self
+
 from pydantic import field_validator
 
 from common.models import StrictModel
@@ -18,16 +20,22 @@ class ProtectedBranchPolicy(StrictModel):
     @classmethod
     def normalize_branches(cls, value: object) -> frozenset[str]:
         if isinstance(value, str):
-            items = value.split(",")
-        elif isinstance(value, (set, frozenset, list, tuple)):
-            items = value
-        else:
-            raise ValueError("protected branches must be a string or collection")
-        return frozenset(
-            str(item).strip().casefold()
-            for item in items
-            if str(item).strip()
-        )
+            return frozenset(
+                item.strip().casefold()
+                for item in value.split(",")
+                if item.strip()
+            )
+        if isinstance(value, (set, frozenset, list, tuple)):
+            return frozenset(
+                str(item).strip().casefold()
+                for item in value
+                if str(item).strip()
+            )
+        raise ValueError("protected branches must be a string or collection")
+
+    @classmethod
+    def from_value(cls, value: object) -> Self:
+        return cls.model_validate({"protected": value})
 
     def is_protected(self, branch: str) -> bool:
         return branch.strip().casefold() in self.protected

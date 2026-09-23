@@ -21,11 +21,11 @@ def protected_branches_from_env() -> set[str]:
             "GITHUB_AGENT_PROTECTED_BRANCHES",
             _DEFAULT_PROTECTED_BRANCHES,
         )
-    return set(ProtectedBranchPolicy(protected=raw).protected)
+    return set(ProtectedBranchPolicy.from_value(raw).protected)
 
 
 def require_mutable_branch(branch: str) -> str:
-    policy = ProtectedBranchPolicy(protected=protected_branches_from_env())
+    policy = ProtectedBranchPolicy.from_value(protected_branches_from_env())
     try:
         return policy.require_mutable(branch)
     except ProtectedBranchError as exc:

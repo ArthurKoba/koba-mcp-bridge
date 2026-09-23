@@ -11,7 +11,7 @@ def protected_branches() -> set[str]:
 
 
 def require_mutable_branch(branch: str) -> str:
-    policy = ProtectedBranchPolicy(protected=protected_branches())
+    policy = ProtectedBranchPolicy.from_value(protected_branches())
     try:
         return policy.require_mutable(branch)
     except ProtectedBranchError as exc:
