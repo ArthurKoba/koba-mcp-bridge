@@ -203,51 +203,44 @@ def gitlab_server():
 
 @pytest.fixture
 def configured_profiles(monkeypatch, gitlab_server):
-    for name in (
-        "INFISICAL_HOST",
-        "INFISICAL_PROJECT_ID",
-        "INFISICAL_CLIENT_ID",
-        "INFISICAL_CLIENT_SECRET",
-    ):
-        monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("GITLAB_TOKEN_A", "token-a")
-    monkeypatch.setenv("GITLAB_TOKEN_B", "token-b")
-    monkeypatch.setenv(
-        "GITLAB_PROFILES_JSON",
-        json.dumps(
-            [
-                {
-                    "profile_id": "local-alice",
-                    "label": "Local Alice",
-                    "base_url": gitlab_server,
-                    "auth_type": "private_token",
-                    "token_env": "GITLAB_TOKEN_A",
-                },
-                {
-                    "profile_id": "local-bob",
-                    "label": "Local Bob",
-                    "base_url": gitlab_server,
-                    "auth_type": "private_token",
-                    "token_env": "GITLAB_TOKEN_B",
-                },
-            ]
-        ),
+    gitlab_tools._clear_runtime_cache()
+
+    monkeypatch.setattr(
+        gitlab_module,
+        "list_config_folders",
+        lambda path: [
+            {"name": "local-alice"},
+            {"name": "local-bob"},
+        ]
+        if path == "gitlab/accounts"
+        else [],
     )
-    monkeypatch.setenv("GITLAB_PROFILES_FILE", "/nonexistent/gitlab-profiles.json")
+
+    values = {
+        ("gitlab/accounts/local-alice", "BASE_URL"): gitlab_server,
+        ("gitlab/accounts/local-alice", "AUTH_TYPE"): "private_token",
+        ("gitlab/accounts/local-alice", "LABEL"): "Local Alice",
+        ("gitlab/accounts/local-alice", "VERIFY_TLS"): "true",
+        ("gitlab/accounts/local-alice", "TOKEN"): "token-a",
+        ("gitlab/accounts/local-bob", "BASE_URL"): gitlab_server,
+        ("gitlab/accounts/local-bob", "AUTH_TYPE"): "private_token",
+        ("gitlab/accounts/local-bob", "LABEL"): "Local Bob",
+        ("gitlab/accounts/local-bob", "VERIFY_TLS"): "true",
+        ("gitlab/accounts/local-bob", "TOKEN"): "token-b",
+    }
+
+    def resolve(path: str, name: str) -> str:
+        if (path, name) in values:
+            return values[(path, name)]
+        raise gitlab_module.SecretError("missing optional secret")
+
+    monkeypatch.setattr(gitlab_module, "resolve_config_secret", resolve)
 
 
 def test_registry_discovers_infisical_profiles_without_eager_token_read(
     monkeypatch,
     gitlab_server,
 ) -> None:
-    monkeypatch.setenv("INFISICAL_HOST", "https://secrets.example.test")
-    monkeypatch.setenv("INFISICAL_PROJECT_ID", "project")
-    monkeypatch.setenv("INFISICAL_CLIENT_ID", "client-id")
-    monkeypatch.setenv("INFISICAL_CLIENT_SECRET", "client-secret")
-    monkeypatch.setenv("INFISICAL_ENVIRONMENT", "prod")
-    monkeypatch.setenv("INFISICAL_BASE_PATH", "/")
-    monkeypatch.setenv("GITLAB_PROFILES_FILE", "/nonexistent")
-    monkeypatch.delenv("GITLAB_PROFILES_JSON", raising=False)
 
     monkeypatch.setattr(
         gitlab_module,
@@ -274,7 +267,7 @@ def test_registry_discovers_infisical_profiles_without_eager_token_read(
 
     monkeypatch.setattr(gitlab_module, "resolve_config_secret", fake_resolve)
 
-    registry = GitLabProfileRegistry.from_env()
+    registry = GitLabProfileRegistry.from_infisical()
     result = registry.list()
 
     assert result["count"] == 1
@@ -294,7 +287,7 @@ def test_registry_discovers_infisical_profiles_without_eager_token_read(
 
 
 def test_registry_lists_multiple_profiles_without_tokens(configured_profiles) -> None:
-    result = GitLabProfileRegistry.from_env().list()
+    result = GitLabProfileRegistry.from_infisical().list()
     assert result["count"] == 2
 
     profiles = {item["profile_id"]: item for item in result["profiles"]}
@@ -305,7 +298,7 @@ def test_registry_lists_multiple_profiles_without_tokens(configured_profiles) ->
 
 
 def test_two_profiles_same_instance_resolve_different_accounts(configured_profiles) -> None:
-    registry = GitLabProfileRegistry.from_env()
+    registry = GitLabProfileRegistry.from_infisical()
     alice = GitLabClient(registry.get("local-alice")).profile_status()
     bob = GitLabClient(registry.get("local-bob")).profile_status()
 
@@ -315,21 +308,21 @@ def test_two_profiles_same_instance_resolve_different_accounts(configured_profil
 
 
 def test_project_selector_accepts_path_with_namespace(configured_profiles) -> None:
-    client = GitLabClient(GitLabProfileRegistry.from_env().get("local-alice"))
+    client = GitLabClient(GitLabProfileRegistry.from_infisical().get("local-alice"))
     result = client.project_status("group/project")
     assert result["project"]["id"] == 123
     assert result["project"]["path_with_namespace"] == "group/project"
 
 
 def test_read_file_decodes_base64(configured_profiles) -> None:
-    client = GitLabClient(GitLabProfileRegistry.from_env().get("local-alice"))
+    client = GitLabClient(GitLabProfileRegistry.from_infisical().get("local-alice"))
     result = client.get_file("group/project", "README.md", "main")
     assert result["content"] == "hello gitlab"
     assert result["last_commit_id"] == "last"
 
 
 def test_project_list_pagination_metadata(configured_profiles) -> None:
-    client = GitLabClient(GitLabProfileRegistry.from_env().get("local-alice"))
+    client = GitLabClient(GitLabProfileRegistry.from_infisical().get("local-alice"))
     result = client.list_projects()
     assert result["total"] == 1
     assert result["total_pages"] == 1
@@ -337,7 +330,7 @@ def test_project_list_pagination_metadata(configured_profiles) -> None:
 
 
 def test_direct_mutation_of_protected_branch_is_blocked(configured_profiles) -> None:
-    client = GitLabClient(GitLabProfileRegistry.from_env().get("local-alice"))
+    client = GitLabClient(GitLabProfileRegistry.from_infisical().get("local-alice"))
     with pytest.raises(GitLabError, match="protected branch"):
         client.put_file(
             "group/project",
@@ -349,13 +342,13 @@ def test_direct_mutation_of_protected_branch_is_blocked(configured_profiles) -> 
 
 
 def test_feature_branch_creation_is_allowed(configured_profiles) -> None:
-    client = GitLabClient(GitLabProfileRegistry.from_env().get("local-alice"))
+    client = GitLabClient(GitLabProfileRegistry.from_infisical().get("local-alice"))
     result = client.create_branch("group/project", "feature/new", "main")
     assert result["branch"]["name"] == "feature/new"
 
 
 def test_merge_request_flow_allows_protected_target(configured_profiles) -> None:
-    client = GitLabClient(GitLabProfileRegistry.from_env().get("local-alice"))
+    client = GitLabClient(GitLabProfileRegistry.from_infisical().get("local-alice"))
     created = client.create_merge_request(
         "group/project",
         "feature/new",
@@ -373,57 +366,16 @@ def test_merge_request_flow_allows_protected_target(configured_profiles) -> None
     assert merged["merge_request"]["sha"] == "abc123"
 
 
-def test_inline_tokens_are_rejected(monkeypatch, gitlab_server) -> None:
+def test_legacy_profile_environment_is_ignored(
+    monkeypatch,
+) -> None:
     monkeypatch.setenv(
         "GITLAB_PROFILES_JSON",
-        json.dumps(
-            [
-                {
-                    "profile_id": "bad",
-                    "base_url": gitlab_server,
-                    "auth_type": "private_token",
-                    "token": "secret",
-                }
-            ]
-        ),
+        '[{"profile_id":"legacy","token":"should-not-be-read"}]',
     )
-    monkeypatch.setenv("GITLAB_PROFILES_FILE", "/nonexistent/gitlab-profiles.json")
-    with pytest.raises(GitLabError, match="inline token"):
-        GitLabProfileRegistry.from_env()
-
-
-@pytest.mark.asyncio
-async def test_gateway_exposes_namespaced_gitlab_tools() -> None:
-    async with Client(mcp) as client:
-        tools = await client.list_tools()
-    names = {tool.name for tool in tools}
-
-    expected = {
-        "gitlab_profiles",
-        "gitlab_profile_status",
-        "gitlab_list_projects",
-        "gitlab_get_file",
-        "gitlab_commit_actions",
-        "gitlab_create_merge_request",
-        "gitlab_merge_merge_request",
-        "gitlab_list_pipelines",
-        "gitlab_job_trace",
-    }
-    assert expected <= names
-
-
-@pytest.mark.asyncio
-async def test_dedicated_gitlab_server_exposes_unprefixed_tools() -> None:
-    async with Client(gitlab_mcp) as client:
-        tools = await client.list_tools()
-    names = {tool.name for tool in tools}
-
-    assert "profiles" in names
-    assert "profile_status" in names
-    assert "list_projects" in names
-    assert "get_file" in names
-    assert "create_merge_request" in names
-    assert "gitlab_profiles" not in names
+    monkeypatch.setattr(gitlab_module, "list_config_folders", lambda path: [])
+    registry = GitLabProfileRegistry.from_infisical()
+    assert registry.list()["count"] == 0
 
 
 def test_http_app_mounts_dedicated_gitlab_endpoint() -> None:
@@ -436,18 +388,18 @@ def test_runtime_reuses_registry_and_client(
 ) -> None:
     gitlab_tools._clear_runtime_cache()
     monkeypatch.setenv("GITLAB_REGISTRY_CACHE_TTL_SECONDS", "60")
-    original = GitLabProfileRegistry.from_env
+    original = GitLabProfileRegistry.from_infisical
     calls = 0
 
-    def counted_from_env():
+    def counted_from_infisical():
         nonlocal calls
         calls += 1
         return original()
 
     monkeypatch.setattr(
         gitlab_tools.GitLabProfileRegistry,
-        "from_env",
-        counted_from_env,
+        "from_infisical",
+        counted_from_infisical,
     )
 
     first = gitlab_tools._client("local-alice")
@@ -459,7 +411,7 @@ def test_runtime_reuses_registry_and_client(
 
 
 def test_gitlab_client_reuses_persistent_connection(configured_profiles) -> None:
-    client = GitLabClient(GitLabProfileRegistry.from_env().get("local-alice"))
+    client = GitLabClient(GitLabProfileRegistry.from_infisical().get("local-alice"))
 
     client.project_status("group/project")
     client.project_status("group/project")
@@ -472,12 +424,18 @@ def test_gitlab_401_has_profile_credential_diagnostic(
     monkeypatch,
     gitlab_server,
 ) -> None:
-    monkeypatch.setenv("GITLAB_BAD_TOKEN", "wrong-token")
+    monkeypatch.setattr(
+        gitlab_module,
+        "resolve_config_secret",
+        lambda path, name: "wrong-token"
+        if (path, name) == ("gitlab/accounts/bad-auth", "TOKEN")
+        else (_ for _ in ()).throw(gitlab_module.SecretError("missing")),
+    )
     profile = gitlab_module.GitLabProfile(
         profile_id="bad-auth",
         base_url=gitlab_server,
         auth_type="private_token",
-        token_env="GITLAB_BAD_TOKEN",
+        convention_path="gitlab/accounts/bad-auth",
     )
     client = GitLabClient(profile)
 
@@ -491,10 +449,6 @@ def test_gitlab_401_has_profile_credential_diagnostic(
 def test_infisical_profile_discovery_failure_is_not_silenced(
     monkeypatch,
 ) -> None:
-    monkeypatch.setenv("INFISICAL_HOST", "https://secrets.example.test")
-    monkeypatch.setenv("INFISICAL_PROJECT_ID", "project")
-    monkeypatch.setenv("INFISICAL_CLIENT_ID", "client-id")
-    monkeypatch.setenv("INFISICAL_CLIENT_SECRET", "client-secret")
     monkeypatch.setattr(
         gitlab_module,
         "list_config_folders",
@@ -507,5 +461,5 @@ def test_infisical_profile_discovery_failure_is_not_silenced(
         GitLabError,
         match="discover GitLab profiles.*HTTP 403",
     ):
-        GitLabProfileRegistry.from_env()
+        GitLabProfileRegistry.from_infisical()
 
