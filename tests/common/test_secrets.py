@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
+
 from common.secrets import (
     InfisicalClient,
     InfisicalConfig,
