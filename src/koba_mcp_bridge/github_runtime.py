@@ -26,7 +26,7 @@ def github_agent_client() -> GitHubPrettyIdentityClient:
     return GitHubPrettyIdentityClient.from_infisical()
 
 
-mcp = build_private_mcp("koba-github")
+mcp = build_private_mcp("github-mcp")
 
 register_github_core_tools(
     mcp,
