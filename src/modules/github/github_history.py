@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import urllib.parse
+from typing import Protocol, cast
 
 from common.models import (
+    JsonContainer,
     JsonObject,
     json_bool,
     json_int,
@@ -61,18 +63,52 @@ def _verification(item: object, *, include_material: bool) -> dict[str, object]:
     return result
 
 
+
+class _GitHubHistoryHost(Protocol):
+    app_id: str
+
+    def _assert_allowed(self, repository: str) -> str: ...
+
+    def _app_jwt(self) -> str: ...
+
+    def _installation_id(self, repository: str) -> int: ...
+
+    def _request(
+        self,
+        method: str,
+        url: str,
+        *,
+        token: str | None = None,
+        payload: object | None = None,
+        allowed_errors: set[int] | None = None,
+    ) -> tuple[int, JsonContainer]: ...
+
+    def _repo_request(
+        self,
+        repository: str,
+        method: str,
+        path: str,
+        *,
+        payload: object | None = None,
+        allowed_errors: set[int] | None = None,
+    ) -> tuple[int, JsonContainer]: ...
+
+
 class GitHubHistoryMixin:
     """Identity-aware history and branch-policy operations for GitHub App clients."""
 
     app_id: str
 
+    def _history_host(self) -> _GitHubHistoryHost:
+        return cast(_GitHubHistoryHost, self)
+
     def _branch_policy(self, repository: str, branch: str) -> dict[str, object]:
-        repository = self._assert_allowed(repository)  # type: ignore[attr-defined]
+        repository = self._history_host()._assert_allowed(repository)
         branch = branch.strip()
         if not branch:
             raise GitHubAgentError("branch must not be empty")
 
-        status, result = self._repo_request(  # type: ignore[attr-defined]
+        status, result = self._history_host()._repo_request(
             repository,
             "GET",
             f"/repos/{repository}/branches/{urllib.parse.quote(branch, safe='')}",
@@ -110,8 +146,8 @@ class GitHubHistoryMixin:
         return branch.strip()
 
     def list_branches(self, repository: str) -> dict[str, object]:
-        repository = self._assert_allowed(repository)  # type: ignore[attr-defined]
-        _, result = self._repo_request(  # type: ignore[attr-defined]
+        repository = self._history_host()._assert_allowed(repository)
+        _, result = self._history_host()._repo_request(
             repository,
             "GET",
             f"/repos/{repository}/branches?per_page=100",
@@ -154,7 +190,7 @@ class GitHubHistoryMixin:
         per_page: int = 50,
         page: int = 1,
     ) -> dict[str, object]:
-        repository = self._assert_allowed(repository)  # type: ignore[attr-defined]
+        repository = self._history_host()._assert_allowed(repository)
         params: dict[str, str | int] = {
             "per_page": max(1, min(per_page, 100)),
             "page": max(1, page),
@@ -164,7 +200,7 @@ class GitHubHistoryMixin:
         if path:
             params["path"] = path
         query = urllib.parse.urlencode(params)
-        _, result = self._repo_request(  # type: ignore[attr-defined]
+        _, result = self._history_host()._repo_request(
             repository,
             "GET",
             f"/repos/{repository}/commits?{query}",
@@ -200,8 +236,8 @@ class GitHubHistoryMixin:
         return {"repository": repository, "commits": commits, "page": page}
 
     def get_commit(self, repository: str, ref: str) -> dict[str, object]:
-        repository = self._assert_allowed(repository)  # type: ignore[attr-defined]
-        _, result = self._repo_request(  # type: ignore[attr-defined]
+        repository = self._history_host()._assert_allowed(repository)
+        _, result = self._history_host()._repo_request(
             repository,
             "GET",
             f"/repos/{repository}/commits/{urllib.parse.quote(ref, safe='')}",
@@ -245,9 +281,9 @@ class GitHubHistoryMixin:
         }
 
     def delete_branch(self, repository: str, branch: str) -> dict[str, object]:
-        repository = self._assert_allowed(repository)  # type: ignore[attr-defined]
+        repository = self._history_host()._assert_allowed(repository)
         branch = self._assert_branch_mutation_allowed(repository, branch)
-        self._repo_request(  # type: ignore[attr-defined]
+        self._history_host()._repo_request(
             repository,
             "DELETE",
             f"/repos/{repository}/git/refs/heads/{urllib.parse.quote(branch, safe='')}",
@@ -255,10 +291,10 @@ class GitHubHistoryMixin:
         return {"repository": repository, "branch": branch, "deleted": True}
 
     def _agent_app_identity(self) -> dict[str, object]:
-        _, app = self._request(  # type: ignore[attr-defined]
+        _, app = self._history_host()._request(
             "GET",
             f"{_GITHUB_API}/app",
-            token=self._app_jwt(),  # type: ignore[attr-defined]
+            token=self._history_host()._app_jwt(),
         )
         if not isinstance(app, dict):
             raise GitHubAgentError("unexpected GitHub App response")
@@ -267,7 +303,7 @@ class GitHubHistoryMixin:
             raise GitHubAgentError("GitHub App response has no slug")
 
         login = f"{slug}[bot]"
-        _, bot = self._request(  # type: ignore[attr-defined]
+        _, bot = self._history_host()._request(
             "GET",
             f"{_GITHUB_API}/users/{urllib.parse.quote(login, safe='')}",
         )
@@ -288,11 +324,11 @@ class GitHubHistoryMixin:
         }
 
     def _installation_permissions(self, repository: str) -> dict[str, str]:
-        installation_id = self._installation_id(repository)  # type: ignore[attr-defined]
-        _, token_payload = self._request(  # type: ignore[attr-defined]
+        installation_id = self._history_host()._installation_id(repository)
+        _, token_payload = self._history_host()._request(
             "POST",
             f"{_GITHUB_API}/app/installations/{installation_id}/access_tokens",
-            token=self._app_jwt(),  # type: ignore[attr-defined]
+            token=self._history_host()._app_jwt(),
         )
         if not isinstance(token_payload, dict):
             raise GitHubAgentError("unexpected installation token response")
@@ -305,8 +341,8 @@ class GitHubHistoryMixin:
         *,
         reviewer_available: bool = False,
     ) -> dict[str, object]:
-        repository = self._assert_allowed(repository)  # type: ignore[attr-defined]
-        _, repo = self._repo_request(  # type: ignore[attr-defined]
+        repository = self._history_host()._assert_allowed(repository)
+        _, repo = self._history_host()._repo_request(
             repository,
             "GET",
             f"/repos/{repository}",
@@ -320,7 +356,7 @@ class GitHubHistoryMixin:
             "repository": repository,
             "allowed_repository": True,
             "app_id": self.app_id,
-            "installation_id": self._installation_id(repository),  # type: ignore[attr-defined]
+            "installation_id": self._history_host()._installation_id(repository),
             "agent_identity": self._agent_app_identity(),
             "repository_metadata": {
                 "default_branch": json_str(repo.get("default_branch")),
@@ -348,7 +384,7 @@ class GitHubHistoryMixin:
         }
 
     def _git_commit_object(self, repository: str, sha: str) -> JsonObject:
-        _, result = self._repo_request(  # type: ignore[attr-defined]
+        _, result = self._history_host()._repo_request(
             repository,
             "GET",
             f"/repos/{repository}/git/commits/{urllib.parse.quote(sha, safe='')}",
@@ -382,7 +418,7 @@ class GitHubHistoryMixin:
         max_commits: int = 100,
         dry_run: bool = True,
     ) -> dict[str, object]:
-        repository = self._assert_allowed(repository)  # type: ignore[attr-defined]
+        repository = self._history_host()._assert_allowed(repository)
         branch = self._assert_branch_mutation_allowed(repository, branch)
         if identity_source != "current_agent_app":
             raise GitHubAgentError("identity_source must be current_agent_app")
@@ -396,7 +432,7 @@ class GitHubHistoryMixin:
 
         max_commits = max(1, min(max_commits, 500))
         branch_q = urllib.parse.quote(branch, safe="")
-        _, ref = self._repo_request(  # type: ignore[attr-defined]
+        _, ref = self._history_host()._repo_request(
             repository,
             "GET",
             f"/repos/{repository}/git/ref/heads/{branch_q}",
@@ -482,7 +518,7 @@ class GitHubHistoryMixin:
                 "author": author_payload,
                 "committer": committer_payload,
             }
-            _, created = self._repo_request(  # type: ignore[attr-defined]
+            _, created = self._history_host()._repo_request(
                 repository,
                 "POST",
                 f"/repos/{repository}/git/commits",
@@ -566,7 +602,7 @@ class GitHubHistoryMixin:
         if dry_run:
             return result
 
-        _, ref_before_update = self._repo_request(  # type: ignore[attr-defined]
+        _, ref_before_update = self._history_host()._repo_request(
             repository,
             "GET",
             f"/repos/{repository}/git/ref/heads/{branch_q}",
@@ -586,7 +622,7 @@ class GitHubHistoryMixin:
                 f"expected {expected_head_sha}, found {current_head}"
             )
 
-        self._repo_request(  # type: ignore[attr-defined]
+        self._history_host()._repo_request(
             repository,
             "PATCH",
             f"/repos/{repository}/git/refs/heads/{branch_q}",
