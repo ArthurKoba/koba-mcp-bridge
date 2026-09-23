@@ -23,7 +23,7 @@ from .runtime_common import build_private_mcp, private_http_app
 
 @lru_cache(maxsize=1)
 def github_agent_client() -> GitHubPrettyIdentityClient:
-    return GitHubPrettyIdentityClient.from_env()
+    return GitHubPrettyIdentityClient.from_infisical()
 
 
 mcp = build_private_mcp("koba-github")
