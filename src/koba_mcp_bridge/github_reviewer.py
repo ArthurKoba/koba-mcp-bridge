@@ -1,95 +1,56 @@
 from __future__ import annotations
 
-import base64
-import os
 from functools import lru_cache
 
 from .github_agent import GitHubAgentError
 from .github_identity import GitHubPrettyIdentityClient
-from .secrets import (
-    InfisicalConfig,
-    SecretError,
-    resolve_config_secret,
-    resolve_secret,
-)
+from .secrets import SecretError, resolve_config_secret
 
 
 def github_reviewer_configured() -> bool:
-    if InfisicalConfig.from_env().configured():
-        return True
-    return bool(
-        os.getenv("GITHUB_REVIEWER_APP_ID", "").strip()
-        and (
-            os.getenv("GITHUB_REVIEWER_PRIVATE_KEY_REF", "").strip()
-            or os.getenv("GITHUB_REVIEWER_PRIVATE_KEY", "").strip()
-            or os.getenv("GITHUB_REVIEWER_PRIVATE_KEY_B64", "").strip()
+    try:
+        return bool(
+            resolve_config_secret("github/reviewer", "APP_ID").strip()
+            and resolve_config_secret(
+                "github/reviewer",
+                "PRIVATE_KEY_PEM",
+            ).strip()
         )
-    )
+    except SecretError:
+        return False
 
 
 def _reviewer_app_id() -> str:
-    infisical_error: SecretError | None = None
     try:
-        return resolve_config_secret("github/reviewer", "APP_ID").strip()
+        value = resolve_config_secret("github/reviewer", "APP_ID").strip()
     except SecretError as exc:
-        infisical_error = exc
-
-    app_id = os.getenv("GITHUB_REVIEWER_APP_ID", "").strip()
-    if app_id:
-        return app_id
-    if infisical_error is not None:
         raise GitHubAgentError(
-            "unable to load GitHub reviewer APP_ID from Infisical: "
-            f"{infisical_error}"
-        ) from infisical_error
-    raise GitHubAgentError("GitHub reviewer APP_ID is not configured")
+            f"unable to load GitHub reviewer APP_ID from Infisical: {exc}"
+        ) from exc
+    if not value:
+        raise GitHubAgentError("GitHub reviewer APP_ID is empty")
+    return value
 
 
-def _reviewer_private_key_from_env() -> str:
-    infisical_error: SecretError | None = None
+def _reviewer_private_key() -> str:
     try:
-        return resolve_config_secret(
+        value = resolve_config_secret(
             "github/reviewer",
             "PRIVATE_KEY_PEM",
-        ).replace("\\n", "\n")
+        ).replace("\\n", "\n").strip()
     except SecretError as exc:
-        infisical_error = exc
-
-    secret_ref = os.getenv("GITHUB_REVIEWER_PRIVATE_KEY_REF", "").strip()
-    raw = os.getenv("GITHUB_REVIEWER_PRIVATE_KEY", "").strip()
-    encoded = os.getenv("GITHUB_REVIEWER_PRIVATE_KEY_B64", "").strip()
-
-    if secret_ref:
-        try:
-            return resolve_secret(secret_ref).replace("\\n", "\n")
-        except SecretError as exc:
-            if not raw and not encoded:
-                raise GitHubAgentError(
-                    "unable to resolve GITHUB_REVIEWER_PRIVATE_KEY_REF: "
-                    f"{exc}"
-                ) from exc
-
-    if raw:
-        return raw.replace("\\n", "\n")
-
-    if encoded:
-        try:
-            return base64.b64decode(encoded).decode("utf-8")
-        except Exception as exc:
-            raise GitHubAgentError(
-                "GITHUB_REVIEWER_PRIVATE_KEY_B64 is not valid base64 UTF-8"
-            ) from exc
-
-    if infisical_error is not None:
         raise GitHubAgentError(
             "unable to load GitHub reviewer PRIVATE_KEY_PEM from Infisical: "
-            f"{infisical_error}"
-        ) from infisical_error
-    raise GitHubAgentError("GitHub reviewer private key is not configured")
+            f"{exc}"
+        ) from exc
+    if not value:
+        raise GitHubAgentError("GitHub reviewer PRIVATE_KEY_PEM is empty")
+    return value
+
 
 @lru_cache(maxsize=1)
-def github_reviewer_client_from_env() -> GitHubPrettyIdentityClient:
+def github_reviewer_client() -> GitHubPrettyIdentityClient:
     return GitHubPrettyIdentityClient(
         app_id=_reviewer_app_id(),
-        private_key=_reviewer_private_key_from_env(),
+        private_key=_reviewer_private_key(),
     )
