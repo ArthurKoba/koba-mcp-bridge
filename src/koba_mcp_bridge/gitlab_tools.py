@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import threading
 import time
-from pathlib import Path
 from typing import Any
 
 from fastmcp import FastMCP
@@ -29,17 +28,7 @@ def _cache_ttl_seconds() -> float:
 
 
 def _registry_fingerprint() -> tuple[object, ...]:
-    path = os.getenv("GITLAB_PROFILES_FILE", "/data/fastmcp/gitlab-profiles.json").strip()
-    try:
-        stat = Path(path).stat() if path else None
-    except OSError:
-        stat = None
-
     return (
-        os.getenv("GITLAB_PROFILES_JSON", ""),
-        path,
-        getattr(stat, "st_mtime_ns", None),
-        getattr(stat, "st_size", None),
         os.getenv("INFISICAL_HOST", ""),
         os.getenv("INFISICAL_PROJECT_ID", ""),
         os.getenv("INFISICAL_ENVIRONMENT", "prod"),
@@ -69,7 +58,7 @@ def _registry() -> GitLabProfileRegistry:
         ):
             return cached[2]
 
-        registry = GitLabProfileRegistry.from_env()
+        registry = GitLabProfileRegistry.from_infisical()
         _registry_cache = (now + ttl, fingerprint, registry)
         return registry
 
