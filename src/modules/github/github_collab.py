@@ -7,7 +7,6 @@ from common.models import (
     json_int,
     json_member_array,
     json_member_object,
-    json_object,
     json_str,
 )
 
