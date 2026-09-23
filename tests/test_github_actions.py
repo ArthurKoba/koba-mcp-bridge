@@ -42,12 +42,12 @@ class RecordingActionsClient(GitHubActionsClient):
             }
         if method == "GET" and path.endswith("/pulls/7/reviews?per_page=100"):
             return 200, self.reviews
-        if method == "GET" and "/files?" in path:
+        if method == "GET" and "/artifacts?" in path:
             return (
                 200,
                 {
                     "total_count": 1,
-                    "files": [
+                    "artifacts": [
                         {
                             "id": 9,
                             "name": "coverage",
@@ -134,7 +134,7 @@ def test_enable_workflow_uses_actions_enable_endpoint() -> None:
     client = EnableClient()
     result = client.enable_workflow(
         "ArthurKoba/ghidra",
-        "build-ghidra-multi-platform-file.yml",
+        "build-ghidra-multi-platform-artifact.yml",
     )
 
     assert result["enabled"] is True
@@ -143,7 +143,7 @@ def test_enable_workflow_uses_actions_enable_endpoint() -> None:
         (
             "PUT",
             "/repos/ArthurKoba/ghidra/actions/workflows/"
-            "build-ghidra-multi-platform-file.yml/enable",
+            "build-ghidra-multi-platform-artifact.yml/enable",
         )
     ]
 
