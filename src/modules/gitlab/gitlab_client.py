@@ -9,10 +9,18 @@ import re
 import ssl
 import threading
 import urllib.parse
-from dataclasses import dataclass
-from typing import Any
 
+from common.config import env_bool, env_list
+from common.models import JsonObject, JsonValue, json_loads
 from common.secrets import SecretError, list_config_folders, resolve_config_secret
+
+from .models import (
+    GitLabCommitAction,
+    GitLabProfile,
+    GitLabProfileListResponse,
+    GitLabProfilePublic,
+    GitLabResponse,
+)
 
 _PROFILE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _ALLOWED_AUTH = {"private_token", "bearer", "job_token"}
@@ -22,16 +30,8 @@ class GitLabError(RuntimeError):
     pass
 
 
-def _env_bool(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
-
-
 def _protected_branches() -> set[str]:
-    raw = os.getenv("GITLAB_PROTECTED_BRANCHES", "main,master")
-    return {item.strip() for item in raw.split(",") if item.strip()}
+    return set(env_list("GITLAB_PROTECTED_BRANCHES", "main,master"))
 
 
 def _assert_mutable_branch(branch: str) -> str:
@@ -43,46 +43,6 @@ def _assert_mutable_branch(branch: str) -> str:
             f"direct mutation of protected branch {value!r} is blocked; use a merge request"
         )
     return value
-
-
-@dataclass(frozen=True)
-class GitLabProfile:
-    profile_id: str
-    base_url: str
-    auth_type: str
-    convention_path: str
-    verify_tls: bool = True
-    ca_file: str = ""
-    label: str = ""
-
-    @property
-    def api_url(self) -> str:
-        return self.base_url.rstrip("/") + "/api/v4"
-
-    def token(self) -> str:
-        try:
-            return resolve_config_secret(self.convention_path, "TOKEN")
-        except SecretError as exc:
-            raise GitLabError(
-                f"unable to resolve TOKEN for GitLab profile {self.profile_id!r}: {exc}"
-            ) from exc
-
-    def public(self) -> dict[str, Any]:
-        return {
-            "profile_id": self.profile_id,
-            "label": self.label,
-            "base_url": self.base_url,
-            "api_url": self.api_url,
-            "auth_type": self.auth_type,
-            "credential_source": {
-                "type": "infisical_convention",
-                "path": self.convention_path,
-                "secret": "TOKEN",
-            },
-            "credential_configured": True,
-            "verify_tls": self.verify_tls,
-            "ca_file": self.ca_file or None,
-        }
 
 
 class GitLabProfileRegistry:
@@ -157,12 +117,18 @@ class GitLabProfileRegistry:
         }
         return cls(profiles)
 
-    def list(self) -> dict[str, Any]:
+    def list(self) -> JsonObject:
         profiles = sorted(
-            (profile.public() for profile in self._profiles.values()),
-            key=lambda item: str(item["profile_id"]).casefold(),
+            (
+                GitLabProfilePublic.model_validate(profile.public())
+                for profile in self._profiles.values()
+            ),
+            key=lambda item: item.profile_id.casefold(),
         )
-        return {"profiles": profiles, "count": len(profiles)}
+        return GitLabProfileListResponse(
+            profiles=profiles,
+            count=len(profiles),
+        ).to_json()
 
     def get(self, profile_id: str) -> GitLabProfile:
         key = profile_id.strip().casefold()
@@ -170,13 +136,6 @@ class GitLabProfileRegistry:
         if profile is None:
             raise GitLabError(f"unknown GitLab profile_id: {profile_id}")
         return profile
-
-
-@dataclass
-class GitLabResponse:
-    status: int
-    data: Any
-    headers: dict[str, str]
 
 
 class GitLabClient:
@@ -225,7 +184,7 @@ class GitLabClient:
     def _target(
         self,
         path: str,
-        query: dict[str, Any] | None = None,
+        query: JsonObject | None = None,
     ) -> str:
         if not path.startswith("/"):
             raise GitLabError("GitLab API path must start with /")
@@ -245,7 +204,7 @@ class GitLabClient:
     def _url(
         self,
         path: str,
-        query: dict[str, Any] | None = None,
+        query: JsonObject | None = None,
     ) -> str:
         return self.profile.base_url.rstrip("/") + self._target(path, query)
 
@@ -321,7 +280,7 @@ class GitLabClient:
                 response = connection.getresponse()
                 raw = response.read()
                 status = response.status
-                response_headers = {k: v for k, v in response.headers.items()}
+                response_headers = dict(response.headers.items())
                 self._release_connection(
                     connection,
                     reusable=not response.will_close,
@@ -336,7 +295,7 @@ class GitLabClient:
                     ) from exc
         raise AssertionError("unreachable")
 
-    def _error_message(self, status: int, target: str, data: Any) -> str:
+    def _error_message(self, status: int, target: str, data: JsonValue) -> str:
         detail = json.dumps(data, ensure_ascii=False)[:4096]
         if status == 401:
             return (
@@ -376,11 +335,15 @@ class GitLabClient:
         method: str,
         path: str,
         *,
-        query: dict[str, Any] | None = None,
+        query: JsonObject | None = None,
         payload: object | None = None,
         allowed_errors: set[int] | None = None,
     ) -> GitLabResponse:
-        body = None if payload is None else json.dumps(payload).encode("utf-8")
+        body = (
+            None
+            if payload is None
+            else json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        )
         target = self._target(path, query)
         status, headers, raw = self._perform(
             method,
@@ -413,7 +376,7 @@ class GitLabClient:
             raise GitLabError("project must be a numeric id or path_with_namespace")
         return urllib.parse.quote(value, safe="")
 
-    def profile_status(self) -> dict[str, Any]:
+    def profile_status(self) -> JsonObject:
         user = self.request("GET", "/user").data
         version = self.request("GET", "/version", allowed_errors={401, 403, 404}).data
         if not isinstance(user, dict):
@@ -439,10 +402,10 @@ class GitLabClient:
         min_access_level: int = 0,
         page: int = 1,
         per_page: int = 100,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         if page <= 0 or per_page <= 0 or per_page > 100:
             raise GitLabError("page must be > 0 and per_page must be between 1 and 100")
-        query: dict[str, Any] = {
+        query: JsonObject = {
             "membership": membership,
             "owned": owned,
             "simple": True,
@@ -468,14 +431,14 @@ class GitLabClient:
             "total_pages": _header_int(response.headers, "X-Total-Pages"),
         }
 
-    def project_status(self, project: str | int) -> dict[str, Any]:
+    def project_status(self, project: str | int) -> JsonObject:
         selector = self.project_selector(project)
         data = self.request("GET", f"/projects/{selector}").data
         if not isinstance(data, dict):
             raise GitLabError("unexpected GitLab project response")
         return {"profile_id": self.profile.profile_id, "project": data}
 
-    def get_file(self, project: str | int, path: str, ref: str = "main") -> dict[str, Any]:
+    def get_file(self, project: str | int, path: str, ref: str = "main") -> JsonObject:
         selector = self.project_selector(project)
         file_path = urllib.parse.quote(path.strip("/"), safe="")
         response = self.request(
@@ -511,7 +474,7 @@ class GitLabClient:
         recursive: bool = False,
         page: int = 1,
         per_page: int = 100,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         selector = self.project_selector(project)
         response = self.request(
             "GET",
@@ -542,9 +505,9 @@ class GitLabClient:
         ref: str = "",
         page: int = 1,
         per_page: int = 100,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         selector = self.project_selector(project)
-        query: dict[str, Any] = {
+        query: JsonObject = {
             "scope": "blobs",
             "search": search,
             "page": page,
@@ -572,7 +535,7 @@ class GitLabClient:
         branch: str,
         commit_message: str,
         last_commit_id: str = "",
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         branch = _assert_mutable_branch(branch)
         selector = self.project_selector(project)
         file_path = urllib.parse.quote(path.strip("/"), safe="")
@@ -583,7 +546,7 @@ class GitLabClient:
             allowed_errors={404},
         )
         method = "POST" if existing.status == 404 else "PUT"
-        payload: dict[str, Any] = {
+        payload: JsonObject = {
             "branch": branch,
             "content": content,
             "commit_message": commit_message,
@@ -611,11 +574,11 @@ class GitLabClient:
         branch: str,
         commit_message: str,
         last_commit_id: str = "",
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         branch = _assert_mutable_branch(branch)
         selector = self.project_selector(project)
         file_path = urllib.parse.quote(path.strip("/"), safe="")
-        payload: dict[str, Any] = {
+        payload: JsonObject = {
             "branch": branch,
             "commit_message": commit_message,
         }
@@ -639,26 +602,20 @@ class GitLabClient:
         project: str | int,
         branch: str,
         commit_message: str,
-        actions: list[dict[str, Any]],
+        actions: list[GitLabCommitAction],
         start_branch: str = "",
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         branch = _assert_mutable_branch(branch)
         if not actions:
             raise GitLabError("actions must not be empty")
         allowed = {"create", "update", "delete", "move", "chmod"}
-        clean_actions = []
+        clean_actions: list[JsonObject] = []
         for action in actions:
-            if not isinstance(action, dict):
-                raise GitLabError("each commit action must be an object")
-            kind = str(action.get("action", "")).strip()
-            if kind not in allowed:
-                raise GitLabError(f"unsupported commit action: {kind}")
-            file_path = str(action.get("file_path", "")).strip("/")
-            if not file_path:
-                raise GitLabError("commit action file_path must not be empty")
-            clean_actions.append(dict(action))
+            if action.action not in allowed:
+                raise GitLabError(f"unsupported commit action: {action.action}")
+            clean_actions.append(action.to_json())
         selector = self.project_selector(project)
-        payload: dict[str, Any] = {
+        payload: JsonObject = {
             "branch": branch,
             "commit_message": commit_message,
             "actions": clean_actions,
@@ -683,7 +640,7 @@ class GitLabClient:
         search: str = "",
         page: int = 1,
         per_page: int = 100,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         selector = self.project_selector(project)
         response = self.request(
             "GET",
@@ -704,7 +661,7 @@ class GitLabClient:
         project: str | int,
         branch: str,
         ref: str,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         branch = _assert_mutable_branch(branch)
         selector = self.project_selector(project)
         response = self.request(
@@ -718,7 +675,7 @@ class GitLabClient:
             "branch": response.data,
         }
 
-    def delete_branch(self, project: str | int, branch: str) -> dict[str, Any]:
+    def delete_branch(self, project: str | int, branch: str) -> JsonObject:
         branch = _assert_mutable_branch(branch)
         selector = self.project_selector(project)
         branch_q = urllib.parse.quote(branch, safe="")
@@ -740,7 +697,7 @@ class GitLabClient:
         from_ref: str,
         to_ref: str,
         straight: bool = False,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         selector = self.project_selector(project)
         response = self.request(
             "GET",
@@ -761,7 +718,7 @@ class GitLabClient:
         target_branch: str = "",
         page: int = 1,
         per_page: int = 100,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         selector = self.project_selector(project)
         response = self.request(
             "GET",
@@ -783,7 +740,7 @@ class GitLabClient:
             "next_page": response.headers.get("X-Next-Page", ""),
         }
 
-    def get_merge_request(self, project: str | int, iid: int) -> dict[str, Any]:
+    def get_merge_request(self, project: str | int, iid: int) -> JsonObject:
         selector = self.project_selector(project)
         data = self.request(
             "GET",
@@ -806,7 +763,7 @@ class GitLabClient:
         remove_source_branch: bool = False,
         squash: bool = False,
         draft: bool = False,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         selector = self.project_selector(project)
         mr_title = title
         if draft and not title.lower().startswith(("draft:", "wip:")):
@@ -840,9 +797,9 @@ class GitLabClient:
         target_branch: str | None = None,
         remove_source_branch: bool | None = None,
         squash: bool | None = None,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         selector = self.project_selector(project)
-        payload: dict[str, Any] = {}
+        payload: JsonObject = {}
         for key, value in {
             "title": title,
             "description": description,
@@ -876,9 +833,9 @@ class GitLabClient:
         merge_when_pipeline_succeeds: bool = False,
         merge_commit_message: str = "",
         squash_commit_message: str = "",
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         selector = self.project_selector(project)
-        payload: dict[str, Any] = {
+        payload: JsonObject = {
             "merge_when_pipeline_succeeds": merge_when_pipeline_succeeds,
         }
         if sha:
@@ -909,7 +866,7 @@ class GitLabClient:
         search: str = "",
         page: int = 1,
         per_page: int = 100,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         selector = self.project_selector(project)
         response = self.request(
             "GET",
@@ -930,7 +887,7 @@ class GitLabClient:
             "next_page": response.headers.get("X-Next-Page", ""),
         }
 
-    def get_issue(self, project: str | int, iid: int) -> dict[str, Any]:
+    def get_issue(self, project: str | int, iid: int) -> JsonObject:
         selector = self.project_selector(project)
         data = self.request("GET", f"/projects/{selector}/issues/{iid}").data
         return {
@@ -945,9 +902,9 @@ class GitLabClient:
         title: str,
         description: str = "",
         labels: list[str] | None = None,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         selector = self.project_selector(project)
-        payload: dict[str, Any] = {"title": title, "description": description}
+        payload: JsonObject = {"title": title, "description": description}
         if labels:
             payload["labels"] = ",".join(labels)
         data = self.request(
@@ -969,9 +926,9 @@ class GitLabClient:
         description: str | None = None,
         state_event: str | None = None,
         labels: list[str] | None = None,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         selector = self.project_selector(project)
-        payload: dict[str, Any] = {}
+        payload: JsonObject = {}
         if title is not None:
             payload["title"] = title
         if description is not None:
@@ -998,7 +955,7 @@ class GitLabClient:
         project: str | int,
         iid: int,
         body: str,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         selector = self.project_selector(project)
         data = self.request(
             "POST",
@@ -1018,7 +975,7 @@ class GitLabClient:
         status: str = "",
         page: int = 1,
         per_page: int = 100,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         selector = self.project_selector(project)
         response = self.request(
             "GET",
@@ -1047,7 +1004,7 @@ class GitLabClient:
         pipeline_id: int,
         page: int = 1,
         per_page: int = 100,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         selector = self.project_selector(project)
         response = self.request(
             "GET",
@@ -1069,7 +1026,7 @@ class GitLabClient:
         project: str | int,
         job_id: int,
         max_chars: int = 100_000,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         if max_chars <= 0 or max_chars > 2_000_000:
             raise GitLabError("max_chars must be between 1 and 2000000")
         selector = self.project_selector(project)
@@ -1086,7 +1043,7 @@ class GitLabClient:
             "trace_tail": trace[-max_chars:],
         }
 
-    def retry_pipeline(self, project: str | int, pipeline_id: int) -> dict[str, Any]:
+    def retry_pipeline(self, project: str | int, pipeline_id: int) -> JsonObject:
         selector = self.project_selector(project)
         data = self.request(
             "POST",
@@ -1098,7 +1055,7 @@ class GitLabClient:
             "pipeline": data,
         }
 
-    def cancel_pipeline(self, project: str | int, pipeline_id: int) -> dict[str, Any]:
+    def cancel_pipeline(self, project: str | int, pipeline_id: int) -> JsonObject:
         selector = self.project_selector(project)
         data = self.request(
             "POST",
