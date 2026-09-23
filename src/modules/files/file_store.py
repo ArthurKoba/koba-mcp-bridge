@@ -14,10 +14,29 @@ import uuid
 import zipfile
 from contextlib import contextmanager, suppress
 from datetime import UTC, datetime
-from pathlib import Path
-
-from common.types import JsonObject, PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import BinaryIO
+
+from common.models import JsonObject
+
+from .models import (
+    CollectionDeleteResponse,
+    CollectionExtractResponse,
+    CollectionItem,
+    CollectionListResponse,
+    CollectionResolveResponse,
+    FileAlias,
+    FileCollectionMembership,
+    FileDeleteResponse,
+    FileGcResponse,
+    FileInfo,
+    FileListItem,
+    FileListResponse,
+    FileReadResponse,
+    FileReference,
+    FileReferenceReleaseResponse,
+    FileStoreStatus,
+)
 
 _DEFAULT_ROOT = "/files"
 _DEFAULT_READ_CHUNK = 1024 * 1024
