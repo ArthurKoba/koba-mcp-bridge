@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import os
 import urllib.parse
+
 from common.config import env_list
 from common.models import JsonObject
 from common.secrets import SecretError, resolve_config_secret
@@ -73,18 +74,17 @@ class GitHubDevClient(GitHubAppClient):
         _, result = self._repo_request(repository, "GET", endpoint)
         if not isinstance(result, list):
             raise GitHubAgentError("path is not a directory")
-        entries = []
-        for item in result:
-            if isinstance(item, dict):
-                entries.append(
-                    {
-                        "name": str(item.get("name", "")),
-                        "path": str(item.get("path", "")),
-                        "type": str(item.get("type", "")),
-                        "size": int(item.get("size", 0)),
-                        "sha": str(item.get("sha", "")),
-                    }
-                )
+        entries = [
+            {
+                "name": str(item.get("name", "")),
+                "path": str(item.get("path", "")),
+                "type": str(item.get("type", "")),
+                "size": int(item.get("size", 0)),
+                "sha": str(item.get("sha", "")),
+            }
+            for item in result
+            if isinstance(item, dict)
+        ]
         return {"repository": repository, "path": path, "ref": ref, "entries": entries}
 
     def get_binary_file(
@@ -1080,18 +1080,17 @@ class GitHubDevClient(GitHubAppClient):
         )
         if not isinstance(result, list):
             raise GitHubAgentError("unexpected pull request file response")
-        files = []
-        for item in result:
-            if isinstance(item, dict):
-                files.append(
-                    {
-                        "filename": str(item.get("filename", "")),
-                        "status": str(item.get("status", "")),
-                        "additions": int(item.get("additions", 0)),
-                        "deletions": int(item.get("deletions", 0)),
-                        "patch": item.get("patch"),
-                    }
-                )
+        files = [
+            {
+                "filename": str(item.get("filename", "")),
+                "status": str(item.get("status", "")),
+                "additions": int(item.get("additions", 0)),
+                "deletions": int(item.get("deletions", 0)),
+                "patch": item.get("patch"),
+            }
+            for item in result
+            if isinstance(item, dict)
+        ]
         return {"repository": repository, "number": number, "files": files}
 
     def add_pull_comment(
@@ -1476,21 +1475,20 @@ class GitHubDevClient(GitHubAppClient):
         if not isinstance(result, dict):
             raise GitHubAgentError("unexpected workflow-run response")
         raw = result.get("workflow_runs") if isinstance(result.get("workflow_runs"), list) else []
-        runs = []
-        for item in raw:
-            if isinstance(item, dict):
-                runs.append(
-                    {
-                        "id": int(item.get("id", 0)),
-                        "name": str(item.get("name", "")),
-                        "head_branch": str(item.get("head_branch", "")),
-                        "head_sha": str(item.get("head_sha", "")),
-                        "status": str(item.get("status", "")),
-                        "conclusion": item.get("conclusion"),
-                        "event": str(item.get("event", "")),
-                        "html_url": str(item.get("html_url", "")),
-                    }
-                )
+        runs = [
+            {
+                "id": int(item.get("id", 0)),
+                "name": str(item.get("name", "")),
+                "head_branch": str(item.get("head_branch", "")),
+                "head_sha": str(item.get("head_sha", "")),
+                "status": str(item.get("status", "")),
+                "conclusion": item.get("conclusion"),
+                "event": str(item.get("event", "")),
+                "html_url": str(item.get("html_url", "")),
+            }
+            for item in raw
+            if isinstance(item, dict)
+        ]
         return {"repository": repository, "workflow_runs": runs, "page": page}
 
     def list_workflow_jobs(self, repository: str, run_id: int) -> dict[str, object]:
@@ -1503,16 +1501,15 @@ class GitHubDevClient(GitHubAppClient):
         if not isinstance(result, dict):
             raise GitHubAgentError("unexpected workflow-job response")
         raw = result.get("jobs") if isinstance(result.get("jobs"), list) else []
-        jobs = []
-        for item in raw:
-            if isinstance(item, dict):
-                jobs.append(
-                    {
-                        "id": int(item.get("id", 0)),
-                        "name": str(item.get("name", "")),
-                        "status": str(item.get("status", "")),
-                        "conclusion": item.get("conclusion"),
-                        "html_url": str(item.get("html_url", "")),
-                    }
-                )
+        jobs = [
+            {
+                "id": int(item.get("id", 0)),
+                "name": str(item.get("name", "")),
+                "status": str(item.get("status", "")),
+                "conclusion": item.get("conclusion"),
+                "html_url": str(item.get("html_url", "")),
+            }
+            for item in raw
+            if isinstance(item, dict)
+        ]
         return {"repository": repository, "run_id": run_id, "jobs": jobs}

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from .github_agent import GitHubAgentError
-from .models import ReviewComment
 from .github_workflow import GitHubDevClient
+from .models import ReviewComment
 
 
 class GitHubReviewClient(GitHubDevClient):

@@ -5,7 +5,7 @@ from mcp.types import ToolAnnotations
 
 from .secrets import SecretError, SecretReference, secret_reference_available
 from .secrets import secrets_status as _secrets_status
-from .types import JsonObject
+from .models import JsonObject
 
 
 def register_secrets_tools(
