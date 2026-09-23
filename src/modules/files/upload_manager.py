@@ -28,7 +28,6 @@ from .models import (
 )
 from .validation import normalize_upload_id, validate_file_name, validate_sha256
 
-
 _DEFAULT_CHUNK_BYTES = 1024 * 1024
 
 
