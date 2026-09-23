@@ -621,7 +621,10 @@ class GitHubAppClient:
                 )
             except ValueError as exc:
                 raise GitHubAgentError("unexpected branch list response") from exc
-        return {"repository": repository, "branches": json_array(branches, context="GitHub branches")}
+        return {
+            "repository": repository,
+            "branches": json_array(branches, context="GitHub branches"),
+        }
 
     def create_branch(self, repository: str, branch: str, from_branch: str) -> JsonObject:
         repository = self._assert_allowed(repository)

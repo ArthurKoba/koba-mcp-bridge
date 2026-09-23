@@ -180,7 +180,10 @@ class GitHubHistoryMixin:
                     "mutation_denial_reason": denial_reason,
                 }
             )
-        return {"repository": repository, "branches": json_array(branches, context="GitHub branches")}
+        return {
+            "repository": repository,
+            "branches": json_array(branches, context="GitHub branches"),
+        }
 
     def list_commits(
         self,
