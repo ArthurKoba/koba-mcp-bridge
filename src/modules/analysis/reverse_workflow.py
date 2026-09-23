@@ -1,58 +1,78 @@
 from __future__ import annotations
 
 import base64
-import json
+import os
 import uuid
 from contextlib import suppress
-from typing import Any
+from typing import TypeVar, cast
 
 from fastmcp import Client, FastMCP
+from mcp.types import ToolAnnotations
+from pydantic import ValidationError
+
+from common.models import JsonObject, JsonValue, json_loads, json_object, json_value
 
 from modules.files.file_store import FileError, FileStore
+from modules.files.models import FileInfo, FileReference
+
+from .models import (
+    BackendStatus,
+    ExportFileResponse,
+    ImportDryRunResponse,
+    ImportFileResponse,
+    ProjectInfo,
+    ProjectSource,
+    ProjectSourcesResponse,
+    StageBeginResponse,
+    StageFinishResponse,
+    StageWriteResponse,
+)
+
+BackendModel = TypeVar("BackendModel", bound=BackendStatus)
 
 
 def _ghidra_url() -> str:
-    import os
-
     value = os.getenv("GHIDRA_MCP_URL", "").strip()
     if not value:
         raise FileError("GHIDRA_MCP_URL is not configured")
     return value
 
 
-def _decode_result(data: Any) -> Any:
+def _decode_result(data: object) -> JsonValue:
     """Recursively unwrap Ghidra/FastMCP result envelopes and JSON strings."""
-    value = data
+    value: object = data
     for _ in range(8):
         if isinstance(value, dict) and "result" in value:
             nested = value["result"]
             if nested is value:
-                return value
+                return json_value(value, context="Ghidra result")
             value = nested
             continue
         if isinstance(value, str):
             try:
-                decoded = json.loads(value)
-            except json.JSONDecodeError:
+                decoded = json_loads(value, context="Ghidra result")
+            except ValueError:
                 return value
             if decoded == value:
                 return value
             value = decoded
             continue
-        return value
-    return value
+        return json_value(value, context="Ghidra result")
+    return json_value(value, context="Ghidra result")
 
 
-def _decode_call_result(result: Any) -> Any:
+def _decode_call_result(result: object) -> JsonValue | None:
     """Decode FastMCP results across structured and legacy content forms."""
-    candidates = [
-        getattr(result, "structured_content", None),
-        getattr(result, "data", None),
+    candidates: list[object | None] = [
+        cast(object | None, getattr(result, "structured_content", None)),
+        cast(object | None, getattr(result, "data", None)),
     ]
-    for block in getattr(result, "content", None) or []:
-        text = getattr(block, "text", None)
-        if text is not None:
-            candidates.append(text)
+    content = cast(object | None, getattr(result, "content", None))
+    if isinstance(content, list):
+        for block in content:
+            text = cast(object | None, getattr(block, "text", None))
+            if isinstance(text, str):
+                candidates.append(text)
 
     for candidate in candidates:
         if candidate is None:
@@ -63,16 +83,33 @@ def _decode_call_result(result: Any) -> Any:
     return None
 
 
-def _require_backend_success(result: Any, operation: str) -> dict[str, Any]:
+def _require_backend_success(result: object, operation: str) -> JsonObject:
     decoded = _decode_call_result(result)
-    if not isinstance(decoded, dict):
-        raise FileError(f"Ghidra {operation} returned an invalid response")
-    error = str(decoded.get("error", "")).strip()
-    if error:
-        raise FileError(f"Ghidra {operation} failed: {error}")
-    if decoded.get("success") is False:
+    if decoded is None:
+        raise FileError(f"Ghidra {operation} returned no response")
+    try:
+        payload = json_object(decoded, context=f"Ghidra {operation} response")
+        status = BackendStatus.model_validate(payload)
+    except (ValueError, ValidationError) as exc:
+        raise FileError(f"Ghidra {operation} returned an invalid response") from exc
+
+    if status.error:
+        raise FileError(f"Ghidra {operation} failed: {status.error}")
+    if status.success is False:
         raise FileError(f"Ghidra {operation} failed")
-    return decoded
+    return payload
+
+
+def _backend_model(
+    result: object,
+    operation: str,
+    model: type[BackendModel],
+) -> BackendModel:
+    payload = _require_backend_success(result, operation)
+    try:
+        return model.model_validate(payload)
+    except ValidationError as exc:
+        raise FileError(f"Ghidra {operation} response is incomplete") from exc
 
 
 async def _cancel_stage(client: Client, project_id: str, stage_id: str) -> None:
@@ -88,29 +125,27 @@ async def _cancel_stage(client: Client, project_id: str, stage_id: str) -> None:
 async def _stage_file_for_ghidra(
     client: Client,
     store: FileStore,
-    file: dict[str, Any],
+    file: FileInfo,
     project_id: str,
 ) -> tuple[str, str]:
     begin_result = await client.call_tool(
         "artifact_stage_begin",
         {
             "project_id": project_id,
-            "name": str(file["name"]),
-            "size_bytes": int(file["size_bytes"]),
-            "sha256": str(file["sha256"]),
+            "name": file.name,
+            "size_bytes": file.size_bytes,
+            "sha256": file.sha256,
         },
     )
-    begin = _require_backend_success(begin_result, "file staging begin")
-    stage_id = str(begin.get("stage_id", "")).strip()
-    if not stage_id:
-        raise FileError("Ghidra file staging did not return stage_id")
+    begin = _backend_model(
+        begin_result,
+        "file staging begin",
+        StageBeginResponse,
+    )
+    stage_id = begin.stage_id
+    chunk_bytes = begin.chunk_bytes
 
-    chunk_bytes = int(begin.get("chunk_bytes", 1024 * 1024))
-    if chunk_bytes <= 0 or chunk_bytes > 8 * 1024 * 1024:
-        await _cancel_stage(client, project_id, stage_id)
-        raise FileError("Ghidra file staging returned an invalid chunk size")
-
-    path = store.path_for(str(file["file_id"]))
+    path = store.path_for(file.file_id)
     offset = 0
     try:
         with path.open("rb") as handle:
@@ -127,8 +162,12 @@ async def _stage_file_for_ghidra(
                         "data_base64": base64.b64encode(chunk).decode("ascii"),
                     },
                 )
-                write = _require_backend_success(write_result, "file staging write")
-                next_offset = int(write.get("next_offset", -1))
+                write = _backend_model(
+                    write_result,
+                    "file staging write",
+                    StageWriteResponse,
+                )
+                next_offset = write.next_offset
                 expected_next = offset + len(chunk)
                 if next_offset != expected_next:
                     raise FileError(
@@ -140,29 +179,27 @@ async def _stage_file_for_ghidra(
             "artifact_stage_finish",
             {"project_id": project_id, "stage_id": stage_id},
         )
-        finish = _require_backend_success(finish_result, "file staging finish")
-        staged_path = str(finish.get("path", "")).strip()
-        if not staged_path:
-            raise FileError("Ghidra file staging did not return a staged path")
-        if str(finish.get("sha256", "")).casefold() != str(file["sha256"]).casefold():
+        finish = _backend_model(
+            finish_result,
+            "file staging finish",
+            StageFinishResponse,
+        )
+        if finish.sha256.casefold() != file.sha256.casefold():
             raise FileError("Ghidra file staging SHA-256 verification failed")
-        return stage_id, staged_path
+        return stage_id, finish.path
     except Exception:
         await _cancel_stage(client, project_id, stage_id)
         raise
 
 
-async def _current_project(client: Client, project_id: str) -> dict[str, Any]:
+async def _current_project(client: Client, project_id: str) -> ProjectInfo:
     result = await client.call_tool(
         "get_project_info",
         {"project_id": project_id},
     )
-    info = _decode_call_result(result)
-    if not isinstance(info, dict) or not info.get("has_project"):
+    info = _backend_model(result, "project info", ProjectInfo)
+    if not info.has_project:
         raise FileError("no Ghidra project is open")
-    project_name = str(info.get("project_name", "")).strip()
-    if not project_name:
-        raise FileError("Ghidra did not return the current project name")
     return info
 
 
@@ -174,22 +211,22 @@ async def ghidra_import_file_impl(
     compiler_spec: str | None = None,
     auto_analyze: bool = True,
     dry_run: bool = False,
-) -> dict[str, Any]:
+) -> JsonObject:
     store = FileStore()
-    file = store.info(file_id)
+    file = FileInfo.model_validate(store.info(file_id))
 
     if dry_run:
-        return {
-            "success": True,
-            "dry_run": True,
-            "project_id": project_id,
-            "file_id": file["file_id"],
-            "name": file["name"],
-            "project_folder": project_folder,
-            "language": language,
-            "compiler_spec": compiler_spec,
-            "auto_analyze": auto_analyze,
-        }
+        return ImportDryRunResponse(
+            success=True,
+            dry_run=True,
+            project_id=project_id,
+            file_id=file.file_id,
+            name=file.name,
+            project_folder=project_folder,
+            language=language,
+            compiler_spec=compiler_spec,
+            auto_analyze=auto_analyze,
+        ).to_json()
 
     stage_id = ""
     async with Client(_ghidra_url()) as client:
@@ -216,59 +253,62 @@ async def ghidra_import_file_impl(
         finally:
             await _cancel_stage(client, project_id, stage_id)
 
-    project_name = str(project["project_name"])
+    project_name = project.project_name
     store.add_reference(
-        file["file_id"],
+        file.file_id,
         consumer_type="ghidra-project",
         consumer_id=project_id,
         role="source",
     )
-    return {
-        "success": True,
-        "project_id": project_id,
-        "file_id": file["file_id"],
-        "name": file["name"],
-        "project_name": project_name,
-        "ghidra_result": ghidra_result,
-    }
+    return ImportFileResponse(
+        success=True,
+        project_id=project_id,
+        file_id=file.file_id,
+        name=file.name,
+        project_name=project_name,
+        ghidra_result=ghidra_result,
+    ).to_json()
 
 
-async def ghidra_project_sources_impl(project_id: str) -> dict[str, Any]:
+async def ghidra_project_sources_impl(project_id: str) -> JsonObject:
     async with Client(_ghidra_url()) as client:
         project = await _current_project(client, project_id)
-    project_name = str(project["project_name"])
+    project_name = project.project_name
     refs = FileStore().references(
         consumer_type="ghidra-project",
         consumer_id=project_id,
     )
-    sources = []
+    sources: list[ProjectSource] = []
     store = FileStore()
-    for ref in refs:
-        info = store.info(str(ref["file_id"]))
+    for raw_ref in refs:
+        ref = FileReference.model_validate(raw_ref)
+        if ref.file_id is None:
+            continue
+        info = FileInfo.model_validate(store.info(ref.file_id))
         sources.append(
-            {
-                "file_id": info["file_id"],
-                "name": info["name"],
-                "mime_type": info["mime_type"],
-                "size_bytes": info["size_bytes"],
-                "role": ref["role"],
-            }
+            ProjectSource(
+                file_id=info.file_id,
+                name=info.name,
+                mime_type=info.mime_type,
+                size_bytes=info.size_bytes,
+                role=ref.role,
+            )
         )
-    return {
-        "project_id": project_id,
-        "project_name": project_name,
-        "sources": sources,
-        "count": len(sources),
-    }
+    return ProjectSourcesResponse(
+        project_id=project_id,
+        project_name=project_name,
+        sources=sources,
+        count=len(sources),
+    ).to_json()
 
 
 async def _export_to_file(
     project_id: str,
     tool_name: str,
-    payload: dict[str, Any],
+    payload: JsonObject,
     suffix: str,
     file_name: str,
-) -> dict[str, Any]:
+) -> JsonObject:
     store = FileStore()
     store.ensure()
     temporary_name = f"ghidra-{uuid.uuid4().hex}{suffix}"
@@ -284,25 +324,27 @@ async def _export_to_file(
             result = await client.call_tool(tool_name, payload)
         if not temporary.is_file():
             raise FileError("Ghidra export completed without producing a file")
-        file = store.put_file(
+        file = FileInfo.model_validate(
+            store.put_file(
             temporary,
             name=file_name,
             source="ghidra-export",
             consume=True,
         )
+        )
         store.add_reference(
-            file["file_id"],
+            file.file_id,
             consumer_type="ghidra-project",
             consumer_id=project_id,
             role="export",
         )
-        return {
-            "success": True,
-            "project_id": project_id,
-            "file": file,
-            "project_name": str(project["project_name"]),
-            "ghidra_result": _decode_call_result(result),
-        }
+        return ExportFileResponse(
+            success=True,
+            project_id=project_id,
+            file=file,
+            project_name=project.project_name,
+            ghidra_result=_decode_call_result(result),
+        ).to_json()
     finally:
         if temporary.exists():
             temporary.unlink()
@@ -312,7 +354,7 @@ async def ghidra_export_program_file_impl(
     project_id: str,
     program_name: str,
     file_name: str = "",
-) -> dict[str, Any]:
+) -> JsonObject:
     name = file_name.strip() or f"{program_name}.gzf"
     return await _export_to_file(
         project_id,
@@ -326,10 +368,10 @@ async def ghidra_export_program_file_impl(
 async def ghidra_archive_project_file_impl(
     project_id: str,
     file_name: str = "",
-) -> dict[str, Any]:
+) -> JsonObject:
     async with Client(_ghidra_url()) as client:
         project = await _current_project(client, project_id)
-    project_name = str(project["project_name"])
+    project_name = project.project_name
     name = file_name.strip() or f"{project_name}.gar"
     return await _export_to_file(
         project_id,
@@ -342,8 +384,8 @@ async def ghidra_archive_project_file_impl(
 
 def register_reverse_workflow_tools(
     mcp: FastMCP,
-    read_annotations: Any,
-    write_annotations: Any,
+    read_annotations: ToolAnnotations,
+    write_annotations: ToolAnnotations,
 ) -> None:
     @mcp.tool(title="Ghidra import file", annotations=write_annotations)
     async def ghidra_import_file(
@@ -354,7 +396,7 @@ def register_reverse_workflow_tools(
         compiler_spec: str | None = None,
         auto_analyze: bool = True,
         dry_run: bool = False,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """Import an immutable MCP Bridge file into the explicitly selected Ghidra project."""
         return await ghidra_import_file_impl(
             project_id,
@@ -367,7 +409,7 @@ def register_reverse_workflow_tools(
         )
 
     @mcp.tool(title="Ghidra project sources", annotations=read_annotations)
-    async def ghidra_project_sources(project_id: str) -> dict[str, Any]:
+    async def ghidra_project_sources(project_id: str) -> JsonObject:
         """List immutable source files retained for one explicit Ghidra project."""
         return await ghidra_project_sources_impl(project_id)
 
@@ -376,7 +418,7 @@ def register_reverse_workflow_tools(
         project_id: str,
         program_name: str,
         file_name: str = "",
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """Export a Ghidra program as a GZF and register it as an MCP Bridge file."""
         return await ghidra_export_program_file_impl(
             project_id,
@@ -388,6 +430,6 @@ def register_reverse_workflow_tools(
     async def ghidra_archive_project_file(
         project_id: str,
         file_name: str = "",
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """Archive one explicit Ghidra project as a GAR and register it as an file."""
         return await ghidra_archive_project_file_impl(project_id, file_name)
