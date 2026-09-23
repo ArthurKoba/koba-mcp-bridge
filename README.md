@@ -162,7 +162,7 @@ GitHub and GitLab provider credentials are not read from legacy provider-specifi
 environment variables or JSON profile files.
 
 Deployment and migration instructions are in
-[`deploy/infisical/README.md`](deploy/infisical/README.md).
+[`docs/infisical.md`](docs/infisical.md).
 
 MCP diagnostics expose only provider/configuration status and redacted reference checks;
 there is intentionally no MCP tool that returns secret plaintext.

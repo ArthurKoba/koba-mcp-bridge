@@ -7,25 +7,23 @@ x-observability: &observability
   OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED: "true"
 
 x-infisical: &infisical
-  INFISICAL_HOST: ${INFISICAL_HOST:-}
-  INFISICAL_PROJECT_ID: ${INFISICAL_PROJECT_ID:-}
+  INFISICAL_HOST: ${INFISICAL_HOST}
+  INFISICAL_PROJECT_ID: ${INFISICAL_PROJECT_ID}
   INFISICAL_ENVIRONMENT: ${INFISICAL_ENVIRONMENT:-prod}
   INFISICAL_BASE_PATH: ${INFISICAL_BASE_PATH:-/}
-  INFISICAL_CLIENT_ID: ${INFISICAL_CLIENT_ID:-}
-  INFISICAL_CLIENT_SECRET: ${INFISICAL_CLIENT_SECRET:-}
+  INFISICAL_CLIENT_ID: ${INFISICAL_CLIENT_ID}
+  INFISICAL_CLIENT_SECRET: ${INFISICAL_CLIENT_SECRET}
   INFISICAL_VERIFY_TLS: ${INFISICAL_VERIFY_TLS:-true}
 
 x-mcp-service: &mcp-service
-  build: .
+  image: ghcr.io/arthurkoba/mcp-bridge:latest
   restart: unless-stopped
-  depends_on:
-    - otel-collector
 
 services:
   gateway:
     <<: *mcp-service
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     command:
       - /app/.venv/bin/opentelemetry-instrument
       - /app/.venv/bin/uvicorn
@@ -37,8 +35,10 @@ services:
     environment:
       <<: [*observability, *infisical]
       OTEL_SERVICE_NAME: mcp-gateway
-      OAUTH_ENABLED: ${OAUTH_ENABLED:-false}
+      OAUTH_ENABLED: "true"
       OAUTH_BASE_URL: ${OAUTH_BASE_URL:-https://mcp.koba-nexus.ru}
+      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-mcp.koba-nexus.ru,localhost:*,127.0.0.1:*}
+      MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-https://mcp.koba-nexus.ru}
     volumes:
       - fastmcp-data:/data/fastmcp
     depends_on:
@@ -48,6 +48,9 @@ services:
       - http-mcp
       - analysis-mcp
       - otel-collector
+    networks:
+      - default
+      - coolify
 
   github-mcp:
     <<: *mcp-service
@@ -56,7 +59,7 @@ services:
     command:
       - /app/.venv/bin/opentelemetry-instrument
       - /app/.venv/bin/uvicorn
-      - mcp_bridge.github_runtime:app
+      - github_mcp.runtime:app
       - --host
       - 0.0.0.0
       - --port
@@ -72,7 +75,7 @@ services:
     command:
       - /app/.venv/bin/opentelemetry-instrument
       - /app/.venv/bin/uvicorn
-      - mcp_bridge.gitlab_runtime:app
+      - gitlab_mcp.runtime:app
       - --host
       - 0.0.0.0
       - --port
@@ -88,7 +91,7 @@ services:
     command:
       - /app/.venv/bin/opentelemetry-instrument
       - /app/.venv/bin/uvicorn
-      - mcp_bridge.files_runtime:app
+      - files_mcp.runtime:app
       - --host
       - 0.0.0.0
       - --port
@@ -107,7 +110,7 @@ services:
     command:
       - /app/.venv/bin/opentelemetry-instrument
       - /app/.venv/bin/uvicorn
-      - mcp_bridge.http_runtime:app
+      - http_mcp.runtime:app
       - --host
       - 0.0.0.0
       - --port
@@ -126,7 +129,7 @@ services:
     command:
       - /app/.venv/bin/opentelemetry-instrument
       - /app/.venv/bin/uvicorn
-      - mcp_bridge.analysis_runtime:app
+      - analysis_mcp.runtime:app
       - --host
       - 0.0.0.0
       - --port
@@ -135,19 +138,29 @@ services:
       <<: *observability
       OTEL_SERVICE_NAME: analysis-mcp
       FILE_ROOT: /files
-      GHIDRA_MCP_URL: ${GHIDRA_MCP_URL:-http://ghidra-mcp:8081/mcp}
+      GHIDRA_MCP_URL: ${GHIDRA_MCP_URL:-http://bridge:8081/mcp}
     volumes:
       - files-data:/files
+    networks:
+      - default
+      - coolify
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
     restart: unless-stopped
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     volumes:
-      - ./deploy/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+      - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
 
 volumes:
   files-data:
+    external: true
     name: files-data
   fastmcp-data:
+    external: true
     name: fastmcp-data
+
+networks:
+  coolify:
+    external: true
+    name: coolify
