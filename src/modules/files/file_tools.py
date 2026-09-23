@@ -5,7 +5,8 @@ from mcp.types import ToolAnnotations
 
 from common.models import JsonObject
 
-from .file_ingress import FileUploadManager, ingest_file
+from .file_ingress import ingest_file
+from .upload_manager import FileUploadManager
 from .file_store import FileStore
 from .models import ClientFile, FileReference, FileReferenceListResponse
 
