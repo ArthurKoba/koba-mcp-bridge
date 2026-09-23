@@ -5,9 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 
-import mcp_bridge.reverse_workflow as reverse_workflow
-from mcp_bridge.file_store import FileError, FileStore
-from mcp_bridge.reverse_workflow import (
+import analysis_mcp.reverse_workflow as reverse_workflow
+from files_mcp.file_store import FileError, FileStore
+from analysis_mcp.reverse_workflow import (
     _decode_call_result,
     _decode_result,
     ghidra_import_file_impl,

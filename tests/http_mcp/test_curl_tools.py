@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 
 import pytest
 
-from mcp_bridge.curl_tools import (
+from http_mcp.curl_tools import (
     DEFAULT_CURL_PRESET,
     CurlError,
     _curl_failure_diagnostic,
@@ -19,7 +19,7 @@ from mcp_bridge.curl_tools import (
     curl_request_impl,
     curl_stream_capture_impl,
 )
-from mcp_bridge.file_store import FileStore
+from files_mcp.file_store import FileStore
 
 
 class _Handler(BaseHTTPRequestHandler):

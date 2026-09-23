@@ -8,9 +8,9 @@ from urllib.parse import urlsplit
 
 import pytest
 
-import mcp_bridge.gitlab_client as gitlab_module
-import mcp_bridge.gitlab_tools as gitlab_tools
-from mcp_bridge.gitlab_client import (
+import gitlab_mcp.gitlab_client as gitlab_module
+import gitlab_mcp.gitlab_tools as gitlab_tools
+from gitlab_mcp.gitlab_client import (
     GitLabClient,
     GitLabError,
     GitLabProfileRegistry,

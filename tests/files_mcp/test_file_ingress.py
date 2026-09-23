@@ -7,8 +7,8 @@ import urllib.parse
 
 import pytest
 
-from mcp_bridge.file_ingress import FileUploadManager
-from mcp_bridge.file_store import FileError, FileStore
+from files_mcp.file_ingress import FileUploadManager
+from files_mcp.file_store import FileError, FileStore
 
 
 @pytest.fixture
@@ -274,7 +274,7 @@ def test_attachment_ingress_streams_directly_to_file_store(
     tmp_path,
     monkeypatch,
 ) -> None:
-    from mcp_bridge import file_ingress
+    from files_mcp import file_ingress
 
     monkeypatch.setenv("FILE_ROOT", str(tmp_path))
     monkeypatch.setenv("FILE_UPLOAD_MAX_BYTES", str(16 * 1024 * 1024))
@@ -319,7 +319,7 @@ def test_attachment_ingress_rejects_checksum_mismatch_without_committing(
     tmp_path,
     monkeypatch,
 ) -> None:
-    from mcp_bridge import file_ingress
+    from files_mcp import file_ingress
 
     monkeypatch.setenv("FILE_ROOT", str(tmp_path))
     monkeypatch.setenv("FILE_UPLOAD_MAX_BYTES", str(16 * 1024 * 1024))
@@ -351,7 +351,7 @@ def test_attachment_ingress_rejects_checksum_mismatch_without_committing(
 
 
 def test_attachment_ingress_rejects_non_https_source(tmp_path, monkeypatch) -> None:
-    from mcp_bridge import file_ingress
+    from files_mcp import file_ingress
 
     monkeypatch.setenv("FILE_ROOT", str(tmp_path))
     with pytest.raises(FileError, match="HTTPS attachment URL"):
