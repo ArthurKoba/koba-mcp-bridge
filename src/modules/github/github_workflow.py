@@ -7,6 +7,7 @@ import urllib.parse
 from common.config import env_list
 from common.models import (
     JsonObject,
+    json_bool,
     json_int,
     json_member_array,
     json_member_object,
@@ -110,7 +111,7 @@ class GitHubDevClient(GitHubAppClient):
             raise GitHubAgentError("GitHub did not return base64 file content")
         return {
             "repository": repository,
-            "path": str(result.get("path", path)),
+            "path": json_str(result.get("path"), default=path),
             "sha": json_str(result.get("sha")),
             "size": json_int(result.get("size")),
             "content_base64": json_str(result.get("content")).replace("\n", ""),
@@ -185,7 +186,7 @@ class GitHubDevClient(GitHubAppClient):
         repository: str,
         root_tree_sha: str,
         path: str,
-    ) -> dict[str, object] | None:
+    ) -> JsonObject | None:
         """Resolve one tree entry by path without reading blob contents."""
         parts = [part for part in path.strip("/").split("/") if part]
         if not parts:
@@ -198,12 +199,16 @@ class GitHubDevClient(GitHubAppClient):
                 "GET",
                 f"/repos/{repository}/git/trees/{self._quote(tree_sha)}",
             )
-            if not isinstance(tree, dict) or not isinstance(tree.get("tree"), list):
+            if not isinstance(tree, dict):
                 raise GitHubAgentError("unexpected Git tree response")
+            try:
+                tree_items = json_member_array(tree, "tree", required=True)
+            except ValueError as exc:
+                raise GitHubAgentError("unexpected Git tree response") from exc
             entry = next(
                 (
                     item
-                    for item in tree["tree"]
+                    for item in tree_items
                     if isinstance(item, dict) and json_str(item.get("path")) == part
                 ),
                 None,
@@ -211,7 +216,7 @@ class GitHubDevClient(GitHubAppClient):
             if entry is None:
                 return None
             if index == len(parts) - 1:
-                return dict(entry)
+                return entry
             if json_str(entry.get("type")) != "tree":
                 return None
             tree_sha = json_str(entry.get("sha"))
@@ -247,9 +252,11 @@ class GitHubDevClient(GitHubAppClient):
             "GET",
             f"/repos/{repository}/commits/{self._quote(source_ref)}",
         )
-        if not isinstance(source_commit, dict) or not source_commit.get("sha"):
+        if not isinstance(source_commit, dict):
             raise GitHubAgentError("unable to resolve source_ref")
-        source_sha = str(source_commit["sha"])
+        source_sha = json_str(source_commit.get("sha"))
+        if not source_sha:
+            raise GitHubAgentError("unable to resolve source_ref")
 
         branch_q = self._quote(branch)
         _, ref = self._repo_request(
@@ -289,12 +296,15 @@ class GitHubDevClient(GitHubAppClient):
                 "GET",
                 f"/repos/{repository}/git/commits/{source_sha}",
             )
-            if (
-                not isinstance(source_git_commit, dict)
-                or not isinstance(source_git_commit.get("tree"), dict)
-            ):
+            if not isinstance(source_git_commit, dict):
                 raise GitHubAgentError("unable to resolve source commit tree")
-            source_tree = json_str(json_member_object(source_git_commit, "tree", required=True).get("sha"))
+            source_tree = json_str(
+                json_member_object(
+                    source_git_commit,
+                    "tree",
+                    required=True,
+                ).get("sha")
+            )
             if not source_tree:
                 raise GitHubAgentError("source commit has no tree sha")
 
@@ -397,9 +407,11 @@ class GitHubDevClient(GitHubAppClient):
             f"/repos/{repository}/git/trees",
             payload={"base_tree": base_tree, "tree": tree_entries},
         )
-        if not isinstance(tree, dict) or not tree.get("sha"):
+        if not isinstance(tree, dict):
             raise GitHubAgentError("GitHub did not return a tree sha")
-        tree_sha = str(tree["sha"])
+        tree_sha = json_str(tree.get("sha"))
+        if not tree_sha:
+            raise GitHubAgentError("GitHub did not return a tree sha")
 
         _, new_commit = self._repo_request(
             repository,
@@ -407,9 +419,11 @@ class GitHubDevClient(GitHubAppClient):
             f"/repos/{repository}/git/commits",
             payload={"message": message, "tree": tree_sha, "parents": [head_sha]},
         )
-        if not isinstance(new_commit, dict) or not new_commit.get("sha"):
+        if not isinstance(new_commit, dict):
             raise GitHubAgentError("GitHub did not return a commit sha")
-        commit_sha = str(new_commit["sha"])
+        commit_sha = json_str(new_commit.get("sha"))
+        if not commit_sha:
+            raise GitHubAgentError("GitHub did not return a commit sha")
 
         _, current_ref = self._repo_request(
             repository,
@@ -417,9 +431,8 @@ class GitHubDevClient(GitHubAppClient):
             f"/repos/{repository}/git/ref/heads/{branch_q}",
         )
         current_object = (
-            current_ref.get("object")
+            json_member_object(current_ref, "object")
             if isinstance(current_ref, dict)
-            and isinstance(current_ref.get("object"), dict)
             else {}
         )
         current_head_sha = json_str(current_object.get("sha"))
@@ -477,9 +490,11 @@ class GitHubDevClient(GitHubAppClient):
             "GET",
             f"/repos/{repository}/git/ref/heads/{branch_q}",
         )
-        if not isinstance(ref, dict) or not isinstance(ref.get("object"), dict):
+        if not isinstance(ref, dict):
             raise GitHubAgentError("unable to resolve branch head")
-        head_sha = str(ref["object"].get("sha", ""))
+        head_sha = json_str(
+            json_member_object(ref, "object", required=True).get("sha")
+        )
         if not head_sha:
             raise GitHubAgentError("branch head has no sha")
         if expected_head_sha and head_sha != expected_head_sha:
@@ -492,9 +507,11 @@ class GitHubDevClient(GitHubAppClient):
             "GET",
             f"/repos/{repository}/git/commits/{head_sha}",
         )
-        if not isinstance(parent, dict) or not isinstance(parent.get("tree"), dict):
+        if not isinstance(parent, dict):
             raise GitHubAgentError("unable to resolve parent tree")
-        base_tree = str(parent["tree"].get("sha", ""))
+        base_tree = json_str(
+            json_member_object(parent, "tree", required=True).get("sha")
+        )
         if not base_tree:
             raise GitHubAgentError("parent commit has no tree sha")
 
@@ -520,14 +537,15 @@ class GitHubDevClient(GitHubAppClient):
                         "GET",
                         f"/repos/{repository}/commits/{self._quote(source_ref)}",
                     )
-                    if (
-                        not isinstance(source_commit, dict)
-                        or not source_commit.get("sha")
-                    ):
+                    if not isinstance(source_commit, dict):
                         raise GitHubAgentError(
                             f"unable to resolve source_ref: {source_ref}"
                         )
-                    source_sha = str(source_commit["sha"])
+                    source_sha = json_str(source_commit.get("sha"))
+                    if not source_sha:
+                        raise GitHubAgentError(
+                            f"unable to resolve source_ref: {source_ref}"
+                        )
                     copy_ref_cache[source_ref] = source_sha
 
                 _, source = self._repo_request(
@@ -571,14 +589,17 @@ class GitHubDevClient(GitHubAppClient):
                 f"/repos/{repository}/git/blobs",
                 payload=blob_payload,
             )
-            if not isinstance(blob, dict) or not blob.get("sha"):
+            if not isinstance(blob, dict):
+                raise GitHubAgentError("GitHub did not return a blob sha")
+            blob_sha = json_str(blob.get("sha"))
+            if not blob_sha:
                 raise GitHubAgentError("GitHub did not return a blob sha")
             tree_entries.append(
                 {
                     "path": path,
                     "mode": mode,
                     "type": "blob",
-                    "sha": str(blob["sha"]),
+                    "sha": blob_sha,
                 }
             )
 
@@ -598,9 +619,11 @@ class GitHubDevClient(GitHubAppClient):
             f"/repos/{repository}/git/commits",
             payload={"message": message, "tree": tree_sha, "parents": [head_sha]},
         )
-        if not isinstance(commit, dict) or not commit.get("sha"):
+        if not isinstance(commit, dict):
             raise GitHubAgentError("GitHub did not return a commit sha")
-        commit_sha = str(commit["sha"])
+        commit_sha = json_str(commit.get("sha"))
+        if not commit_sha:
+            raise GitHubAgentError("GitHub did not return a commit sha")
 
         self._repo_request(
             repository,
@@ -675,7 +698,7 @@ class GitHubDevClient(GitHubAppClient):
             "message": json_str(details.get("message")),
             "parents": [
                 json_str(item.get("sha"))
-                for item in result.get("parents", [])
+                for item in json_member_array(result, "parents")
                 if isinstance(item, dict)
             ],
             "files": [
@@ -776,9 +799,11 @@ class GitHubDevClient(GitHubAppClient):
             "GET",
             f"/repos/{repository}/commits/{self._quote(target_ref)}",
         )
-        if not isinstance(target, dict) or not target.get("sha"):
+        if not isinstance(target, dict):
             raise GitHubAgentError("unable to resolve target_ref")
-        target_sha = str(target["sha"])
+        target_sha = json_str(target.get("sha"))
+        if not target_sha:
+            raise GitHubAgentError("unable to resolve target_ref")
 
         if target_sha != head_sha:
             _, comparison = self._repo_request(
@@ -874,9 +899,11 @@ class GitHubDevClient(GitHubAppClient):
             "GET",
             f"/repos/{repository}/commits/{self._quote(target_ref)}",
         )
-        if not isinstance(target, dict) or not target.get("sha"):
+        if not isinstance(target, dict):
             raise GitHubAgentError("unable to resolve tag target")
-        target_sha = str(target["sha"])
+        target_sha = json_str(target.get("sha"))
+        if not target_sha:
+            raise GitHubAgentError("unable to resolve tag target")
         ref_sha = target_sha
         annotated = bool(message)
         if message:
@@ -891,9 +918,11 @@ class GitHubDevClient(GitHubAppClient):
                     "type": "commit",
                 },
             )
-            if not isinstance(tag_obj, dict) or not tag_obj.get("sha"):
+            if not isinstance(tag_obj, dict):
                 raise GitHubAgentError("GitHub did not return an annotated tag sha")
-            ref_sha = str(tag_obj["sha"])
+            ref_sha = json_str(tag_obj.get("sha"))
+            if not ref_sha:
+                raise GitHubAgentError("GitHub did not return an annotated tag sha")
         self._repo_request(
             repository,
             "POST",
@@ -989,11 +1018,11 @@ class GitHubDevClient(GitHubAppClient):
             "number": json_int(item.get("number")),
             "title": json_str(item.get("title")),
             "state": json_str(item.get("state")),
-            "draft": bool(item.get("draft", False)),
+            "draft": json_bool(item.get("draft")),
             "head": json_str(head.get("ref")),
             "head_sha": json_str(head.get("sha")),
             "base": json_str(base.get("ref")),
-            "merged": bool(item.get("merged", False)),
+            "merged": json_bool(item.get("merged")),
             "html_url": json_str(item.get("html_url")),
         }
 
