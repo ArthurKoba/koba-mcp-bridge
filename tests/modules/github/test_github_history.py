@@ -4,11 +4,11 @@ import pytest
 from fastmcp import Client, FastMCP
 from mcp.types import ToolAnnotations
 
-from github_mcp.github_actions import GitHubActionsClient
-from github_mcp.github_actions_tools import register_github_actions_tools
-from github_mcp.github_agent import GitHubAgentError
-from github_mcp.github_collab import GitHubCollabClient
-from github_mcp.github_reviewer_tools import register_github_reviewer_tools
+from modules.github.github_actions import GitHubActionsClient
+from modules.github.github_actions_tools import register_github_actions_tools
+from modules.github.github_agent import GitHubAgentError
+from modules.github.github_collab import GitHubCollabClient
+from modules.github.github_reviewer_tools import register_github_reviewer_tools
 
 
 class RecordingHistoryClient(GitHubActionsClient):

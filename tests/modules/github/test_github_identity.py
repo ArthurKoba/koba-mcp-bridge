@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from github_mcp.github_identity import GitHubPrettyIdentityClient
+from modules.github.github_identity import GitHubPrettyIdentityClient
 
 
 class RecordingPrettyClient(GitHubPrettyIdentityClient):
