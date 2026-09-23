@@ -1,20 +1,32 @@
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Mapping, Sequence
 
+from pydantic import ValidationError
+
+from common.models import (
+    JsonObject,
+    JsonValue,
+    json_array,
+    json_int,
+    json_member_object,
+    json_str,
+)
+
+from .base import GitHubRepositoryClientBase
 from .github_agent import GitHubAgentError
-from .github_workflow import GitHubDevClient
+from .models import ReviewComment
 
 
-class GitHubReviewClient(GitHubDevClient):
+class GitHubReviewClient(GitHubRepositoryClientBase):
     """Adds GraphQL rebase/update and richer PR review operations."""
 
     def _graphql(
         self,
         repository: str,
         query: str,
-        variables: dict[str, object],
-    ) -> dict[str, object]:
+        variables: JsonObject,
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         token = self._installation_token(repository)
         _, result = self._request(
@@ -28,10 +40,10 @@ class GitHubReviewClient(GitHubDevClient):
         errors = result.get("errors")
         if isinstance(errors, list) and errors:
             raise GitHubAgentError(f"GitHub GraphQL error: {errors}")
-        data = result.get("data")
-        if not isinstance(data, dict):
-            raise GitHubAgentError("GitHub GraphQL response has no data")
-        return data
+        try:
+            return json_member_object(result, "data", required=True)
+        except ValueError as exc:
+            raise GitHubAgentError("GitHub GraphQL response has no data") from exc
 
     def update_pull_branch_graphql(
         self,
@@ -39,7 +51,7 @@ class GitHubReviewClient(GitHubDevClient):
         number: int,
         method: str = "MERGE",
         expected_head_sha: str | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         method = method.upper()
         if method not in {"MERGE", "REBASE"}:
@@ -52,15 +64,15 @@ class GitHubReviewClient(GitHubDevClient):
         )
         if not isinstance(pull, dict):
             raise GitHubAgentError("unexpected pull request response")
-        node_id = str(pull.get("node_id", ""))
-        head = pull.get("head") if isinstance(pull.get("head"), dict) else {}
-        head_repo = head.get("repo") if isinstance(head.get("repo"), dict) else {}
-        if str(head_repo.get("full_name", "")).casefold() != repository.casefold():
+        node_id = json_str(pull.get("node_id"))
+        head = json_member_object(pull, "head")
+        head_repo = json_member_object(head, "repo")
+        if json_str(head_repo.get("full_name")).casefold() != repository.casefold():
             raise GitHubAgentError("cross-repository pull request update is disabled")
         if not node_id:
             raise GitHubAgentError("pull request has no GraphQL node id")
 
-        current_head = str(head.get("sha", ""))
+        current_head = json_str(head.get("sha"))
         if expected_head_sha and current_head != expected_head_sha:
             raise GitHubAgentError(
                 f"pull request head changed: expected {expected_head_sha}, found {current_head}"
@@ -79,24 +91,27 @@ class GitHubReviewClient(GitHubDevClient):
           }
         }
         """
-        input_data: dict[str, object] = {
+        input_data: JsonObject = {
             "pullRequestId": node_id,
             "updateMethod": method,
         }
         if expected_head_sha:
             input_data["expectedHeadOid"] = expected_head_sha
         data = self._graphql(repository, mutation, {"input": input_data})
-        update = data.get("updatePullRequestBranch")
-        if not isinstance(update, dict) or not isinstance(update.get("pullRequest"), dict):
-            raise GitHubAgentError("GraphQL updatePullRequestBranch returned no pull request")
-        result = update["pullRequest"]
+        try:
+            update = json_member_object(data, "updatePullRequestBranch", required=True)
+            result = json_member_object(update, "pullRequest", required=True)
+        except ValueError as exc:
+            raise GitHubAgentError(
+                "GraphQL updatePullRequestBranch returned no pull request"
+            ) from exc
         return {
             "repository": repository,
-            "number": int(result.get("number", number)),
-            "head": str(result.get("headRefName", "")),
-            "head_sha": str(result.get("headRefOid", "")),
-            "base": str(result.get("baseRefName", "")),
-            "mergeable": str(result.get("mergeable", "")),
+            "number": json_int(result.get("number"), default=number),
+            "head": json_str(result.get("headRefName")),
+            "head_sha": json_str(result.get("headRefOid")),
+            "base": json_str(result.get("baseRefName")),
+            "mergeable": json_str(result.get("mergeable")),
             "method": method,
         }
 
@@ -106,30 +121,32 @@ class GitHubReviewClient(GitHubDevClient):
         number: int,
         event: str,
         body: str,
-        comments: list[dict[str, Any]] | None = None,
+        comments: Sequence[ReviewComment | Mapping[str, JsonValue]] | None = None,
         commit_id: str | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         event = event.upper()
         if event not in {"APPROVE", "REQUEST_CHANGES", "COMMENT"}:
             raise GitHubAgentError("event must be APPROVE, REQUEST_CHANGES, or COMMENT")
-        payload: dict[str, object] = {"event": event, "body": body}
+        payload: JsonObject = {"event": event, "body": body}
         if commit_id:
             payload["commit_id"] = commit_id
         if comments:
-            normalized: list[dict[str, object]] = []
-            allowed = {"path", "body", "line", "side", "start_line", "start_side", "position"}
-            for comment in comments:
-                if not comment.get("path") or not comment.get("body"):
-                    raise GitHubAgentError("each review comment requires path and body")
-                normalized.append(
-                    {
-                        key: value
-                        for key, value in comment.items()
-                        if key in allowed and value is not None
-                    }
-                )
-            payload["comments"] = normalized
+            try:
+                normalized_comments = [
+                    comment
+                    if isinstance(comment, ReviewComment)
+                    else ReviewComment.model_validate(comment)
+                    for comment in comments
+                ]
+            except ValidationError as exc:
+                raise GitHubAgentError(
+                    "each review comment requires path and body"
+                ) from exc
+            payload["comments"] = [
+                comment.model_dump(exclude_none=True)
+                for comment in normalized_comments
+            ]
         _, result = self._repo_request(
             repository,
             "POST",
@@ -141,16 +158,16 @@ class GitHubReviewClient(GitHubDevClient):
         return {
             "repository": repository,
             "number": number,
-            "review_id": int(result.get("id", 0)),
-            "state": str(result.get("state", "")),
-            "commit_id": str(result.get("commit_id", "")),
+            "review_id": json_int(result.get("id")),
+            "state": json_str(result.get("state")),
+            "commit_id": json_str(result.get("commit_id")),
         }
 
     def list_conversation_comments(
         self,
         repository: str,
         number: int,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         _, result = self._repo_request(
             repository,
@@ -163,24 +180,28 @@ class GitHubReviewClient(GitHubDevClient):
         for item in result:
             if not isinstance(item, dict):
                 continue
-            user = item.get("user") if isinstance(item.get("user"), dict) else {}
+            user = json_member_object(item, "user")
             comments.append(
                 {
-                    "id": int(item.get("id", 0)),
-                    "user": str(user.get("login", "")),
-                    "body": str(item.get("body", "") or ""),
-                    "created_at": str(item.get("created_at", "")),
-                    "updated_at": str(item.get("updated_at", "")),
-                    "html_url": str(item.get("html_url", "")),
+                    "id": json_int(item.get("id")),
+                    "user": json_str(user.get("login")),
+                    "body": json_str(item.get("body")),
+                    "created_at": json_str(item.get("created_at")),
+                    "updated_at": json_str(item.get("updated_at")),
+                    "html_url": json_str(item.get("html_url")),
                 }
             )
-        return {"repository": repository, "number": number, "comments": comments}
+        return {
+            "repository": repository,
+            "number": number,
+            "comments": json_array(comments, context="GitHub review comments"),
+        }
 
     def list_review_comments(
         self,
         repository: str,
         number: int,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         _, result = self._repo_request(
             repository,
@@ -193,17 +214,21 @@ class GitHubReviewClient(GitHubDevClient):
         for item in result:
             if not isinstance(item, dict):
                 continue
-            user = item.get("user") if isinstance(item.get("user"), dict) else {}
+            user = json_member_object(item, "user")
             comments.append(
                 {
-                    "id": int(item.get("id", 0)),
-                    "user": str(user.get("login", "")),
-                    "path": str(item.get("path", "")),
+                    "id": json_int(item.get("id")),
+                    "user": json_str(user.get("login")),
+                    "path": json_str(item.get("path")),
                     "line": item.get("line"),
                     "side": item.get("side"),
-                    "body": str(item.get("body", "") or ""),
-                    "commit_id": str(item.get("commit_id", "")),
-                    "html_url": str(item.get("html_url", "")),
+                    "body": json_str(item.get("body")),
+                    "commit_id": json_str(item.get("commit_id")),
+                    "html_url": json_str(item.get("html_url")),
                 }
             )
-        return {"repository": repository, "number": number, "comments": comments}
+        return {
+            "repository": repository,
+            "number": number,
+            "comments": json_array(comments, context="GitHub review comments"),
+        }

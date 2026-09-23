@@ -4,13 +4,16 @@ Significant architectural choices should be recorded as Architecture Decision Re
 
 This directory is intentionally lightweight. Add an ADR when a decision would otherwise be repeatedly re-litigated or cannot be inferred safely from code.
 
-Current ADR candidates:
+Accepted ADRs:
 
-- Infisical deployment and machine identity model;
+- [ADR 0001: Provider account control plane](0001-account-control-plane.md)
+
+Remaining ADR candidates:
+
 - modular runtime/service boundaries;
 - aggregate gateway and dedicated public surface policy;
 - Files data-plane ownership and cross-runtime access model;
-- connector profile identity model.
+- explicit provider `account_id` identity model.
 
 Suggested filename convention:
 

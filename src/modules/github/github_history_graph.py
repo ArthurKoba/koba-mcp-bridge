@@ -2,26 +2,34 @@ from __future__ import annotations
 
 import urllib.parse
 
+from common.models import (
+    JsonObject,
+    json_array,
+    json_member_array,
+    json_member_object,
+    json_object,
+    json_str,
+)
+
 from .github_actions import GitHubActionsClient
 from .github_agent import GitHubAgentError
 
 
-def _parent_shas(commit: dict[str, object]) -> list[str]:
-    parents = commit.get("parents") if isinstance(commit.get("parents"), list) else []
+def _parent_shas(commit: JsonObject) -> list[str]:
     result: list[str] = []
-    for parent in parents:
-        if not isinstance(parent, dict):
+    for raw_parent in json_member_array(commit, "parents"):
+        if not isinstance(raw_parent, dict):
             raise GitHubAgentError("git commit parent is malformed")
-        sha = str(parent.get("sha", ""))
+        sha = json_str(raw_parent.get("sha"))
         if not sha:
             raise GitHubAgentError("git commit parent has no sha")
         result.append(sha)
     return result
 
 
-def _tree_sha(commit: dict[str, object]) -> str:
-    tree = commit.get("tree") if isinstance(commit.get("tree"), dict) else {}
-    sha = str(tree.get("sha", ""))
+def _tree_sha(commit: JsonObject) -> str:
+    tree = json_member_object(commit, "tree", required=True)
+    sha = json_str(tree.get("sha"))
     if not sha:
         raise GitHubAgentError("git commit has no tree sha")
     return sha
@@ -39,7 +47,7 @@ def rewrite_branch_identity_graph(
     preserve_author_dates: bool = True,
     max_commits: int = 500,
     dry_run: bool = True,
-) -> dict[str, object]:
+) -> JsonObject:
     """Rewrite an entire reachable commit DAG to the current Agent App identity."""
     repository = client._assert_allowed(repository)
     branch = client._assert_branch_mutation_allowed(repository, branch)
@@ -60,15 +68,17 @@ def rewrite_branch_identity_graph(
         "GET",
         f"/repos/{repository}/git/ref/heads/{branch_q}",
     )
-    if not isinstance(ref, dict) or not isinstance(ref.get("object"), dict):
+    if not isinstance(ref, dict):
         raise GitHubAgentError("unable to resolve branch head")
-    old_head = str(ref["object"].get("sha", ""))
+    old_head = json_str(
+        json_member_object(ref, "object", required=True).get("sha")
+    )
     if old_head != expected_head_sha:
         raise GitHubAgentError(
             f"branch head changed: expected {expected_head_sha}, found {old_head}"
         )
 
-    commits: dict[str, dict[str, object]] = {}
+    commits: dict[str, JsonObject] = {}
     order: list[str] = []
     visiting: set[str] = set()
 
@@ -100,7 +110,7 @@ def rewrite_branch_identity_graph(
         raise GitHubAgentError("current Agent App identity is incomplete")
 
     mapping: dict[str, str] = {}
-    plan: list[dict[str, object]] = []
+    plan: list[JsonObject] = []
     merge_commit_count = 0
     reused_commit_count = 0
 
@@ -111,13 +121,9 @@ def rewrite_branch_identity_graph(
             merge_commit_count += 1
         new_parents = [mapping[parent_sha] for parent_sha in old_parents]
         tree_sha = _tree_sha(original)
-        message = str(original.get("message", ""))
-        author = original.get("author") if isinstance(original.get("author"), dict) else {}
-        committer = (
-            original.get("committer")
-            if isinstance(original.get("committer"), dict)
-            else {}
-        )
+        message = json_str(original.get("message"))
+        author = json_member_object(original, "author")
+        committer = json_member_object(original, "committer")
 
         if client._identity_matches(original, git_name, git_email) and new_parents == old_parents:
             mapping[old_sha] = old_sha
@@ -128,25 +134,27 @@ def rewrite_branch_identity_graph(
                     "new_sha": old_sha,
                     "tree_sha": tree_sha,
                     "message": message,
-                    "old_parent_shas": old_parents,
-                    "new_parent_shas": new_parents,
+                    "old_parent_shas": json_array(old_parents, context="GitHub old parent SHAs"),
+                    "new_parent_shas": json_array(new_parents, context="GitHub new parent SHAs"),
                     "reused": True,
                 }
             )
             continue
 
-        author_payload: dict[str, object] = {"name": git_name, "email": git_email}
-        committer_payload: dict[str, object] = {"name": git_name, "email": git_email}
+        author_payload: JsonObject = {"name": git_name, "email": git_email}
+        committer_payload: JsonObject = {"name": git_name, "email": git_email}
         if preserve_author_dates:
-            if author.get("date"):
-                author_payload["date"] = str(author["date"])
-            if committer.get("date"):
-                committer_payload["date"] = str(committer["date"])
+            author_date = json_str(author.get("date"))
+            committer_date = json_str(committer.get("date"))
+            if author_date:
+                author_payload["date"] = author_date
+            if committer_date:
+                committer_payload["date"] = committer_date
 
-        payload: dict[str, object] = {
+        payload: JsonObject = {
             "message": message,
             "tree": tree_sha,
-            "parents": new_parents,
+            "parents": json_array(new_parents, context="GitHub commit parents"),
             "author": author_payload,
             "committer": committer_payload,
         }
@@ -156,13 +164,15 @@ def rewrite_branch_identity_graph(
             f"/repos/{repository}/git/commits",
             payload=payload,
         )
-        if not isinstance(created, dict) or not created.get("sha"):
+        if not isinstance(created, dict):
             raise GitHubAgentError("GitHub did not return rewritten commit sha")
-        new_sha = str(created["sha"])
+        new_sha = json_str(created.get("sha"))
+        if not new_sha:
+            raise GitHubAgentError("GitHub did not return rewritten commit sha")
 
         if _tree_sha(created) != tree_sha:
             raise GitHubAgentError(f"rewritten commit tree mismatch for {old_sha}")
-        if str(created.get("message", "")) != message:
+        if json_str(created.get("message")) != message:
             raise GitHubAgentError(f"rewritten commit message mismatch for {old_sha}")
         if _parent_shas(created) != new_parents:
             raise GitHubAgentError(f"rewritten commit parent topology mismatch for {old_sha}")
@@ -176,8 +186,8 @@ def rewrite_branch_identity_graph(
                 "new_sha": new_sha,
                 "tree_sha": tree_sha,
                 "message": message,
-                "old_parent_shas": old_parents,
-                "new_parent_shas": new_parents,
+                "old_parent_shas": json_array(old_parents, context="GitHub old parent SHAs"),
+                "new_parent_shas": json_array(new_parents, context="GitHub new parent SHAs"),
                 "reused": False,
             }
         )
@@ -194,7 +204,7 @@ def rewrite_branch_identity_graph(
             f"final tree mismatch: expected {old_head_tree}, found {new_head_tree}"
         )
 
-    result: dict[str, object] = {
+    result: JsonObject = {
         "repository": repository,
         "branch": branch,
         "dry_run": dry_run,
@@ -211,8 +221,8 @@ def rewrite_branch_identity_graph(
         "preserve_trees": preserve_trees,
         "preserve_author_dates": preserve_author_dates,
         "final_tree_sha": new_head_tree,
-        "mapping": mapping,
-        "plan": plan,
+        "mapping": json_object(mapping, context="GitHub history rewrite mapping"),
+        "plan": json_array(plan, context="GitHub history rewrite plan"),
         "history_changed": new_head != old_head,
         "old_shas_reachable_from_new_head": any(
             old_sha == new_sha for old_sha, new_sha in mapping.items()
@@ -227,11 +237,15 @@ def rewrite_branch_identity_graph(
         "GET",
         f"/repos/{repository}/git/ref/heads/{branch_q}",
     )
-    if not isinstance(ref_before_update, dict) or not isinstance(
-        ref_before_update.get("object"), dict
-    ):
+    if not isinstance(ref_before_update, dict):
         raise GitHubAgentError("unable to re-check branch head before graph rewrite")
-    current_head = str(ref_before_update["object"].get("sha", ""))
+    current_head = json_str(
+        json_member_object(
+            ref_before_update,
+            "object",
+            required=True,
+        ).get("sha")
+    )
     if current_head != expected_head_sha:
         raise GitHubAgentError(
             "branch head changed during graph rewrite: "

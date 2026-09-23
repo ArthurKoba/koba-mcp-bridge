@@ -1,14 +1,19 @@
 from __future__ import annotations
 
-from typing import Any
-
 from fastmcp import FastMCP
+from mcp.types import ToolAnnotations
+
+from common.models import JsonObject, JsonValue
+from modules.files.file_store import FileStore
 
 
 def register_curl_tools(
     mcp: FastMCP,
-    read_annotations: Any,
-    write_annotations: Any,
+    read_annotations: ToolAnnotations,
+    write_annotations: ToolAnnotations,
+    *,
+    store: FileStore,
+    curl_binary: str,
 ) -> None:
     from .curl_tools import (
         DEFAULT_CURL_PRESET,
@@ -19,7 +24,7 @@ def register_curl_tools(
     )
 
     @mcp.tool(title="Curl presets", annotations=read_annotations)
-    def curl_presets() -> dict[str, Any]:
+    def curl_presets() -> JsonObject:
         """List built-in HTTP header presets and the active default preset."""
         return curl_presets_impl()
 
@@ -27,12 +32,12 @@ def register_curl_tools(
     def curl_request(
         url: str,
         method: str = "GET",
-        query: dict[str, Any] | None = None,
+        query: JsonObject | None = None,
         headers: dict[str, str] | None = None,
         cookies: dict[str, str] | None = None,
         body_text: str | None = None,
-        body_json: dict[str, Any] | list[Any] | None = None,
-        body_form: dict[str, Any] | None = None,
+        body_json: JsonObject | list[JsonValue] | None = None,
+        body_form: JsonObject | None = None,
         body_base64: str | None = None,
         body_file_id: str | None = None,
         body_content_type: str = "",
@@ -46,7 +51,7 @@ def register_curl_tools(
         max_response_bytes: int = 2 * 1024 * 1024,
         forward_sensitive_headers_on_redirect: bool = False,
         preview_bytes: int = 4096,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """Run a structured curl request with arbitrary HTTP method, headers, cookies and body.
 
         For large or binary responses prefer curl_download. body_file_id sends
@@ -76,18 +81,20 @@ def register_curl_tools(
             max_response_bytes=max_response_bytes,
             forward_sensitive_headers_on_redirect=forward_sensitive_headers_on_redirect,
             preview_bytes=preview_bytes,
+            store=store,
+            curl_binary=curl_binary,
         )
 
     @mcp.tool(title="Curl download", annotations=write_annotations)
     def curl_download(
         url: str,
         method: str = "GET",
-        query: dict[str, Any] | None = None,
+        query: JsonObject | None = None,
         headers: dict[str, str] | None = None,
         cookies: dict[str, str] | None = None,
         body_text: str | None = None,
-        body_json: dict[str, Any] | list[Any] | None = None,
-        body_form: dict[str, Any] | None = None,
+        body_json: JsonObject | list[JsonValue] | None = None,
+        body_form: JsonObject | None = None,
         body_base64: str | None = None,
         body_file_id: str | None = None,
         body_content_type: str = "",
@@ -103,7 +110,7 @@ def register_curl_tools(
         store_http_errors: bool = False,
         forward_sensitive_headers_on_redirect: bool = False,
         preview_bytes: int = 4096,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """Stream an HTTP response into the immutable file store.
 
         Supports arbitrary HTTP methods and the same request controls as curl_request.
@@ -134,18 +141,20 @@ def register_curl_tools(
             store_http_errors=store_http_errors,
             forward_sensitive_headers_on_redirect=forward_sensitive_headers_on_redirect,
             preview_bytes=preview_bytes,
+            store=store,
+            curl_binary=curl_binary,
         )
 
     @mcp.tool(title="Curl stream capture", annotations=write_annotations)
     def curl_stream_capture(
         url: str,
         method: str = "GET",
-        query: dict[str, Any] | None = None,
+        query: JsonObject | None = None,
         headers: dict[str, str] | None = None,
         cookies: dict[str, str] | None = None,
         body_text: str | None = None,
-        body_json: dict[str, Any] | list[Any] | None = None,
-        body_form: dict[str, Any] | None = None,
+        body_json: JsonObject | list[JsonValue] | None = None,
+        body_form: JsonObject | None = None,
         body_base64: str | None = None,
         body_file_id: str | None = None,
         body_content_type: str = "",
@@ -160,7 +169,7 @@ def register_curl_tools(
         max_bytes: int = 16 * 1024 * 1024,
         forward_sensitive_headers_on_redirect: bool = False,
         preview_bytes: int = 4096,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """Observe/capture a response byte stream for a bounded duration or byte count.
 
         Useful for SSE, MJPEG, chunked telemetry and other long-lived byte streams.
@@ -189,4 +198,6 @@ def register_curl_tools(
             max_bytes=max_bytes,
             forward_sensitive_headers_on_redirect=forward_sensitive_headers_on_redirect,
             preview_bytes=preview_bytes,
+            store=store,
+            curl_binary=curl_binary,
         )

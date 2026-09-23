@@ -4,9 +4,15 @@
 mcp-bridge/
 ├── .github/
 ├── docs/
+├── migrations/                 # Alembic control-plane schema
 ├── src/
-│   ├── bridge/            # public gateway only
-│   ├── common/            # shared runtime + secrets primitives
+│   ├── bridge/                 # public gateway only
+│   ├── common/                 # shared contracts/settings/runtime primitives
+│   ├── control_plane/
+│   │   ├── domain/
+│   │   ├── application/
+│   │   ├── infrastructure/
+│   │   └── presentation/
 │   └── modules/
 │       ├── github/
 │       ├── gitlab/
@@ -16,12 +22,9 @@ mcp-bridge/
 ├── tests/
 │   ├── bridge/
 │   ├── common/
+│   ├── control_plane/
 │   └── modules/
-│       ├── github/
-│       ├── gitlab/
-│       ├── files/
-│       ├── curl/
-│       └── analysis/
+├── alembic.ini
 ├── Dockerfile
 ├── docker-compose.yaml
 ├── docker-entrypoint.sh
@@ -29,11 +32,8 @@ mcp-bridge/
 └── README.md
 ```
 
-`bridge` owns only OAuth, public MCP surfaces and composition.
+`bridge` owns only OAuth, public MCP surfaces and composition. `control_plane` owns dynamic
+provider account persistence and encrypted credentials. Each provider module owns its API
+semantics and consumes account data only through the common account port/client.
 
-`common` contains provider-neutral primitives shared by modules.
-
-Each directory under `modules/` owns one private runtime and its implementation.
-Provider code does not belong in `bridge` or `common`.
-
-The root `docker-compose.yaml` is the single production deployment definition.
+The root `docker-compose.yaml` is the production topology definition.

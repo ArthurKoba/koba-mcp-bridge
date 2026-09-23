@@ -5,16 +5,21 @@ import tarfile
 
 import pytest
 
+from common.settings import FileSettings
 from modules.files.file_store import FileError, FileStore
 
 
 @pytest.fixture
-def store(tmp_path, monkeypatch) -> FileStore:
-    monkeypatch.setenv("FILE_ROOT", str(tmp_path))
-    monkeypatch.setenv("FILE_UPLOAD_MAX_BYTES", str(16 * 1024 * 1024))
-    monkeypatch.setenv("FILE_MAX_EXTRACT_FILES", "100")
-    monkeypatch.setenv("FILE_MAX_EXTRACT_BYTES", str(16 * 1024 * 1024))
-    value = FileStore()
+def store(tmp_path) -> FileStore:
+    value = FileStore(
+        settings=FileSettings(
+            root=tmp_path,
+            upload_max_bytes=16 * 1024 * 1024,
+            max_extract_files=100,
+            max_extract_bytes=16 * 1024 * 1024,
+            upload_chunk_bytes=64 * 1024,
+        )
+    )
     value.ensure()
     return value
 

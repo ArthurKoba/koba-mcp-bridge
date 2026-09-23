@@ -1,32 +1,32 @@
 from __future__ import annotations
 
-import os
-from typing import Any
-
 from fastmcp import FastMCP
+from starlette.applications import Starlette
+
+from .account_client import ControlPlaneClient
+from .settings import ControlPlaneClientSettings, PrivateRuntimeSettings
+from .tool_telemetry import ToolTelemetryMiddleware
 
 
-def build_private_mcp(name: str) -> FastMCP:
-    return FastMCP(name)
+def control_plane_client(settings: ControlPlaneClientSettings) -> ControlPlaneClient:
+    return ControlPlaneClient(settings)
 
 
-def _split_env(name: str, default: str) -> list[str]:
-    raw = os.getenv(name, default)
-    return [item.strip() for item in raw.split(",") if item.strip()]
+def build_private_mcp(
+    name: str,
+    control_plane: ControlPlaneClient | None = None,
+) -> FastMCP:
+    middleware = (
+        [ToolTelemetryMiddleware(name, control_plane)]
+        if control_plane is not None
+        else []
+    )
+    return FastMCP(name, middleware=middleware)
 
 
-def private_http_app(mcp: FastMCP) -> Any:
+def private_http_app(mcp: FastMCP, settings: PrivateRuntimeSettings) -> Starlette:
     return mcp.http_app(
         path="/mcp",
-        allowed_hosts=_split_env(
-            "PRIVATE_MCP_ALLOWED_HOSTS",
-            (
-                "localhost:*,127.0.0.1:*,[::1]:*,"
-                "github:*,gitlab:*,files:*,curl:*,analysis:*"
-            ),
-        ),
-        allowed_origins=_split_env(
-            "PRIVATE_MCP_ALLOWED_ORIGINS",
-            "http://localhost:*,http://127.0.0.1:*,http://[::1]:*",
-        ),
+        allowed_hosts=list(settings.http.allowed_hosts),
+        allowed_origins=list(settings.http.allowed_origins),
     )

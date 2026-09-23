@@ -1,31 +1,9 @@
-import threading
-from concurrent.futures import ThreadPoolExecutor
-
 import pytest
 
-import modules.github.github_agent as github_agent
 from modules.github.github_agent import (
     GitHubAgentError,
     GitHubAppClient,
 )
-
-
-def test_github_agent_loads_convention_config_from_infisical(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        github_agent,
-        "resolve_config_secret",
-        lambda path, name: {
-            ("github/development", "APP_ID"): "777",
-            ("github/development", "PRIVATE_KEY_PEM"): "pem-material",
-        }[(path, name)],
-    )
-
-    client = GitHubAppClient.from_infisical()
-
-    assert client.app_id == "777"
-    assert client.private_key == "pem-material"
 
 
 def test_repository_selector_only_validates_owner_name_shape() -> None:
@@ -103,6 +81,7 @@ def test_list_repositories_uses_github_installation_scope() -> None:
     assert client._installation_ids["arthurkoba/ghidra-mcp"] == 99
     assert client._installation_ids["arthurkoba/mcp-bridge"] == 99
 
+
 def test_app_id_must_be_positive_numeric() -> None:
     client = GitHubAppClient(app_id="not-an-id", private_key="unused")
     with pytest.raises(GitHubAgentError, match="positive numeric"):
@@ -111,7 +90,7 @@ def test_app_id_must_be_positive_numeric() -> None:
 
 def test_invalid_private_key_reports_actionable_error() -> None:
     client = GitHubAppClient(app_id="123", private_key="not-a-pem")
-    with pytest.raises(GitHubAgentError, match="PRIVATE_KEY_PEM.*RSA private key"):
+    with pytest.raises(GitHubAgentError, match=r"PRIVATE_KEY_PEM.*RSA private key"):
         client._app_jwt()
 
 
@@ -160,7 +139,7 @@ def test_missing_installation_has_actionable_error() -> None:
             return 404, {"message": "Not Found"}
 
     client = MissingInstallationClient(app_id="123", private_key="unused")
-    with pytest.raises(GitHubAgentError, match="not installed.*add it"):
+    with pytest.raises(GitHubAgentError, match=r"not installed.*add it"):
         client._installation_id("owner/repo")
 
 
@@ -205,177 +184,4 @@ def test_repository_metadata_is_cached_until_refresh() -> None:
     assert refreshed["repository"] == "owner/repo"
     assert client.calls == 2
 
-
-def test_github_connection_pool_reuses_keepalive(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    created = []
-
-    class DummyResponse:
-        status = 200
-        will_close = False
-
-        def read(self) -> bytes:
-            return b"{}"
-
-    class DummyConnection:
-        def request(self, *args, **kwargs) -> None:
-            del args, kwargs
-
-        def getresponse(self):
-            return DummyResponse()
-
-        def close(self) -> None:
-            return None
-
-    def fake_connection(*args, **kwargs):
-        del args, kwargs
-        connection = DummyConnection()
-        created.append(connection)
-        return connection
-
-    monkeypatch.setattr(
-        github_agent.http.client,
-        "HTTPSConnection",
-        fake_connection,
-    )
-
-    client = GitHubAppClient(app_id="123", private_key="unused")
-    client._request("GET", "https://api.github.com/rate_limit")
-    client._request("GET", "https://api.github.com/rate_limit")
-
-    assert len(created) == 1
-    assert client._connection_count == 1
-
-
-def test_github_connection_pool_allows_parallel_requests(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    created = []
-    barrier = threading.Barrier(2)
-    state_lock = threading.Lock()
-    active = 0
-    max_active = 0
-
-    class DummyResponse:
-        status = 200
-        will_close = False
-
-        def read(self) -> bytes:
-            return b"{}"
-
-    class BlockingConnection:
-        def request(self, *args, **kwargs) -> None:
-            nonlocal active, max_active
-            del args, kwargs
-            with state_lock:
-                active += 1
-                max_active = max(max_active, active)
-            barrier.wait(timeout=2)
-
-        def getresponse(self):
-            nonlocal active
-            with state_lock:
-                active -= 1
-            return DummyResponse()
-
-        def close(self) -> None:
-            return None
-
-    def fake_connection(*args, **kwargs):
-        del args, kwargs
-        connection = BlockingConnection()
-        created.append(connection)
-        return connection
-
-    monkeypatch.setattr(
-        github_agent.http.client,
-        "HTTPSConnection",
-        fake_connection,
-    )
-
-    client = GitHubAppClient(
-        app_id="123",
-        private_key="unused",
-        max_connections=2,
-    )
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        futures = [
-            pool.submit(
-                client._request,
-                "GET",
-                "https://api.github.com/rate_limit",
-            )
-            for _ in range(2)
-        ]
-        results = [future.result() for future in futures]
-
-    assert [status for status, _ in results] == [200, 200]
-    assert max_active == 2
-    assert len(created) == 2
-
-
-def test_github_transport_reconnects_once_after_stale_connection(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    created = []
-
-    class DummyResponse:
-        status = 200
-        will_close = False
-
-        def read(self) -> bytes:
-            return b"{}"
-
-    class FlakyConnection:
-        def __init__(self, fail: bool) -> None:
-            self.fail = fail
-            self.closed = False
-
-        def request(self, *args, **kwargs) -> None:
-            del args, kwargs
-            if self.fail:
-                self.fail = False
-                raise OSError("stale keepalive")
-
-        def getresponse(self):
-            return DummyResponse()
-
-        def close(self) -> None:
-            self.closed = True
-
-    def fake_connection(*args, **kwargs):
-        del args, kwargs
-        connection = FlakyConnection(fail=not created)
-        created.append(connection)
-        return connection
-
-    monkeypatch.setattr(
-        github_agent.http.client,
-        "HTTPSConnection",
-        fake_connection,
-    )
-
-    client = GitHubAppClient(app_id="123", private_key="unused")
-    status, result = client._request(
-        "GET",
-        "https://api.github.com/rate_limit",
-    )
-
-    assert status == 200
-    assert result == {}
-    assert len(created) == 2
-    assert created[0].closed is True
-
-
-def test_infisical_credential_failure_preserves_source(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def fail_secret(path: str, name: str) -> str:
-        del path, name
-        raise github_agent.SecretError("Infisical API HTTP 403: denied")
-
-    monkeypatch.setattr(github_agent, "resolve_config_secret", fail_secret)
-    with pytest.raises(GitHubAgentError, match="Infisical API HTTP 403"):
-        github_agent._development_app_id()
 

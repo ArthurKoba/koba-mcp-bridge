@@ -57,8 +57,7 @@ class RecordingCollabClient(GitHubCollabClient):
         raise AssertionError("unexpected GraphQL query")
 
 
-def test_merge_branch_rejects_protected_base(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("GITHUB_AGENT_PROTECTED_BRANCHES", raising=False)
+def test_merge_branch_rejects_protected_base() -> None:
     with pytest.raises(GitHubAgentError, match="protected branch"):
         RecordingCollabClient().merge_branch(
             "ArthurKoba/koba-mcp-bridge",

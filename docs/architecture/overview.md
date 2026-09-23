@@ -1,6 +1,7 @@
 # Architecture overview
 
-MCP Bridge is a small public gateway that composes independent private modules.
+MCP Bridge is a small public gateway that composes independent private modules and one
+private account control plane.
 
 ```mermaid
 flowchart TB
@@ -9,30 +10,55 @@ flowchart TB
     GW --> GH[github]
     GW --> GL[gitlab]
     GW --> FI[files]
-    GW --> CU[curl]
-    GW --> AN[analysis]
+    GW --> WE[web]\n    WE --> CU[curl runtime]\n    GW --> AN[analysis]
 
-    GH --> SEC[Infisical]
-    GL --> SEC
-    GW --> SEC
+    GH --> CP[control-plane]
+    GL --> CP
+    FI --> CP
+    CU --> CP
+    AN --> CP
 
+    CP --> DB[(SQLite)]
     FI --> STORE[(files-data)]
     CU --> STORE
-    AN --> STORE
-    AN --> GD[native Ghidra bridge :8081]
+    AN --> GD[native Ghidra MCP :8081]
 ```
 
 ## Source ownership
 
 - `bridge` — public OAuth boundary and routing only.
-- `common` — shared provider-neutral runtime/secrets primitives.
-- `modules.github` — GitHub development/reviewer workflow.
-- `modules.gitlab` — GitLab profiles, repositories, MRs and CI.
+- `common` — provider-neutral runtime contracts, settings, HTTP primitives and control-plane client.
+- `control_plane.domain` — account and telemetry domain models.
+- `control_plane.application` — use cases and repository/crypto/verifier ports.
+- `control_plane.infrastructure` — SQLAlchemy, SQLite, Alembic, encryption and provider verification adapters.
+- `control_plane.presentation` — private FastAPI and Starlette Admin adapters.
+- `modules.github` — GitHub-specific API capabilities.
+- `modules.gitlab` — GitLab-specific API capabilities.
 - `modules.files` — persistent content-addressed Files data plane.
-- `modules.curl` — structured HTTP request/download/stream support.
-- `modules.analysis` — Files-oriented analysis boundary over native Ghidra.
+- `modules.curl` — structured curl request/download/stream support.
+- `modules.analysis` — schema-driven terminology facade over native Ghidra MCP.
 
-Only `gateway` is public. Provider modules remain private Docker services.
+Provider modules never import each other. GitHub and GitLab do not know SQLAlchemy or
+SQLite; they depend on the provider-neutral account contract through the private
+control-plane client.
+
+## Configuration and composition roots
+
+Process environment is an infrastructure input. Each ASGI runtime creates typed settings
+and composes its dependencies once at startup. Provider/application code does not read
+process environment while handling requests.
+
+Dynamic GitHub/GitLab accounts are not deployment settings. They live in the control-plane
+account repository and are selected explicitly by `account_id` on MCP calls. Deployment
+environment contains only bootstrap values such as internal service auth, encryption key,
+admin auth, gateway OAuth and runtime policies.
+
+## Data ownership
+
+Only the `control-plane` process opens its SQLite database. Provider runtimes resolve
+account metadata/credentials over authenticated private HTTP. Only the `files`/`curl`
+runtimes mount the Files data plane. This keeps persistence ownership explicit even though
+all source code remains in one repository.
 
 ## Public surfaces
 
@@ -41,9 +67,21 @@ Only `gateway` is public. Provider modules remain private Docker services.
 /github/mcp
 /gitlab/mcp
 /files/mcp
-/http/mcp
+/web/mcp
 /analysis/mcp
+/ghidra/mcp
+/admin
 ```
 
-Raw Ghidra remains a separate native backend. The analysis module translates between
-the Files model and native Ghidra contracts.
+The control-plane `/internal/*` API remains private. Its Starlette Admin UI is exposed only through the authenticated public origin at `/admin`.
+
+Raw Ghidra remains an independent backend and is also exposed directly through `/ghidra/mcp`. Analysis adapts its live MCP catalog and
+normalizes every call back to canonical Ghidra tool names and argument keys.
+
+
+## Root MCP map
+
+The root `/mcp` surface does not mount provider tool namespaces. It exposes only bridge
+diagnostics plus `bridge_backends`, `bridge_tools` and `bridge_call`. Clients can
+inspect backend availability and signatures on demand or forward a call through the bridge,
+while dedicated provider MCP endpoints remain directly addressable.
