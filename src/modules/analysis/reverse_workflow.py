@@ -326,11 +326,11 @@ async def _export_to_file(
             raise FileError("Ghidra export completed without producing a file")
         file = FileInfo.model_validate(
             store.put_file(
-            temporary,
-            name=file_name,
-            source="ghidra-export",
-            consume=True,
-        )
+                temporary,
+                name=file_name,
+                source="ghidra-export",
+                consume=True,
+            )
         )
         store.add_reference(
             file.file_id,
