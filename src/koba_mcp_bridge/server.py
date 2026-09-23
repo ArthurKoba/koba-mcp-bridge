@@ -66,33 +66,32 @@ def _build_auth() -> tuple[GitHubProvider | None, list[AuthMiddleware]]:
     return provider, [AuthMiddleware(auth=_github_user_allowed)]
 
 
-def _gateway_mode() -> str:
-    mode = os.getenv("KOBA_GATEWAY_MODE", "embedded").strip().casefold()
-    if mode not in {"embedded", "proxy"}:
-        raise RuntimeError("KOBA_GATEWAY_MODE must be embedded or proxy")
-    return mode
+def _required_backend_url(name: str) -> str:
+    value = os.getenv(name, "").strip()
+    if not value:
+        raise RuntimeError(f"{name} is required")
+    return value
 
 
 def _configured_backends() -> dict[str, dict[str, str]]:
-    backends: dict[str, dict[str, str]] = {}
-
-    ghidra_url = os.getenv("GHIDRA_MCP_URL", "").strip()
-    if ghidra_url:
-        backends["ghidra"] = {"url": ghidra_url, "namespace": "ghidra"}
-
-    if _gateway_mode() == "proxy":
-        for name, env_name, namespace in (
-            ("github", "GITHUB_MCP_URL", ""),
-            ("files", "FILES_MCP_URL", ""),
-            ("http", "HTTP_MCP_URL", ""),
-        ):
-            url = os.getenv(env_name, "").strip()
-            if not url:
-                raise RuntimeError(
-                    f"{env_name} is required when KOBA_GATEWAY_MODE=proxy"
-                )
-            backends[name] = {"url": url, "namespace": namespace}
-    return backends
+    return {
+        "github": {
+            "url": _required_backend_url("GITHUB_MCP_URL"),
+            "namespace": "",
+        },
+        "files": {
+            "url": _required_backend_url("FILES_MCP_URL"),
+            "namespace": "",
+        },
+        "http": {
+            "url": _required_backend_url("HTTP_MCP_URL"),
+            "namespace": "",
+        },
+        "analysis": {
+            "url": _required_backend_url("ANALYSIS_MCP_URL"),
+            "namespace": "",
+        },
+    }
 
 
 def _mount_backends(server: FastMCP) -> dict[str, dict[str, str]]:
@@ -103,11 +102,7 @@ def _mount_backends(server: FastMCP) -> dict[str, dict[str, str]]:
             name=f"{name}-backend",
             mode="auto",
         )
-        namespace = config["namespace"]
-        if namespace:
-            server.mount(server=proxy, namespace=namespace)
-        else:
-            server.mount(server=proxy)
+        server.mount(server=proxy)
     return backends
 
 
