@@ -13,7 +13,7 @@ from typing import Literal, cast
 
 from common.models import JsonObject
 
-from .file_store import FileError, FileStore, upload_max_bytes
+from .file_store import FileError, FileStore
 from .models import (
     FileInfo,
     UploadAlreadyAbsentResponse,
@@ -28,31 +28,16 @@ from .models import (
 )
 from .validation import normalize_upload_id, validate_file_name, validate_sha256
 
-_DEFAULT_CHUNK_BYTES = 1024 * 1024
-
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def upload_chunk_bytes() -> int:
-    raw = os.getenv("FILE_UPLOAD_CHUNK_BYTES", str(_DEFAULT_CHUNK_BYTES)).strip()
-    try:
-        value = int(raw)
-    except ValueError as exc:
-        raise FileError("FILE_UPLOAD_CHUNK_BYTES must be an integer") from exc
-    if value < 64 * 1024 or value > 8 * 1024 * 1024:
-        raise FileError(
-            "FILE_UPLOAD_CHUNK_BYTES must be between 65536 and 8388608"
-        )
-    return value
-
-
 class FileUploadManager:
     """Durable resumable binary ingress for autonomous MCP agents."""
 
-    def __init__(self, store: FileStore | None = None) -> None:
-        self.store = store or FileStore()
+    def __init__(self, store: FileStore) -> None:
+        self.store = store
         self.directory = self.store.root / "uploads"
         self.database = self.store.root / "uploads.sqlite3"
 
@@ -132,7 +117,7 @@ class FileUploadManager:
             complete=received == expected,
             committed=state == "completed",
             file_id=file_id or None,
-            chunk_bytes=upload_chunk_bytes(),
+            chunk_bytes=self.store.settings.upload_chunk_bytes,
             created_at=str(row["created_at"]),
             updated_at=str(row["updated_at"]),
             completed_at=str(row["completed_at"]) or None,
@@ -182,9 +167,9 @@ class FileUploadManager:
     ) -> JsonObject:
         self.ensure()
         clean_name = validate_file_name(name)
-        if size_bytes < 0 or size_bytes > upload_max_bytes():
+        if size_bytes < 0 or size_bytes > self.store.settings.upload_max_bytes:
             raise FileError(
-                f"size_bytes must be between 0 and {upload_max_bytes()}"
+                f"size_bytes must be between 0 and {self.store.settings.upload_max_bytes}"
             )
         expected = validate_sha256(expected_sha256)
         upload_id = f"upload:{uuid.uuid4()}"
@@ -305,7 +290,7 @@ class FileUploadManager:
             raise FileError("data_base64 is not valid base64") from exc
         if not payload:
             raise FileError("upload chunk must not be empty")
-        chunk_limit = upload_chunk_bytes()
+        chunk_limit = self.store.settings.upload_chunk_bytes
         if len(payload) > chunk_limit:
             raise FileError(f"decoded chunk exceeds {chunk_limit} bytes")
 

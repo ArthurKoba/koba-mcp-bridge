@@ -36,6 +36,23 @@ other. Provider-specific API semantics remain inside the owning module.
 
 Only `gateway` is public. Provider modules remain private Docker services.
 
+## Configuration and composition roots
+
+Process environment is an infrastructure input, not an application dependency. Each
+ASGI runtime reads environment-backed settings once while composing the process and
+passes immutable typed configuration into stateful clients, stores, policies and
+providers. Provider/application code does not call `os.getenv` or mutate process
+configuration while handling requests.
+
+`common.settings` owns environment variable names and converts them into focused
+configuration objects such as `FileSettings`, `GitHubPolicySettings`,
+`GitLabSettings` and `AnalysisSettings`. Secrets bootstrap is configured explicitly
+at startup; the only runtime environment lookup outside the composition boundary is
+the deliberate `env://...` secret-reference adapter.
+
+This makes service construction deterministic and keeps tests independent from
+process-global configuration after bootstrap.
+
 ## Public surfaces
 
 ```text

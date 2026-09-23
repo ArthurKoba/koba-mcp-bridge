@@ -7,10 +7,10 @@ import time
 from pathlib import Path
 
 from common.models import JsonObject, JsonValue, json_value
-from modules.files.file_store import FileStore, upload_max_bytes
+from modules.files.file_store import FileStore
 
 from .errors import CurlError
-from .executor import _build_curl_command, _execute_curl, _metadata_from_stdout
+from .executor import _build_curl_command, _execute_curl, _metadata_from_stdout, _system_curl_binary
 from .presets import DEFAULT_CURL_PRESET
 from .request import (
     _body_source,
@@ -40,6 +40,7 @@ _MAX_REQUEST_MAX_BYTES = 16 * 1024 * 1024
 _DEFAULT_DOWNLOAD_MAX_BYTES = 1024 * 1024 * 1024
 _MAX_DURATION_SECONDS = 300
 
+
 def curl_request_impl(
     url: str,
     method: str = "GET",
@@ -62,13 +63,19 @@ def curl_request_impl(
     max_response_bytes: int = _DEFAULT_REQUEST_MAX_BYTES,
     forward_sensitive_headers_on_redirect: bool = False,
     preview_bytes: int = _DEFAULT_PREVIEW_BYTES,
+    *,
+    store: FileStore,
+    curl_binary: str | None = None,
 ) -> JsonObject:
+    curl_binary = curl_binary or _system_curl_binary()
     if max_response_bytes > _MAX_REQUEST_MAX_BYTES:
         raise CurlError(
             f"curl_request max_response_bytes may not exceed {_MAX_REQUEST_MAX_BYTES}; "
             "use curl_download for larger responses"
         )
     metadata, header_path, output_path = _execute_curl(
+        store=store,
+        curl_binary=curl_binary,
         method=method,
         url=url,
         query=query,
@@ -102,6 +109,7 @@ def curl_request_impl(
         header_path.unlink(missing_ok=True)
         output_path.unlink(missing_ok=True)
 
+
 def curl_download_impl(
     url: str,
     method: str = "GET",
@@ -126,8 +134,14 @@ def curl_download_impl(
     store_http_errors: bool = False,
     forward_sensitive_headers_on_redirect: bool = False,
     preview_bytes: int = _DEFAULT_PREVIEW_BYTES,
+    *,
+    store: FileStore,
+    curl_binary: str | None = None,
 ) -> JsonObject:
+    curl_binary = curl_binary or _system_curl_binary()
     metadata, header_path, output_path = _execute_curl(
+        store=store,
+        curl_binary=curl_binary,
         method=method,
         url=url,
         query=query,
@@ -187,7 +201,6 @@ def curl_download_impl(
             "download.bin",
         )
         ctype = _content_type(final_block, metadata)
-        store = FileStore()
         file = store.put_file(
             output_path,
             name=name,
@@ -219,6 +232,7 @@ def curl_download_impl(
         header_path.unlink(missing_ok=True)
         output_path.unlink(missing_ok=True)
 
+
 def curl_stream_capture_impl(
     url: str,
     method: str = "GET",
@@ -242,15 +256,20 @@ def curl_stream_capture_impl(
     max_bytes: int = 16 * 1024 * 1024,
     forward_sensitive_headers_on_redirect: bool = False,
     preview_bytes: int = _DEFAULT_PREVIEW_BYTES,
+    *,
+    store: FileStore,
+    curl_binary: str | None = None,
 ) -> JsonObject:
+    curl_binary = curl_binary or _system_curl_binary()
     if duration_seconds <= 0 or duration_seconds > _MAX_DURATION_SECONDS:
         raise CurlError(
             f"duration_seconds must be greater than 0 and at most {_MAX_DURATION_SECONDS}"
         )
-    if max_bytes <= 0 or max_bytes > upload_max_bytes():
-        raise CurlError(f"max_bytes must be between 1 and {upload_max_bytes()}")
+    if max_bytes <= 0 or max_bytes > store.settings.upload_max_bytes:
+        raise CurlError(
+            f"max_bytes must be between 1 and {store.settings.upload_max_bytes}"
+        )
 
-    store = FileStore()
     store.ensure()
     clean_method = _validate_method(method)
     request_url = _with_query(_validate_url(url), query)
@@ -283,6 +302,7 @@ def curl_stream_capture_impl(
     )
 
     command = _build_curl_command(
+        curl_binary=curl_binary,
         method=clean_method,
         url=request_url,
         headers=merged,

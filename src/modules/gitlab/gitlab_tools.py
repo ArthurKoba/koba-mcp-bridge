@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from .gitlab_client import GitLabProfileRegistry
 from .tool_context import clear_runtime_cache as _clear_runtime_cache
 from .tool_context import client as _client
+from .tool_context import configure_runtime as _configure_runtime
 from .tool_context import registry as _registry
 
 if TYPE_CHECKING:
@@ -62,6 +63,7 @@ __all__ = [
     "GitLabProfileRegistry",
     "_clear_runtime_cache",
     "_client",
+    "_configure_runtime",
     "_registry",
     "register_gitlab_tools",
 ]

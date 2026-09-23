@@ -18,7 +18,9 @@ class SecretResolver:
         *,
         cache_ttl_seconds: float = 60.0,
     ) -> None:
-        self.infisical = infisical or InfisicalClient()
+        if infisical is None:
+            raise ValueError("SecretResolver requires explicit InfisicalClient")
+        self.infisical = infisical
         self.cache_ttl_seconds = max(0.0, float(cache_ttl_seconds))
         self._secret_cache: dict[
             tuple[str, str, str, str],

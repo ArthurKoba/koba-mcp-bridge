@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 import modules.analysis.provider as provider_module
+from common.settings import AnalysisSettings
 from modules.analysis.provider import AnalysisProviderError, AnalysisToolProvider
 
 
@@ -50,7 +51,12 @@ async def test_provider_adapts_live_backend_catalog(monkeypatch) -> None:
 
     monkeypatch.setattr(provider_module, "Client", FakeClient)
 
-    provider = AnalysisToolProvider(url="http://ghidra.internal/mcp")
+    provider = AnalysisToolProvider(
+        AnalysisSettings(
+            backend_url="http://ghidra.internal/mcp",
+            schema_cache_ttl_seconds=30,
+        )
+    )
     tools = await provider._list_tools()
 
     assert seen_urls == ["http://ghidra.internal/mcp"]
@@ -71,7 +77,12 @@ async def test_provider_adapts_live_backend_catalog(monkeypatch) -> None:
 
 
 def test_provider_rejects_tool_alias_collisions() -> None:
-    provider = AnalysisToolProvider(url="http://ghidra.internal/mcp")
+    provider = AnalysisToolProvider(
+        AnalysisSettings(
+            backend_url="http://ghidra.internal/mcp",
+            schema_cache_ttl_seconds=30,
+        )
+    )
 
     with pytest.raises(AnalysisProviderError, match="tool alias collision"):
         provider._adapt_catalog(

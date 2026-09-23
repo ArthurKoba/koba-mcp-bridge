@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import os
 import time
 from collections.abc import Sequence
 from typing import Protocol, cast
@@ -12,6 +11,7 @@ from fastmcp.server.providers import Provider
 from fastmcp.tools import FunctionTool, Tool
 
 from common.models import JsonObject, JsonValue, json_object
+from common.settings import AnalysisSettings
 
 from .result import decode_call_result
 from .terminology import (
@@ -29,32 +29,11 @@ class _BackendTool(Protocol):
 
 class _SignatureTarget(Protocol):
     __signature__: inspect.Signature
+    __annotations__: dict[str, object]
 
 
 class AnalysisProviderError(RuntimeError):
     pass
-
-
-def _analysis_backend_url() -> str:
-    value = os.getenv("GHIDRA_MCP_URL", "").strip()
-    if not value:
-        raise AnalysisProviderError("GHIDRA_MCP_URL is not configured")
-    return value
-
-
-def _schema_cache_ttl_seconds() -> float:
-    raw = os.getenv("ANALYSIS_SCHEMA_CACHE_TTL_SECONDS", "30").strip()
-    try:
-        value = float(raw)
-    except ValueError as exc:
-        raise AnalysisProviderError(
-            "ANALYSIS_SCHEMA_CACHE_TTL_SECONDS must be a number"
-        ) from exc
-    if value < 0 or value > 3600:
-        raise AnalysisProviderError(
-            "ANALYSIS_SCHEMA_CACHE_TTL_SECONDS must be between 0 and 3600"
-        )
-    return value
 
 
 def _backend_tool_schema(tool: _BackendTool) -> JsonObject:
@@ -126,17 +105,20 @@ def _analysis_signature(input_schema: JsonObject) -> inspect.Signature:
 class AnalysisToolProvider(Provider):
     """Expose the live Ghidra tool catalog through behavior-analysis terminology."""
 
-    def __init__(self, url: str | None = None) -> None:
+    def __init__(self, settings: AnalysisSettings) -> None:
         super().__init__()
-        self.url = url.strip() if url is not None else None
+        self.settings = settings
         self._cache: tuple[float, list[Tool]] | None = None
         self._cache_lock = asyncio.Lock()
 
     def _backend_url(self) -> str:
-        return self.url or _analysis_backend_url()
+        value = self.settings.backend_url.strip()
+        if not value:
+            raise AnalysisProviderError("analysis backend URL is not configured")
+        return value
 
     async def _list_tools(self) -> Sequence[Tool]:
-        ttl = _schema_cache_ttl_seconds()
+        ttl = self.settings.schema_cache_ttl_seconds
         now = time.monotonic()
         cached = self._cache
         if ttl > 0 and cached is not None and cached[0] > now:
@@ -186,7 +168,13 @@ class AnalysisToolProvider(Provider):
             return decode_call_result(result)
 
         signature_target = cast(_SignatureTarget, invoke)
-        signature_target.__signature__ = _analysis_signature(ghidra_schema)
+        signature = _analysis_signature(ghidra_schema)
+        signature_target.__signature__ = signature
+        signature_target.__annotations__ = {
+            name: parameter.annotation
+            for name, parameter in signature.parameters.items()
+        }
+        signature_target.__annotations__["return"] = signature.return_annotation
         description = analysis_text(backend_tool.description or "")
         title = _backend_tool_title(backend_tool)
         tool = FunctionTool.from_function(

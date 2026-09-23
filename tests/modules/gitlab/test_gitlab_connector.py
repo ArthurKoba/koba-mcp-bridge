@@ -11,6 +11,7 @@ import pytest
 import modules.gitlab.credentials as gitlab_credentials
 import modules.gitlab.gitlab_client as gitlab_module
 import modules.gitlab.gitlab_tools as gitlab_tools
+from common.settings import GitLabSettings
 from modules.gitlab.gitlab_client import (
     GitLabClient,
     GitLabError,
@@ -202,6 +203,12 @@ def gitlab_server():
 
 @pytest.fixture
 def configured_profiles(monkeypatch, gitlab_server):
+    gitlab_tools._configure_runtime(
+        GitLabSettings(
+            protected_branches=frozenset({"main", "master"}),
+            registry_cache_ttl_seconds=60,
+        )
+    )
     gitlab_tools._clear_runtime_cache()
 
     monkeypatch.setattr(
@@ -384,12 +391,12 @@ def test_http_app_mounts_dedicated_gitlab_endpoint() -> None:
     paths = {getattr(route, "path", "") for route in app.routes}
     assert "/gitlab" in paths
 
+
 def test_runtime_reuses_registry_and_client(
     configured_profiles,
     monkeypatch,
 ) -> None:
     gitlab_tools._clear_runtime_cache()
-    monkeypatch.setenv("GITLAB_REGISTRY_CACHE_TTL_SECONDS", "60")
     original = GitLabProfileRegistry.from_infisical
     calls = 0
 

@@ -35,8 +35,15 @@ def _repoint(
 
 
 class ReservedBranchClient(GitHubActionsClient):
-    def __init__(self) -> None:
-        super().__init__(app_id="4970571", private_key="unused")
+    def __init__(
+        self,
+        protected_branches: frozenset[str] = frozenset({"production"}),
+    ) -> None:
+        super().__init__(
+            app_id="4970571",
+            private_key="unused",
+            protected_branches=protected_branches,
+        )
         self.production_head = "old"
         self.ref_reads = 0
         self.race_on_second_ref_read = False
@@ -132,10 +139,7 @@ def _reviewer_client() -> GitHubCollabClient:
     return GitHubCollabClient(app_id="4978904", private_key="unused")
 
 
-def test_reserved_branch_repoint_dry_run_preserves_content(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_PROTECTED_BRANCHES", "production")
+def test_reserved_branch_repoint_dry_run_preserves_content() -> None:
     client = ReservedBranchClient()
     result = _repoint(client, "production", "old", "new", dry_run=True)
 
@@ -149,10 +153,7 @@ def test_reserved_branch_repoint_dry_run_preserves_content(
     assert not client.ref_updates
 
 
-def test_reserved_branch_repoint_force_updates_after_second_head_check(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_PROTECTED_BRANCHES", "production")
+def test_reserved_branch_repoint_force_updates_after_second_head_check() -> None:
     client = ReservedBranchClient()
     result = _repoint(client, "production", "old", "new", dry_run=False)
 
@@ -163,52 +164,39 @@ def test_reserved_branch_repoint_force_updates_after_second_head_check(
     assert client.ref_reads == 2
 
 
-def test_reserved_branch_repoint_rejects_non_reserved_branch(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_PROTECTED_BRANCHES", "production")
+def test_reserved_branch_repoint_rejects_non_reserved_branch() -> None:
     with pytest.raises(GitHubAgentError, match="not reserved"):
         _repoint(ReservedBranchClient(), "main", "new", "new")
 
 
-def test_reserved_branch_repoint_rejects_tree_change(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_PROTECTED_BRANCHES", "production")
+def test_reserved_branch_repoint_rejects_tree_change() -> None:
     with pytest.raises(GitHubAgentError, match="would change repository content"):
         _repoint(ReservedBranchClient(), "production", "old", "bad-tree")
 
 
-def test_reserved_branch_repoint_requires_agent_identity(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_PROTECTED_BRANCHES", "production")
+def test_reserved_branch_repoint_requires_agent_identity() -> None:
     with pytest.raises(GitHubAgentError, match="does not use the current Agent App identity"):
         _repoint(ReservedBranchClient(), "production", "old", "bad-identity")
 
 
-def test_reserved_branch_repoint_rejects_github_protected_branch(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_PROTECTED_BRANCHES", "production")
+def test_reserved_branch_repoint_rejects_github_protected_branch() -> None:
     client = ReservedBranchClient()
     client.github_protected = True
     with pytest.raises(GitHubAgentError, match="protected by GitHub"):
         _repoint(client, "production", "old", "new")
 
 
-def test_reserved_branch_repoint_rejects_default_branch(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_PROTECTED_BRANCHES", "main")
+def test_reserved_branch_repoint_rejects_default_branch() -> None:
     with pytest.raises(GitHubAgentError, match="refuses the repository default branch"):
-        _repoint(ReservedBranchClient(), "main", "new", "new")
+        _repoint(
+            ReservedBranchClient(frozenset({"main"})),
+            "main",
+            "new",
+            "new",
+        )
 
 
-def test_reserved_branch_repoint_rejects_race_before_force_update(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_PROTECTED_BRANCHES", "production")
+def test_reserved_branch_repoint_rejects_race_before_force_update() -> None:
     client = ReservedBranchClient()
     client.race_on_second_ref_read = True
     with pytest.raises(GitHubAgentError, match="changed during repoint"):

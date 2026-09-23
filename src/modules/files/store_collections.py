@@ -11,8 +11,6 @@ from common.models import JsonObject
 
 from .file_primitives import (
     FileError,
-    max_extract_bytes,
-    max_extract_files,
     now_iso,
     safe_collection_path,
 )
@@ -31,8 +29,8 @@ class FileCollectionStore(FileReferenceStore):
     def extract(self, file_id: str) -> JsonObject:
         source = FileInfo.model_validate(self.info(file_id))
         archive_path = self.path_for(file_id)
-        file_limit = max_extract_files()
-        byte_limit = max_extract_bytes()
+        file_limit = self.settings.max_extract_files
+        byte_limit = self.settings.max_extract_bytes
         entries: builtins.list[CollectionItem] = []
         total_bytes = 0
 

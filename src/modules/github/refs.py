@@ -16,7 +16,6 @@ from common.models import (
 from .base import GitHubRepositoryClientBase
 from .github_agent import GitHubAgentError
 from .history_projection import git_identity, verification
-from .policy import protected_branches_from_env
 
 
 class GitHubRefsClient(GitHubRepositoryClientBase):
@@ -39,7 +38,7 @@ class GitHubRefsClient(GitHubRepositoryClientBase):
                 raise GitHubAgentError("unexpected branch response")
             github_protected = json_bool(result.get("protected"))
 
-        bridge_reserved = branch.casefold() in protected_branches_from_env()
+        bridge_reserved = branch.casefold() in self.protected_branches
         denial_reason: str | None = None
         if bridge_reserved:
             denial_reason = "branch is reserved by bridge mutation policy"
@@ -73,7 +72,7 @@ class GitHubRefsClient(GitHubRepositoryClientBase):
         if not isinstance(result, list):
             raise GitHubAgentError("unexpected branch list response")
 
-        reserved = protected_branches_from_env()
+        reserved = set(self.protected_branches)
         branches = []
         for item in result:
             if not isinstance(item, dict):
@@ -354,7 +353,7 @@ class GitHubRefsClient(GitHubRepositoryClientBase):
         if not expected_head_sha:
             raise GitHubAgentError("expected_head_sha must not be empty")
         if (
-            branch.casefold() in protected_branches_from_env()
+            branch.casefold() in self.protected_branches
             and not allow_protected_branch
         ):
             raise GitHubAgentError(

@@ -10,7 +10,7 @@ from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from common.models import JsonObject, JsonValue
-from modules.files.file_store import FileStore, upload_max_bytes
+from modules.files.file_store import FileStore
 from modules.files.models import FileInfo
 
 from .errors import CurlError
@@ -21,11 +21,13 @@ _HEADER_NAME_RE = re.compile(r"^[!#$%&'*+\-.^_~|0-9A-Za-z]+$")
 _COOKIE_NAME_RE = re.compile(r"^[!#$%&'*+\-.^_~|0-9A-Za-z]+$")
 _SENSITIVE_HEADERS = {"authorization", "cookie", "proxy-authorization"}
 
+
 def _validate_method(method: str) -> str:
     value = method.strip().upper()
     if not value or not _METHOD_RE.fullmatch(value):
         raise CurlError("method contains invalid HTTP token characters")
     return value
+
 
 def _validate_url(url: str) -> str:
     value = url.strip()
@@ -38,6 +40,7 @@ def _validate_url(url: str) -> str:
     if not parsed.hostname:
         raise CurlError("url must include a hostname")
     return value
+
 
 def _query_pairs(query: JsonObject | None) -> list[tuple[str, str]]:
     pairs: list[tuple[str, str]] = []
@@ -52,6 +55,7 @@ def _query_pairs(query: JsonObject | None) -> list[tuple[str, str]]:
             else:
                 pairs.append((name, str(value)))
     return pairs
+
 
 def _with_query(url: str, query: JsonObject | None) -> str:
     if not query:
@@ -69,6 +73,7 @@ def _with_query(url: str, query: JsonObject | None) -> str:
         )
     )
 
+
 def _validate_header(name: str, value: str) -> tuple[str, str]:
     clean_name = name.strip()
     if not _HEADER_NAME_RE.fullmatch(clean_name):
@@ -77,6 +82,7 @@ def _validate_header(name: str, value: str) -> tuple[str, str]:
     if "\r" in clean_value or "\n" in clean_value or "\x00" in clean_value:
         raise CurlError(f"header {clean_name!r} contains control characters")
     return clean_name, clean_value
+
 
 def _merged_headers(preset: str, headers: dict[str, str] | None) -> dict[str, str]:
     preset_name = preset.strip().casefold() or DEFAULT_CURL_PRESET
@@ -90,6 +96,7 @@ def _merged_headers(preset: str, headers: dict[str, str] | None) -> dict[str, st
         clean_name, clean_value = _validate_header(str(name), str(value))
         result[clean_name.casefold()] = (clean_name, clean_value)
     return dict(result.values())
+
 
 def _cookie_header(cookies: dict[str, str] | None) -> str:
     parts: list[str] = []
@@ -105,9 +112,11 @@ def _cookie_header(cookies: dict[str, str] | None) -> str:
         parts.append(cookie[name].OutputString())
     return "; ".join(parts)
 
+
 def _has_header(headers: dict[str, str], name: str) -> bool:
     needle = name.casefold()
     return any(key.casefold() == needle for key in headers)
+
 
 def _has_sensitive_redirect_state(
     headers: dict[str, str],
@@ -116,6 +125,7 @@ def _has_sensitive_redirect_state(
     return bool(cookies) or any(
         name.casefold() in _SENSITIVE_HEADERS for name in headers
     )
+
 
 def _body_source(
     *,
@@ -182,8 +192,8 @@ def _body_source(
 
     if data is None:
         return None, None
-    if len(data) > upload_max_bytes():
-        raise CurlError("request body exceeds FILE_UPLOAD_MAX_BYTES")
+    if len(data) > store.settings.upload_max_bytes:
+        raise CurlError("request body exceeds the configured file size limit")
 
     store.ensure()
     fd, raw = tempfile.mkstemp(prefix="curl-body-", dir=store.tmp)
@@ -191,6 +201,7 @@ def _body_source(
     with os.fdopen(fd, "wb") as handle:
         handle.write(data)
     return path, path
+
 
 def _redacted_request_headers(headers: dict[str, str]) -> list[dict[str, str]]:
     result = []

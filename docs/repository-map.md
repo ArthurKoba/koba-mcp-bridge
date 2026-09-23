@@ -6,7 +6,7 @@ mcp-bridge/
 ├── docs/
 ├── src/
 │   ├── bridge/            # public gateway only
-│   ├── common/            # shared runtime + secrets primitives
+│   ├── common/            # settings, runtime, secrets and shared primitives
 │   └── modules/
 │       ├── github/
 │       ├── gitlab/
@@ -31,7 +31,8 @@ mcp-bridge/
 
 `bridge` owns only OAuth, public MCP surfaces and composition.
 
-`common` contains provider-neutral primitives shared by modules.
+`common` contains provider-neutral primitives shared by modules, including the typed
+settings boundary used by runtime composition roots.
 
 Each directory under `modules/` owns one private runtime and its implementation.
 Provider code does not belong in `bridge` or `common`.

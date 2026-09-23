@@ -16,21 +16,13 @@ from common.models import (
 )
 
 from .github_agent import GitHubAgentError
-from .policy import protected_branches_from_env
 
 _GITHUB_API = "https://api.github.com"
 
 
-
-
-
-
-
-
-
-
 class _GitHubHistoryHost(Protocol):
     app_id: str
+    protected_branches: frozenset[str]
 
     def _assert_allowed(self, repository: str) -> str: ...
 
@@ -163,7 +155,7 @@ class GitHubHistoryMixin:
             },
             "bridge_policy": {
                 "reserved_branches": json_array(
-                    sorted(protected_branches_from_env()),
+                    sorted(self._history_host().protected_branches),
                     context="GitHub reserved branches",
                 ),
                 "reserved_branch_mutation_allowed": False,

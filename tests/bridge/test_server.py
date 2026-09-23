@@ -3,7 +3,6 @@ from fastmcp import Client
 
 import bridge.server as server_module
 from bridge.server import (
-    _configured_backends,
     _mount_aggregate_backends,
     app,
     mcp,
@@ -67,45 +66,6 @@ def test_github_oauth_failure_preserves_infisical_error(
 
     with pytest.raises(RuntimeError, match="Infisical API HTTP 403"):
         server_module._github_oauth_value("CLIENT_ID")
-
-
-def test_configured_backends_use_canonical_private_services(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    for name in (
-        "GITHUB_URL",
-        "GITLAB_URL",
-        "FILES_URL",
-        "CURL_URL",
-        "ANALYSIS_URL",
-    ):
-        monkeypatch.delenv(name, raising=False)
-
-    assert _configured_backends() == {
-        "github": "http://github:8000/mcp",
-        "gitlab": "http://gitlab:8000/mcp",
-        "files": "http://files:8000/mcp",
-        "http": "http://curl:8000/mcp",
-        "analysis": "http://analysis:8000/mcp",
-    }
-
-
-def test_configured_backends_allow_explicit_overrides(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("GITHUB_URL", "http://github-alt:9000/mcp")
-    monkeypatch.setenv("GITLAB_URL", "http://gitlab-alt:9000/mcp")
-    monkeypatch.setenv("FILES_URL", "http://files-alt:9000/mcp")
-    monkeypatch.setenv("CURL_URL", "http://curl-alt:9000/mcp")
-    monkeypatch.setenv("ANALYSIS_URL", "http://analysis-alt:9000/mcp")
-
-    assert _configured_backends() == {
-        "github": "http://github-alt:9000/mcp",
-        "gitlab": "http://gitlab-alt:9000/mcp",
-        "files": "http://files-alt:9000/mcp",
-        "http": "http://curl-alt:9000/mcp",
-        "analysis": "http://analysis-alt:9000/mcp",
-    }
 
 
 def test_aggregate_mounts_expected_proxy_namespaces(

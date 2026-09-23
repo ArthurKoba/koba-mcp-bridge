@@ -1,12 +1,7 @@
 import pytest
 
-import modules.github.policy as github_policy
 from modules.github.github_agent import GitHubAgentError
-from modules.github.github_workflow import (
-    GitHubDevClient,
-    protected_branches_from_env,
-    required_checks_from_env,
-)
+from modules.github.github_workflow import GitHubDevClient
 
 
 def client() -> GitHubDevClient:
@@ -16,39 +11,26 @@ def client() -> GitHubDevClient:
     )
 
 
-def test_default_protected_branches(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("GITHUB_AGENT_PROTECTED_BRANCHES", raising=False)
-    assert protected_branches_from_env() == {"main", "master"}
+def test_client_defaults_include_protected_branches_and_checks() -> None:
+    dev = client()
+    assert dev.protected_branches == frozenset({"main", "master"})
+    assert dev.required_checks == ("test", "docker")
 
 
-def test_custom_protected_branches(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_PROTECTED_BRANCHES", "main,release")
-    assert protected_branches_from_env() == {"main", "release"}
-
-
-def test_protected_branches_prefer_infisical_convention(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_PROTECTED_BRANCHES", "legacy")
-    monkeypatch.setattr(
-        github_policy,
-        "resolve_config_secret",
-        lambda path, name: "main,production"
-        if (path, name)
-        == ("github/development", "PROTECTED_BRANCHES")
-        else "",
+def test_client_accepts_injected_policy() -> None:
+    dev = GitHubDevClient(
+        app_id="123",
+        private_key="key-material",
+        protected_branches=frozenset({"main", "release"}),
+        required_checks=("lint",),
+        required_reviewers=("reviewer[bot]",),
     )
-
-    assert protected_branches_from_env() == {"main", "production"}
-
-
-def test_default_required_checks(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("GITHUB_AGENT_REQUIRED_CHECKS", raising=False)
-    assert required_checks_from_env() == ["test", "docker"]
+    assert dev.protected_branches == frozenset({"main", "release"})
+    assert dev.required_checks == ("lint",)
+    assert dev.required_reviewers == ("reviewer[bot]",)
 
 
-def test_direct_write_to_main_is_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("GITHUB_AGENT_PROTECTED_BRANCHES", raising=False)
+def test_direct_write_to_main_is_blocked() -> None:
     with pytest.raises(GitHubAgentError, match="protected branch"):
         client().put_file(
             "ArthurKoba/koba-mcp-bridge",
@@ -59,8 +41,7 @@ def test_direct_write_to_main_is_blocked(monkeypatch: pytest.MonkeyPatch) -> Non
         )
 
 
-def test_fast_forward_main_is_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("GITHUB_AGENT_PROTECTED_BRANCHES", raising=False)
+def test_fast_forward_main_is_blocked() -> None:
     with pytest.raises(GitHubAgentError, match="protected branch"):
         client().fast_forward("ArthurKoba/koba-mcp-bridge", "main", "feature")
 
@@ -230,7 +211,6 @@ def test_invalid_binary_content_is_blocked() -> None:
             "message",
             "feature/test",
         )
-
 
 
 def test_copy_files_requires_entries() -> None:
@@ -425,12 +405,14 @@ def test_invalid_merge_method_is_blocked() -> None:
         )
 
 
-
 def test_required_checks_delegate_when_names_do_not_belong_to_repository(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_REQUIRED_CHECKS", "test,docker")
-    dev = client()
+    dev = GitHubDevClient(
+        app_id="123",
+        private_key="key-material",
+        required_checks=("test", "docker"),
+    )
 
     def fake_check_runs(repository: str, ref: str) -> dict[str, object]:
         return {
@@ -466,8 +448,11 @@ def test_required_checks_delegate_when_names_do_not_belong_to_repository(
 def test_required_checks_stay_strict_when_repository_uses_configured_names(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_REQUIRED_CHECKS", "test,docker")
-    dev = client()
+    dev = GitHubDevClient(
+        app_id="123",
+        private_key="key-material",
+        required_checks=("test", "docker"),
+    )
 
     def fake_check_runs(repository: str, ref: str) -> dict[str, object]:
         if ref == "head-sha":
@@ -494,7 +479,6 @@ def test_required_checks_stay_strict_when_repository_uses_configured_names(
 
     with pytest.raises(GitHubAgentError, match="missing=\\['docker'\\]"):
         dev.assert_required_checks("ArthurKoba/koba-mcp-bridge", "head-sha")
-
 
 
 class BranchResetClient(GitHubDevClient):
@@ -541,7 +525,6 @@ class BranchResetClient(GitHubDevClient):
 def test_reset_branch_defaults_to_dry_run_and_allows_explicit_protected_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("GITHUB_AGENT_PROTECTED_BRANCHES", raising=False)
     dev = BranchResetClient()
 
     result = dev.reset_branch(
@@ -560,7 +543,6 @@ def test_reset_branch_defaults_to_dry_run_and_allows_explicit_protected_override
 def test_reset_branch_blocks_protected_branch_without_explicit_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("GITHUB_AGENT_PROTECTED_BRANCHES", raising=False)
 
     with pytest.raises(GitHubAgentError, match="allow_protected_branch=true"):
         BranchResetClient().reset_branch(
@@ -574,7 +556,6 @@ def test_reset_branch_blocks_protected_branch_without_explicit_override(
 def test_reset_branch_refuses_non_ancestor_target(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("GITHUB_AGENT_PROTECTED_BRANCHES", raising=False)
     dev = BranchResetClient(comparison_status="diverged")
 
     with pytest.raises(GitHubAgentError, match="ancestor"):
@@ -593,7 +574,6 @@ def test_reset_branch_refuses_non_ancestor_target(
 def test_reset_branch_force_updates_after_second_head_check(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("GITHUB_AGENT_PROTECTED_BRANCHES", raising=False)
     dev = BranchResetClient()
 
     result = dev.reset_branch(
@@ -613,7 +593,6 @@ def test_reset_branch_force_updates_after_second_head_check(
 def test_reset_branch_detects_race_before_force_update(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("GITHUB_AGENT_PROTECTED_BRANCHES", raising=False)
     dev = BranchResetClient(second_head="raced-head")
 
     with pytest.raises(GitHubAgentError, match="branch head changed before reset"):

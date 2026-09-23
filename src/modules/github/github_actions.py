@@ -9,7 +9,6 @@ from .github_agent import GitHubAgentError
 from .github_collab import GitHubCollabClient
 from .github_history import GitHubHistoryMixin
 from .issues import GitHubIssueClient
-from .policy import protected_branches_from_env
 from .refs import GitHubRefsClient
 from .runs import GitHubRunClient
 
@@ -46,7 +45,7 @@ class GitHubActionsClient(
         base_ref = json_str(base.get("ref"))
         if not base_ref:
             raise GitHubAgentError("pull request base has no ref")
-        if base_ref.casefold() in protected_branches_from_env():
+        if base_ref.casefold() in self.protected_branches:
             raise GitHubAgentError(
                 f"protected branch merge requires administrator: {base_ref}"
             )

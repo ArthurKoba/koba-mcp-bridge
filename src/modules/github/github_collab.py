@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-
 from common.models import (
     JsonObject,
     json_array,
@@ -17,11 +15,6 @@ from .github_review import GitHubReviewClient
 from .pulls import GitHubPullClient
 
 
-def required_reviewer_logins_from_env() -> list[str]:
-    raw = os.getenv("GITHUB_AGENT_REQUIRED_REVIEWERS", "")
-    return [item.strip().casefold() for item in raw.split(",") if item.strip()]
-
-
 class GitHubCollabClient(GitHubReviewClient, GitHubPullClient):
     """Collaboration operations for branch/PR review loops."""
 
@@ -31,7 +24,7 @@ class GitHubCollabClient(GitHubReviewClient, GitHubPullClient):
         number: int,
     ) -> JsonObject:
         repository = self._assert_allowed(repository)
-        required = required_reviewer_logins_from_env()
+        required = list(self.required_reviewers)
         if not required:
             return {
                 "repository": repository,

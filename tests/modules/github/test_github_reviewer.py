@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 import modules.github.github_reviewer as github_reviewer
+from common.settings import GitHubPolicySettings
 from modules.github.github_agent import GitHubAgentError
 from modules.github.github_collab import GitHubCollabClient
 from modules.github.github_reviewer import (
@@ -11,11 +12,20 @@ from modules.github.github_reviewer import (
 )
 
 
+def _policy(*, required_reviewers: tuple[str, ...] = ()) -> GitHubPolicySettings:
+    return GitHubPolicySettings(
+        protected_branches=frozenset({"main", "master"}),
+        required_checks=("test", "docker"),
+        required_reviewers=required_reviewers,
+    )
+
+
 class ReviewGateClient(GitHubCollabClient):
     def __init__(self, reviews: list[dict[str, object]]) -> None:
         super().__init__(
             app_id="123",
             private_key="key-material",
+            required_reviewers=("koba-ai-reviewer[bot]",),
         )
         self.reviews = [
             {**review, "commit_id": review.get("commit_id", "current-head")}
@@ -83,15 +93,13 @@ def test_reviewer_loads_convention_config_from_infisical(
         }[(path, name)],
     )
 
-    client = github_reviewer_client()
+    client = github_reviewer_client(_policy())
 
     assert client.app_id == "888"
     assert client.private_key == "reviewer-pem"
 
-def test_required_independent_reviewer_approval_passes(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_REQUIRED_REVIEWERS", "koba-ai-reviewer[bot]")
+
+def test_required_independent_reviewer_approval_passes() -> None:
     client = ReviewGateClient(
         [
             {
@@ -104,19 +112,13 @@ def test_required_independent_reviewer_approval_passes(
     assert result["status"] == "ok"
 
 
-def test_required_independent_reviewer_missing_blocks_merge_gate(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_REQUIRED_REVIEWERS", "koba-ai-reviewer[bot]")
+def test_required_independent_reviewer_missing_blocks_merge_gate() -> None:
     client = ReviewGateClient([])
     with pytest.raises(GitHubAgentError, match="required independent reviews"):
         client.assert_required_reviews("ArthurKoba/koba-mcp-bridge", 7)
 
 
-def test_later_request_changes_revokes_previous_approval(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_REQUIRED_REVIEWERS", "koba-ai-reviewer[bot]")
+def test_later_request_changes_revokes_previous_approval() -> None:
     client = ReviewGateClient(
         [
             {
@@ -133,10 +135,7 @@ def test_later_request_changes_revokes_previous_approval(
         client.assert_required_reviews("ArthurKoba/koba-mcp-bridge", 7)
 
 
-def test_comment_after_approval_does_not_revoke_decisive_state(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_REQUIRED_REVIEWERS", "koba-ai-reviewer[bot]")
+def test_comment_after_approval_does_not_revoke_decisive_state() -> None:
     client = ReviewGateClient(
         [
             {
@@ -188,6 +187,7 @@ async def test_reviewer_tool_surface_excludes_development_mutations() -> None:
     assert not any("merge_pull" in name for name in names)
     assert not any("create_branch" in name for name in names)
     assert not any("delete_branch" in name for name in names)
+
 
 def test_reviewer_infisical_failure_preserves_source(
     monkeypatch: pytest.MonkeyPatch,

@@ -14,7 +14,6 @@ from common.models import (
 
 from .base import GitHubRepositoryClientBase
 from .github_agent import GitHubAgentError
-from .policy import required_checks_from_env
 
 
 class GitHubPullClient(GitHubRepositoryClientBase):
@@ -307,7 +306,7 @@ class GitHubPullClient(GitHubRepositoryClientBase):
             for item in checks
             if isinstance(item, dict)
         }
-        required = required_checks_from_env()
+        required = list(self.required_checks)
 
         # The bridge can serve multiple repositories whose CI check names are
         # unrelated. GITHUB_AGENT_REQUIRED_CHECKS is therefore only applicable

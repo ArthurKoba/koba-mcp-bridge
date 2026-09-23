@@ -15,7 +15,11 @@ _AGENT_EMAIL = "330168119+koba-ai-agent[bot]@users.noreply.github.com"
 
 class RecordingGraphClient(GitHubActionsClient):
     def __init__(self) -> None:
-        super().__init__(app_id="4970571", private_key="unused")
+        super().__init__(
+            app_id="4970571",
+            private_key="unused",
+            protected_branches=frozenset({"production"}),
+        )
         self.head = "h"
         self.ref_reads = 0
         self.race_on_second_ref_read = False
@@ -123,10 +127,7 @@ def _agent_client() -> RecordingGraphClient:
     return RecordingGraphClient()
 
 
-def test_graph_rewrite_dry_run_preserves_merge_topology(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_PROTECTED_BRANCHES", "production")
+def test_graph_rewrite_dry_run_preserves_merge_topology() -> None:
     client = RecordingGraphClient()
 
     result = rewrite_branch_identity_graph(
@@ -153,10 +154,7 @@ def test_graph_rewrite_dry_run_preserves_merge_topology(
     assert not client.ref_updates
 
 
-def test_graph_rewrite_force_updates_once_after_validation(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_PROTECTED_BRANCHES", "production")
+def test_graph_rewrite_force_updates_once_after_validation() -> None:
     client = RecordingGraphClient()
 
     result = rewrite_branch_identity_graph(
@@ -175,10 +173,7 @@ def test_graph_rewrite_force_updates_once_after_validation(
     assert client.ref_reads == 2
 
 
-def test_graph_rewrite_rejects_head_race(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_PROTECTED_BRANCHES", "production")
+def test_graph_rewrite_rejects_head_race() -> None:
     client = RecordingGraphClient()
     client.race_on_second_ref_read = True
 
@@ -195,8 +190,7 @@ def test_graph_rewrite_rejects_head_race(
     assert client.head == "h"
 
 
-def test_graph_rewrite_enforces_max_commits(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_PROTECTED_BRANCHES", "production")
+def test_graph_rewrite_enforces_max_commits() -> None:
     with pytest.raises(GitHubAgentError, match="exceeds max_commits=3"):
         rewrite_branch_identity_graph(
             RecordingGraphClient(),

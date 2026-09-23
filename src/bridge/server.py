@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import platform
 from datetime import UTC, datetime
 
@@ -11,11 +10,11 @@ from fastmcp.server.auth.providers.github import GitHubProvider
 from fastmcp.server.middleware import AuthMiddleware
 from starlette.applications import Starlette
 
-from common.config import env_bool, env_list
 from common.models import JsonObject
 from common.runtime_annotations import READ_EXTERNAL, READ_ONLY_LOCAL
-from common.secrets import SecretError, resolve_config_secret
+from common.secrets import SecretError, configure_secrets, resolve_config_secret
 from common.secrets_tools import register_secrets_tools
+from common.settings import BridgeSettings, InfisicalSettings
 
 from . import __version__
 from .models import BridgeBuildInfo, BridgeCapabilities, BridgePing
@@ -45,14 +44,14 @@ def _github_user_allowed(ctx: AuthContext) -> bool:
     return bool(login) and login in _allowed_github_users()
 
 
-def _build_auth() -> tuple[GitHubProvider | None, list[AuthMiddleware]]:
-    if not env_bool("OAUTH_ENABLED"):
+def _build_auth(settings: BridgeSettings) -> tuple[GitHubProvider | None, list[AuthMiddleware]]:
+    if not settings.oauth_enabled:
         return None, []
 
     provider = GitHubProvider(
         client_id=_github_oauth_value("CLIENT_ID"),
         client_secret=_github_oauth_value("CLIENT_SECRET"),
-        base_url=os.getenv("OAUTH_BASE_URL", "https://mcp.koba-nexus.ru"),
+        base_url=settings.oauth_base_url,
         required_scopes=["read:user"],
         jwt_signing_key=_github_oauth_value("JWT_SIGNING_KEY"),
         allowed_client_redirect_uris=[_CHATGPT_OAUTH_REDIRECT],
@@ -62,23 +61,6 @@ def _build_auth() -> tuple[GitHubProvider | None, list[AuthMiddleware]]:
         fastmcp_access_token_expiry_seconds=30 * 60,
     )
     return provider, [AuthMiddleware(auth=_github_user_allowed)]
-
-
-def _backend_url(name: str, default: str) -> str:
-    return os.getenv(name, default).strip() or default
-
-
-def _configured_backends() -> dict[str, str]:
-    return {
-        "github": _backend_url("GITHUB_URL", "http://github:8000/mcp"),
-        "gitlab": _backend_url("GITLAB_URL", "http://gitlab:8000/mcp"),
-        "files": _backend_url("FILES_URL", "http://files:8000/mcp"),
-        "http": _backend_url("CURL_URL", "http://curl:8000/mcp"),
-        "analysis": _backend_url(
-            "ANALYSIS_URL",
-            "http://analysis:8000/mcp",
-        ),
-    }
 
 
 def _proxy(name: str, url: str) -> FastMCP:
@@ -108,8 +90,14 @@ def _mount_aggregate_backends(
     )
 
 
-_auth, _auth_middleware = _build_auth()
-_BACKENDS = _configured_backends()
+_secrets_settings = InfisicalSettings()
+configure_secrets(
+    _secrets_settings.config(),
+    cache_ttl_seconds=_secrets_settings.cache_ttl_seconds,
+)
+_settings = BridgeSettings()
+_auth, _auth_middleware = _build_auth(_settings)
+_BACKENDS = _settings.backends
 
 mcp = FastMCP(
     "mcp-bridge",
@@ -164,8 +152,8 @@ def bridge_ping() -> JsonObject:
 def bridge_build_info() -> JsonObject:
     return BridgeBuildInfo(
         version=__version__,
-        commit=os.getenv("BUILD_SHA", "unknown"),
-        built_at=os.getenv("BUILD_TIME", "unknown"),
+        commit=_settings.build_sha,
+        built_at=_settings.build_time,
         started_at=_STARTED_AT,
         python=platform.python_version(),
     ).to_json()
@@ -200,14 +188,8 @@ def bridge_capabilities() -> JsonObject:
 register_secrets_tools(mcp, READ_EXTERNAL)
 
 
-_allowed_hosts = env_list(
-    "MCP_ALLOWED_HOSTS",
-    "localhost:*,127.0.0.1:*,[::1]:*",
-)
-_allowed_origins = env_list(
-    "MCP_ALLOWED_ORIGINS",
-    "http://localhost:*,http://127.0.0.1:*,http://[::1]:*",
-)
+_allowed_hosts = list(_settings.http.allowed_hosts)
+_allowed_origins = list(_settings.http.allowed_origins)
 
 
 def _http_app(surface: FastMCP) -> Starlette:
