@@ -15,6 +15,7 @@ The repository is currently evolving from a single authenticated MCP gateway int
 ## Existing technical notes
 
 - [Files service architecture](file-service.md)
+- [Files production migration](files-migration.md)
 - [GitHub Actions diagnostics](github-actions.md)
 - [GitHub history and policy surface](github-history-surface.md)
 - [ChatGPT OAuth flow](oauth-chatgpt.md)
