@@ -9,12 +9,14 @@ authors = [{ name = "ArthurKoba" }]
 dependencies = [
   "fastmcp==4.0.3",
   "mcp[cli]>=2,<3",
+  "pydantic>=2.12,<3",
   "PyJWT[crypto]>=2.10,<3",
   "uvicorn>=0.35,<1",
 ]
 
 [dependency-groups]
 dev = [
+  "mypy>=1.18,<2",
   "pytest>=8.4,<9",
   "pytest-asyncio>=1.1,<2",
   "ruff>=0.12,<1",
@@ -40,7 +42,40 @@ line-length = 100
 target-version = "py313"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM"]
+select = [
+  "E",
+  "F",
+  "I",
+  "UP",
+  "B",
+  "SIM",
+  "ANN",
+  "ARG",
+  "C4",
+  "DTZ",
+  "PERF",
+  "PIE",
+  "RET",
+  "RUF",
+  "TC",
+]
+ignore = [
+  "ANN401",
+]
 
 [tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["ANN", "ARG"]
 "src/modules/github/github_workflow.py" = ["E501"]
+
+[tool.mypy]
+python_version = "3.13"
+plugins = ["pydantic.mypy"]
+strict = true
+warn_unreachable = true
+show_error_codes = true
+pretty = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
