@@ -1,9 +1,8 @@
 from __future__ import annotations
 
+from common.models import JsonObject
 from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
-
-from common.types import JsonObject
 
 from .file_ingress import ClientFile, FileUploadManager, ingest_file
 from .file_store import FileStore

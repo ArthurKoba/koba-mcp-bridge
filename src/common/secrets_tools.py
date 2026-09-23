@@ -3,9 +3,9 @@ from __future__ import annotations
 from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
+from .models import JsonObject
 from .secrets import SecretError, SecretReference, secret_reference_available
 from .secrets import secrets_status as _secrets_status
-from .models import JsonObject
 
 
 def register_secrets_tools(

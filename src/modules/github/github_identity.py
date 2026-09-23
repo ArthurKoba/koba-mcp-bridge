@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
+
 from common.models import JsonObject, json_object
 
 from .github_actions import GitHubActionsClient

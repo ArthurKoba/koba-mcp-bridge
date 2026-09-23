@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import base64
-import http.client
 import hashlib
+import http.client
 import ipaddress
 import os
 import socket
