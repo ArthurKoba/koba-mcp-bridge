@@ -1,8 +1,8 @@
 import pytest
 from fastmcp import Client
 
-import mcp_bridge.server as server_module
-from mcp_bridge.server import (
+import bridge.server as server_module
+from bridge.server import (
     _configured_backends,
     _mount_aggregate_backends,
     app,

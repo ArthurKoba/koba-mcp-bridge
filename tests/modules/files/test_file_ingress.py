@@ -7,8 +7,8 @@ import urllib.parse
 
 import pytest
 
-from files_mcp.file_ingress import FileUploadManager
-from files_mcp.file_store import FileError, FileStore
+from modules.files.file_ingress import FileUploadManager
+from modules.files.file_store import FileError, FileStore
 
 
 @pytest.fixture

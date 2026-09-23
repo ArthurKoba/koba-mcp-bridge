@@ -9,8 +9,8 @@ from urllib.parse import urlsplit
 
 import pytest
 
-from files_mcp.file_store import FileStore
-from http_mcp.curl_tools import (
+from modules.files.file_store import FileStore
+from modules.curl.curl_tools import (
     DEFAULT_CURL_PRESET,
     CurlError,
     _curl_failure_diagnostic,

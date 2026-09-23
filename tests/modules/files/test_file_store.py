@@ -5,7 +5,7 @@ import tarfile
 
 import pytest
 
-from files_mcp.file_store import FileError, FileStore
+from modules.files.file_store import FileError, FileStore
 
 
 @pytest.fixture

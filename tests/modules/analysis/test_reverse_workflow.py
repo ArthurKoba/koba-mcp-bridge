@@ -5,13 +5,13 @@ from types import SimpleNamespace
 
 import pytest
 
-import analysis_mcp.reverse_workflow as reverse_workflow
-from analysis_mcp.reverse_workflow import (
+import modules.analysis.reverse_workflow as reverse_workflow
+from modules.analysis.reverse_workflow import (
     _decode_call_result,
     _decode_result,
     ghidra_import_file_impl,
 )
-from files_mcp.file_store import FileError, FileStore
+from modules.files.file_store import FileError, FileStore
 
 PROJECT_ID = "ghp_camera"
 
