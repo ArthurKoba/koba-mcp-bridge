@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import pytest
-from fastmcp import Client, FastMCP
-from mcp.types import ToolAnnotations
 
 import modules.github.github_reviewer as github_reviewer
 from modules.github.github_agent import GitHubAgentError
@@ -11,7 +9,6 @@ from modules.github.github_reviewer import (
     github_reviewer_client,
     github_reviewer_configured,
 )
-from modules.github.github_reviewer_tools import register_github_reviewer_tools
 
 
 class ReviewGateClient(GitHubCollabClient):
@@ -20,7 +17,10 @@ class ReviewGateClient(GitHubCollabClient):
             app_id="123",
             private_key="key-material",
         )
-        self.reviews = reviews
+        self.reviews = [
+            {**review, "commit_id": review.get("commit_id", "current-head")}
+            for review in reviews
+        ]
 
     def _repo_request(
         self,
@@ -32,6 +32,8 @@ class ReviewGateClient(GitHubCollabClient):
         allowed_errors: set[int] | None = None,
     ) -> tuple[int, object]:
         del repository, payload, allowed_errors
+        if method == "GET" and path.endswith("/pulls/7"):
+            return 200, {"head": {"sha": "current-head"}}
         if method == "GET" and path.endswith("/reviews?per_page=100"):
             return 200, self.reviews
         raise AssertionError(f"unexpected request: {method} {path}")
@@ -153,6 +155,11 @@ def test_comment_after_approval_does_not_revoke_decisive_state(
 
 @pytest.mark.asyncio
 async def test_reviewer_tool_surface_excludes_development_mutations() -> None:
+    from fastmcp import Client, FastMCP
+    from mcp.types import ToolAnnotations
+
+    from modules.github.github_reviewer_tools import register_github_reviewer_tools
+
     reviewer_mcp = FastMCP("reviewer-surface-test")
     read_only = ToolAnnotations(read_only_hint=True, open_world_hint=True)
     review_write = ToolAnnotations(

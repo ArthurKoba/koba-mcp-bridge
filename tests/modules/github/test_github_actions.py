@@ -4,11 +4,8 @@ import base64
 import hashlib
 
 import pytest
-from fastmcp import Client, FastMCP
-from mcp.types import ToolAnnotations
 
 from modules.github.github_actions import GitHubActionsClient
-from modules.github.github_actions_tools import register_github_actions_tools
 from modules.github.github_agent import GitHubAgentError
 
 
@@ -284,6 +281,10 @@ def test_protected_pull_request_merge_requires_administrator(
 
 @pytest.mark.asyncio
 async def test_dispatch_workflow_is_exposed_on_fastmcp_surface() -> None:
+    from modules.github.github_actions_tools import register_github_actions_tools
+    from fastmcp import Client, FastMCP
+    from mcp.types import ToolAnnotations
+
     server = FastMCP("github-actions-surface")
     read = ToolAnnotations(read_only_hint=True, open_world_hint=True)
     write = ToolAnnotations(read_only_hint=False, open_world_hint=True)

@@ -14,6 +14,7 @@ from common.models import (
 
 from .github_agent import GitHubAgentError
 from .github_review import GitHubReviewClient
+from .pulls import GitHubPullClient
 
 
 def required_reviewer_logins_from_env() -> list[str]:
@@ -21,7 +22,7 @@ def required_reviewer_logins_from_env() -> list[str]:
     return [item.strip().casefold() for item in raw.split(",") if item.strip()]
 
 
-class GitHubCollabClient(GitHubReviewClient):
+class GitHubCollabClient(GitHubReviewClient, GitHubPullClient):
     """Collaboration operations for branch/PR review loops."""
 
     def assert_required_reviews(
@@ -39,6 +40,18 @@ class GitHubCollabClient(GitHubReviewClient):
                 "status": "not_configured",
             }
 
+        _, pull = self._repo_request(
+            repository,
+            "GET",
+            f"/repos/{repository}/pulls/{number}",
+        )
+        if not isinstance(pull, dict):
+            raise GitHubAgentError("unexpected pull request response")
+        head = json_member_object(pull, "head")
+        head_sha = json_str(head.get("sha"))
+        if not head_sha:
+            raise GitHubAgentError("pull request head has no sha")
+
         _, result = self._repo_request(
             repository,
             "GET",
@@ -47,26 +60,43 @@ class GitHubCollabClient(GitHubReviewClient):
         if not isinstance(result, list):
             raise GitHubAgentError("unexpected pull request review response")
 
-        decisive_state: dict[str, str] = {}
+        decisive_state: dict[str, tuple[str, str]] = {}
         for item in result:
             if not isinstance(item, dict):
                 continue
             user = json_member_object(item, "user")
             login = json_str(user.get("login")).casefold()
             state = json_str(item.get("state")).upper()
+            commit_id = json_str(item.get("commit_id"))
             if login and state in {"APPROVED", "CHANGES_REQUESTED", "DISMISSED"}:
-                decisive_state[login] = state
+                decisive_state[login] = (state, commit_id)
 
-        missing = [login for login in required if decisive_state.get(login) != "APPROVED"]
+        missing: list[str] = []
+        states: dict[str, str] = {}
+        for login in required:
+            state, review_sha = decisive_state.get(login, ("MISSING", ""))
+            if state == "APPROVED" and review_sha == head_sha:
+                states[login] = f"APPROVED@{review_sha}"
+                continue
+            if state == "APPROVED" and review_sha:
+                states[login] = f"STALE_APPROVAL@{review_sha}"
+            else:
+                states[login] = state
+            missing.append(login)
+
         if missing:
-            states = {login: decisive_state.get(login, "MISSING") for login in required}
             raise GitHubAgentError(
-                f"required independent reviews not satisfied; missing={missing}, states={states}"
+                "required independent reviews not satisfied for current PR head; "
+                f"head={head_sha}, missing={missing}, states={states}"
             )
         return {
             "repository": repository,
             "number": number,
-            "required_reviewers": json_array(required, context="GitHub required reviewers"),
+            "head_sha": head_sha,
+            "required_reviewers": json_array(
+                required,
+                context="GitHub required reviewers",
+            ),
             "status": "ok",
         }
 

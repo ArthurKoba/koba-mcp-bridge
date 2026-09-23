@@ -15,10 +15,54 @@ from common.models import (
 
 from .base import GitHubRepositoryClientBase
 from .github_agent import GitHubAgentError
+from .history_projection import git_identity, verification
 from .policy import protected_branches_from_env
 
 
 class GitHubRefsClient(GitHubRepositoryClientBase):
+    def _branch_policy(self, repository: str, branch: str) -> JsonObject:
+        repository = self._assert_allowed(repository)
+        branch = branch.strip()
+        if not branch:
+            raise GitHubAgentError("branch must not be empty")
+
+        status, result = self._repo_request(
+            repository,
+            "GET",
+            f"/repos/{repository}/branches/{urllib.parse.quote(branch, safe='')}",
+            allowed_errors={404},
+        )
+        exists = status != 404
+        github_protected = False
+        if exists:
+            if not isinstance(result, dict):
+                raise GitHubAgentError("unexpected branch response")
+            github_protected = json_bool(result.get("protected"))
+
+        bridge_reserved = branch.casefold() in protected_branches_from_env()
+        denial_reason: str | None = None
+        if bridge_reserved:
+            denial_reason = "branch is reserved by bridge mutation policy"
+        elif github_protected:
+            denial_reason = "branch is protected by GitHub"
+
+        return {
+            "repository": repository,
+            "branch": branch,
+            "exists": exists,
+            "github_protected": github_protected,
+            "bridge_reserved": bridge_reserved,
+            "mutation_allowed": denial_reason is None,
+            "mutation_denial_reason": denial_reason,
+        }
+
+    def _assert_branch_mutation_allowed(self, repository: str, branch: str) -> str:
+        policy = self._branch_policy(repository, branch)
+        reason = policy["mutation_denial_reason"]
+        if reason:
+            raise GitHubAgentError(f"{reason}: {branch}")
+        return branch.strip()
+
     def list_branches(self, repository: str) -> JsonObject:
         repository = self._assert_allowed(repository)
         _, result = self._repo_request(
@@ -28,20 +72,32 @@ class GitHubRefsClient(GitHubRepositoryClientBase):
         )
         if not isinstance(result, list):
             raise GitHubAgentError("unexpected branch list response")
-        branches: list[JsonObject] = []
-        for raw_item in result:
-            try:
-                item = json_object(raw_item, context="GitHub branch item")
-                commit = json_member_object(item, "commit", required=True)
-                branches.append(
-                    {
-                        "name": json_str(item.get("name")),
-                        "sha": json_str(commit.get("sha")),
-                        "protected": json_bool(item.get("protected")),
-                    }
-                )
-            except ValueError as exc:
-                raise GitHubAgentError("unexpected branch list response") from exc
+
+        reserved = protected_branches_from_env()
+        branches = []
+        for item in result:
+            if not isinstance(item, dict):
+                continue
+            commit = json_member_object(item, "commit")
+            name = json_str(item.get("name"))
+            github_protected = json_bool(item.get("protected"))
+            bridge_reserved = name.casefold() in reserved
+            denial_reason = None
+            if bridge_reserved:
+                denial_reason = "branch is reserved by bridge mutation policy"
+            elif github_protected:
+                denial_reason = "branch is protected by GitHub"
+            branches.append(
+                {
+                    "name": name,
+                    "sha": json_str(commit.get("sha")),
+                    "protected": github_protected,
+                    "github_protected": github_protected,
+                    "bridge_reserved": bridge_reserved,
+                    "mutation_allowed": denial_reason is None,
+                    "mutation_denial_reason": denial_reason,
+                }
+            )
         return {
             "repository": repository,
             "branches": json_array(branches, context="GitHub branches"),
@@ -140,18 +196,30 @@ class GitHubRefsClient(GitHubRepositoryClientBase):
         )
         if not isinstance(result, list):
             raise GitHubAgentError("unexpected commit list response")
+
         commits = []
         for item in result:
             if not isinstance(item, dict):
                 continue
             details = json_member_object(item, "commit")
-            author = json_member_object(details, "author")
             commits.append(
                 {
                     "sha": json_str(item.get("sha")),
                     "message": json_str(details.get("message")),
-                    "author": json_str(author.get("name")),
-                    "date": json_str(author.get("date")),
+                    "author": git_identity(details.get("author"), item.get("author")),
+                    "committer": git_identity(
+                        details.get("committer"),
+                        item.get("committer"),
+                    ),
+                    "verification": verification(
+                        details.get("verification"),
+                        include_material=False,
+                    ),
+                    "parents": [
+                        json_str(parent.get("sha"))
+                        for parent in json_member_array(item, "parents")
+                        if isinstance(parent, dict)
+                    ],
                 }
             )
         return {
@@ -165,16 +233,28 @@ class GitHubRefsClient(GitHubRepositoryClientBase):
         _, result = self._repo_request(
             repository,
             "GET",
-            f"/repos/{repository}/commits/{self._quote(ref)}",
+            f"/repos/{repository}/commits/{urllib.parse.quote(ref, safe='')}",
         )
         if not isinstance(result, dict):
             raise GitHubAgentError("unexpected commit response")
+
         details = json_member_object(result, "commit")
+        tree = json_member_object(details, "tree")
         files = json_member_array(result, "files")
         return {
             "repository": repository,
             "sha": json_str(result.get("sha")),
             "message": json_str(details.get("message")),
+            "tree_sha": json_str(tree.get("sha")),
+            "author": git_identity(details.get("author"), result.get("author")),
+            "committer": git_identity(
+                details.get("committer"),
+                result.get("committer"),
+            ),
+            "verification": verification(
+                details.get("verification"),
+                include_material=True,
+            ),
             "parents": [
                 json_str(item.get("sha"))
                 for item in json_member_array(result, "parents")
@@ -195,11 +275,11 @@ class GitHubRefsClient(GitHubRepositoryClientBase):
 
     def delete_branch(self, repository: str, branch: str) -> JsonObject:
         repository = self._assert_allowed(repository)
-        branch = self._assert_mutable_branch(branch)
+        branch = self._assert_branch_mutation_allowed(repository, branch)
         self._repo_request(
             repository,
             "DELETE",
-            f"/repos/{repository}/git/refs/heads/{self._quote(branch)}",
+            f"/repos/{repository}/git/refs/heads/{urllib.parse.quote(branch, safe='')}",
         )
         return {"repository": repository, "branch": branch, "deleted": True}
 

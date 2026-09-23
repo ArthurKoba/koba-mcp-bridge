@@ -21,47 +21,12 @@ from .policy import protected_branches_from_env
 _GITHUB_API = "https://api.github.com"
 
 
-def _as_object(item: object) -> JsonObject:
-    try:
-        return json_object(item)
-    except ValueError:
-        return {}
 
 
-def _actor(item: object) -> JsonObject:
-    data = _as_object(item)
-    raw_id = data.get("id")
-    return {
-        "login": json_str(data.get("login")) or None,
-        "id": json_int(raw_id) if raw_id is not None else None,
-        "type": json_str(data.get("type")) or None,
-    }
 
 
-def _git_identity(item: object, actor: object) -> JsonObject:
-    data = _as_object(item)
-    result: JsonObject = {
-        "name": json_str(data.get("name")),
-        "email": json_str(data.get("email")),
-        "date": json_str(data.get("date")),
-    }
-    result.update(_actor(actor))
-    return result
 
 
-def _verification(item: object, *, include_material: bool) -> JsonObject:
-    data = _as_object(item)
-    result: JsonObject = {
-        "verified": json_bool(data.get("verified")),
-        "reason": json_str(data.get("reason")),
-        "verified_at": data.get("verified_at"),
-        "signature_present": bool(data.get("signature")),
-        "payload_present": bool(data.get("payload")),
-    }
-    if include_material:
-        result["signature"] = data.get("signature")
-        result["payload"] = data.get("payload")
-    return result
 
 
 class _GitHubHistoryHost(Protocol):
@@ -93,6 +58,8 @@ class _GitHubHistoryHost(Protocol):
         allowed_errors: set[int] | None = None,
     ) -> tuple[int, JsonContainer]: ...
 
+    def _assert_branch_mutation_allowed(self, repository: str, branch: str) -> str: ...
+
 
 class GitHubHistoryMixin:
     """Identity-aware history and branch-policy operations for GitHub App clients."""
@@ -102,200 +69,11 @@ class GitHubHistoryMixin:
     def _history_host(self) -> _GitHubHistoryHost:
         return cast(_GitHubHistoryHost, self)
 
-    def _branch_policy(self, repository: str, branch: str) -> JsonObject:
-        repository = self._history_host()._assert_allowed(repository)
-        branch = branch.strip()
-        if not branch:
-            raise GitHubAgentError("branch must not be empty")
 
-        status, result = self._history_host()._repo_request(
-            repository,
-            "GET",
-            f"/repos/{repository}/branches/{urllib.parse.quote(branch, safe='')}",
-            allowed_errors={404},
-        )
-        exists = status != 404
-        github_protected = False
-        if exists:
-            if not isinstance(result, dict):
-                raise GitHubAgentError("unexpected branch response")
-            github_protected = json_bool(result.get("protected"))
 
-        bridge_reserved = branch.casefold() in protected_branches_from_env()
-        denial_reason: str | None = None
-        if bridge_reserved:
-            denial_reason = "branch is reserved by bridge mutation policy"
-        elif github_protected:
-            denial_reason = "branch is protected by GitHub"
 
-        return {
-            "repository": repository,
-            "branch": branch,
-            "exists": exists,
-            "github_protected": github_protected,
-            "bridge_reserved": bridge_reserved,
-            "mutation_allowed": denial_reason is None,
-            "mutation_denial_reason": denial_reason,
-        }
 
-    def _assert_branch_mutation_allowed(self, repository: str, branch: str) -> str:
-        policy = self._branch_policy(repository, branch)
-        reason = policy["mutation_denial_reason"]
-        if reason:
-            raise GitHubAgentError(f"{reason}: {branch}")
-        return branch.strip()
 
-    def list_branches(self, repository: str) -> JsonObject:
-        repository = self._history_host()._assert_allowed(repository)
-        _, result = self._history_host()._repo_request(
-            repository,
-            "GET",
-            f"/repos/{repository}/branches?per_page=100",
-        )
-        if not isinstance(result, list):
-            raise GitHubAgentError("unexpected branch list response")
-
-        reserved = protected_branches_from_env()
-        branches = []
-        for item in result:
-            if not isinstance(item, dict):
-                continue
-            commit = json_member_object(item, "commit")
-            name = json_str(item.get("name"))
-            github_protected = json_bool(item.get("protected"))
-            bridge_reserved = name.casefold() in reserved
-            denial_reason = None
-            if bridge_reserved:
-                denial_reason = "branch is reserved by bridge mutation policy"
-            elif github_protected:
-                denial_reason = "branch is protected by GitHub"
-            branches.append(
-                {
-                    "name": name,
-                    "sha": json_str(commit.get("sha")),
-                    "protected": github_protected,
-                    "github_protected": github_protected,
-                    "bridge_reserved": bridge_reserved,
-                    "mutation_allowed": denial_reason is None,
-                    "mutation_denial_reason": denial_reason,
-                }
-            )
-        return {
-            "repository": repository,
-            "branches": json_array(branches, context="GitHub branches"),
-        }
-
-    def list_commits(
-        self,
-        repository: str,
-        ref: str | None = None,
-        path: str | None = None,
-        per_page: int = 50,
-        page: int = 1,
-    ) -> JsonObject:
-        repository = self._history_host()._assert_allowed(repository)
-        params: dict[str, str | int] = {
-            "per_page": max(1, min(per_page, 100)),
-            "page": max(1, page),
-        }
-        if ref:
-            params["sha"] = ref
-        if path:
-            params["path"] = path
-        query = urllib.parse.urlencode(params)
-        _, result = self._history_host()._repo_request(
-            repository,
-            "GET",
-            f"/repos/{repository}/commits?{query}",
-        )
-        if not isinstance(result, list):
-            raise GitHubAgentError("unexpected commit list response")
-
-        commits = []
-        for item in result:
-            if not isinstance(item, dict):
-                continue
-            details = json_member_object(item, "commit")
-            commits.append(
-                {
-                    "sha": json_str(item.get("sha")),
-                    "message": json_str(details.get("message")),
-                    "author": _git_identity(details.get("author"), item.get("author")),
-                    "committer": _git_identity(
-                        details.get("committer"),
-                        item.get("committer"),
-                    ),
-                    "verification": _verification(
-                        details.get("verification"),
-                        include_material=False,
-                    ),
-                    "parents": [
-                        json_str(parent.get("sha"))
-                        for parent in json_member_array(item, "parents")
-                        if isinstance(parent, dict)
-                    ],
-                }
-            )
-        return {
-            "repository": repository,
-            "commits": json_array(commits, context="GitHub commits"),
-            "page": page,
-        }
-
-    def get_commit(self, repository: str, ref: str) -> JsonObject:
-        repository = self._history_host()._assert_allowed(repository)
-        _, result = self._history_host()._repo_request(
-            repository,
-            "GET",
-            f"/repos/{repository}/commits/{urllib.parse.quote(ref, safe='')}",
-        )
-        if not isinstance(result, dict):
-            raise GitHubAgentError("unexpected commit response")
-
-        details = json_member_object(result, "commit")
-        tree = json_member_object(details, "tree")
-        files = json_member_array(result, "files")
-        return {
-            "repository": repository,
-            "sha": json_str(result.get("sha")),
-            "message": json_str(details.get("message")),
-            "tree_sha": json_str(tree.get("sha")),
-            "author": _git_identity(details.get("author"), result.get("author")),
-            "committer": _git_identity(
-                details.get("committer"),
-                result.get("committer"),
-            ),
-            "verification": _verification(
-                details.get("verification"),
-                include_material=True,
-            ),
-            "parents": [
-                json_str(item.get("sha"))
-                for item in json_member_array(result, "parents")
-                if isinstance(item, dict)
-            ],
-            "files": [
-                {
-                    "filename": json_str(item.get("filename")),
-                    "status": json_str(item.get("status")),
-                    "additions": json_int(item.get("additions")),
-                    "deletions": json_int(item.get("deletions")),
-                    "patch": item.get("patch"),
-                }
-                for item in files
-                if isinstance(item, dict)
-            ],
-        }
-
-    def delete_branch(self, repository: str, branch: str) -> JsonObject:
-        repository = self._history_host()._assert_allowed(repository)
-        branch = self._assert_branch_mutation_allowed(repository, branch)
-        self._history_host()._repo_request(
-            repository,
-            "DELETE",
-            f"/repos/{repository}/git/refs/heads/{urllib.parse.quote(branch, safe='')}",
-        )
-        return {"repository": repository, "branch": branch, "deleted": True}
 
     def _agent_app_identity(self) -> JsonObject:
         _, app = self._history_host()._request(
@@ -429,7 +207,7 @@ class GitHubHistoryMixin:
         dry_run: bool = True,
     ) -> JsonObject:
         repository = self._history_host()._assert_allowed(repository)
-        branch = self._assert_branch_mutation_allowed(repository, branch)
+        branch = self._history_host()._assert_branch_mutation_allowed(repository, branch)
         if identity_source != "current_agent_app":
             raise GitHubAgentError("identity_source must be current_agent_app")
         if not expected_head_sha.strip():

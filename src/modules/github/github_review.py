@@ -14,11 +14,11 @@ from common.models import (
 )
 
 from .github_agent import GitHubAgentError
-from .github_workflow import GitHubDevClient
+from .base import GitHubRepositoryClientBase
 from .models import ReviewComment
 
 
-class GitHubReviewClient(GitHubDevClient):
+class GitHubReviewClient(GitHubRepositoryClientBase):
     """Adds GraphQL rebase/update and richer PR review operations."""
 
     def _graphql(
