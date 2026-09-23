@@ -261,9 +261,33 @@ class FileUploadManager:
         self.directory = self.store.root / "uploads"
         self.database = self.store.root / "uploads.sqlite3"
 
+    def _migrate_upload_schema(self) -> None:
+        if not self.database.is_file():
+            return
+        db = sqlite3.connect(self.database, timeout=30)
+        try:
+            columns = {
+                str(row[1])
+                for row in db.execute("PRAGMA table_info(upload_sessions)").fetchall()
+            }
+            if "artifact_id" in columns and "file_id" not in columns:
+                db.execute("BEGIN IMMEDIATE")
+                try:
+                    db.execute(
+                        "ALTER TABLE upload_sessions "
+                        "RENAME COLUMN artifact_id TO file_id"
+                    )
+                    db.commit()
+                except Exception:
+                    db.rollback()
+                    raise
+        finally:
+            db.close()
+
     def ensure(self) -> None:
         self.store.ensure()
         self.directory.mkdir(parents=True, exist_ok=True)
+        self._migrate_upload_schema()
         with self._connect() as db:
             db.executescript(
                 """
