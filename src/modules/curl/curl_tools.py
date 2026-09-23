@@ -12,10 +12,24 @@ from email.message import Message
 from functools import lru_cache
 from http.cookies import SimpleCookie
 from pathlib import Path
-from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from common.models import JsonObject, JsonValue, json_loads, json_object
 from modules.files.file_store import FileStore, upload_max_bytes
+from modules.files.models import FileInfo
+
+from .models import (
+    BodyPreview,
+    CurlDiagnostic,
+    CurlDownloadResponse,
+    CurlPreset,
+    CurlPresetDefinition,
+    CurlPresetsResponse,
+    CurlRequestResponse,
+    CurlStreamResponse,
+    HeaderBlock,
+    HeaderField,
+)
 
 
 class CurlError(ValueError):
@@ -45,7 +59,7 @@ _MAX_REDIRECTS = 20
 DEFAULT_CURL_PRESET = "chrome-desktop"
 
 
-_PRESETS: dict[str, dict[str, Any]] = {
+_RAW_PRESETS: dict[str, JsonObject] = {
     "curl": {
         "description": "Native curl defaults plus automatic compressed-response decoding.",
         "headers": {"Accept": "*/*"},
@@ -120,20 +134,25 @@ _PRESETS: dict[str, dict[str, Any]] = {
         "headers": {},
     },
 }
+_PRESETS = {
+    name: CurlPresetDefinition.model_validate(payload)
+    for name, payload in _RAW_PRESETS.items()
+}
 
 
-def curl_presets_impl() -> dict[str, Any]:
-    return {
-        "default_preset": DEFAULT_CURL_PRESET,
-        "presets": [
-            {
-                "name": name,
-                "description": data["description"],
-                "headers": dict(data["headers"]),
-            }
+
+def curl_presets_impl() -> JsonObject:
+    return CurlPresetsResponse(
+        default_preset=DEFAULT_CURL_PRESET,
+        presets=[
+            CurlPreset(
+                name=name,
+                description=data.description,
+                headers=dict(data.headers),
+            )
             for name, data in _PRESETS.items()
-        ]
-    }
+        ],
+    ).to_json()
 
 
 @lru_cache(maxsize=1)
@@ -173,7 +192,7 @@ def _validate_url(url: str) -> str:
     return value
 
 
-def _query_pairs(query: dict[str, Any] | None) -> list[tuple[str, str]]:
+def _query_pairs(query: JsonObject | None) -> list[tuple[str, str]]:
     pairs: list[tuple[str, str]] = []
     for key, raw in (query or {}).items():
         name = str(key)
@@ -188,7 +207,7 @@ def _query_pairs(query: dict[str, Any] | None) -> list[tuple[str, str]]:
     return pairs
 
 
-def _with_query(url: str, query: dict[str, Any] | None) -> str:
+def _with_query(url: str, query: JsonObject | None) -> str:
     if not query:
         return url
     parsed = urlsplit(url)
@@ -220,7 +239,7 @@ def _merged_headers(preset: str, headers: dict[str, str] | None) -> dict[str, st
     if preset_name not in _PRESETS:
         raise CurlError("preset must be one of: " + ", ".join(sorted(_PRESETS)))
     result: dict[str, tuple[str, str]] = {}
-    for name, value in _PRESETS[preset_name]["headers"].items():
+    for name, value in _PRESETS[preset_name].headers.items():
         clean_name, clean_value = _validate_header(name, value)
         result[clean_name.casefold()] = (clean_name, clean_value)
     for name, value in (headers or {}).items():
@@ -261,8 +280,8 @@ def _has_sensitive_redirect_state(
 def _body_source(
     *,
     body_text: str | None,
-    body_json: dict[str, Any] | list[Any] | None,
-    body_form: dict[str, Any] | None,
+    body_json: JsonObject | list[JsonValue] | None,
+    body_form: JsonObject | None,
     body_base64: str | None,
     body_file_id: str | None,
     body_content_type: str,
@@ -287,11 +306,11 @@ def _body_source(
 
     content_type = body_content_type.strip()
     if body_file_id:
-        file = store.info(body_file_id)
+        file = FileInfo.model_validate(store.info(body_file_id))
         if content_type and not _has_header(headers, "Content-Type"):
             headers["Content-Type"] = content_type
         elif not _has_header(headers, "Content-Type"):
-            mime = str(file.get("mime_type", "")).strip()
+            mime = file.mime_type.strip()
             if mime:
                 headers["Content-Type"] = mime
         return store.path_for(body_file_id), None
@@ -342,13 +361,13 @@ def _redacted_request_headers(headers: dict[str, str]) -> list[dict[str, str]]:
     return result
 
 
-def _parse_header_blocks(path: Path) -> list[dict[str, Any]]:
+def _parse_header_blocks(path: Path) -> list[HeaderBlock]:
     if not path.is_file():
         return []
     raw = path.read_bytes().decode("iso-8859-1", errors="replace")
     lines = raw.replace("\r\n", "\n").split("\n")
-    blocks: list[dict[str, Any]] = []
-    current: dict[str, Any] | None = None
+    blocks: list[HeaderBlock] = []
+    current: HeaderBlock | None = None
     for line in lines:
         if line.startswith("HTTP/"):
             if current is not None:
@@ -360,7 +379,7 @@ def _parse_header_blocks(path: Path) -> list[dict[str, Any]]:
                     status = int(parts[1])
                 except ValueError:
                     status = 0
-            current = {"status_line": line, "status": status, "headers": []}
+            current = HeaderBlock(status_line=line, status=status, headers=[])
             continue
         if current is None:
             continue
@@ -368,38 +387,38 @@ def _parse_header_blocks(path: Path) -> list[dict[str, Any]]:
             blocks.append(current)
             current = None
             continue
-        if line[:1] in {" ", "\t"} and current["headers"]:
-            current["headers"][-1]["value"] += " " + line.strip()
+        if line[:1] in {" ", "\t"} and current.headers:
+            current.headers[-1].value += " " + line.strip()
             continue
         if ":" in line:
             name, value = line.split(":", 1)
-            current["headers"].append(
-                {"name": name.strip(), "value": value.lstrip()}
+            current.headers.append(
+                HeaderField(name=name.strip(), value=value.lstrip())
             )
     if current is not None:
         blocks.append(current)
     return blocks
 
 
-def _header_values(block: dict[str, Any] | None, name: str) -> list[str]:
+def _header_values(block: HeaderBlock | None, name: str) -> list[str]:
     if not block:
         return []
     needle = name.casefold()
     return [
-        str(item["value"])
-        for item in block.get("headers", [])
-        if str(item.get("name", "")).casefold() == needle
+        item.value
+        for item in block.headers
+        if item.name.casefold() == needle
     ]
 
 
-def _content_type(block: dict[str, Any] | None, metadata: dict[str, Any]) -> str:
+def _content_type(block: HeaderBlock | None, metadata: JsonObject) -> str:
     values = _header_values(block, "Content-Type")
     if values:
         return values[-1].split(";", 1)[0].strip().casefold()
     return str(metadata.get("content_type") or "").split(";", 1)[0].strip().casefold()
 
 
-def _charset(block: dict[str, Any] | None) -> str:
+def _charset(block: HeaderBlock | None) -> str:
     values = _header_values(block, "Content-Type")
     if not values:
         return "utf-8"
@@ -427,10 +446,10 @@ def _looks_textual(content_type: str, data: bytes) -> bool:
 
 def _preview(
     data: bytes,
-    block: dict[str, Any] | None,
-    metadata: dict[str, Any],
+    block: HeaderBlock | None,
+    metadata: JsonObject,
     preview_bytes: int = _DEFAULT_PREVIEW_BYTES,
-) -> dict[str, Any]:
+) -> JsonObject:
     preview_size = max(0, min(int(preview_bytes), 64 * 1024))
     sample = data[:preview_size]
     ctype = _content_type(block, metadata)
@@ -463,7 +482,7 @@ def _safe_file_name(name: str) -> str:
 def _response_filename(
     explicit: str,
     final_url: str,
-    block: dict[str, Any] | None,
+    block: HeaderBlock | None,
     fallback: str,
 ) -> str:
     if explicit.strip():
@@ -481,7 +500,7 @@ def _response_filename(
     return fallback
 
 
-def _metadata_from_stdout(stdout: str) -> dict[str, Any]:
+def _metadata_from_stdout(stdout: str) -> JsonObject:
     text = stdout.strip()
     if not text:
         return {}
@@ -568,12 +587,12 @@ def _execute_curl(
     *,
     method: str,
     url: str,
-    query: dict[str, Any] | None,
+    query: JsonObject | None,
     headers: dict[str, str] | None,
     cookies: dict[str, str] | None,
     body_text: str | None,
-    body_json: dict[str, Any] | list[Any] | None,
-    body_form: dict[str, Any] | None,
+    body_json: JsonObject | list[JsonValue] | None,
+    body_form: JsonObject | None,
     body_base64: str | None,
     body_file_id: str | None,
     body_content_type: str,
@@ -586,7 +605,7 @@ def _execute_curl(
     proxy_url: str,
     max_response_bytes: int,
     forward_sensitive_headers_on_redirect: bool,
-) -> tuple[dict[str, Any], Path, Path]:
+) -> tuple[JsonObject, Path, Path]:
     store = FileStore()
     store.ensure()
     clean_method = _validate_method(method)
@@ -667,7 +686,7 @@ def _execute_curl(
 def _curl_failure_diagnostic(
     exit_code: int,
     error: str,
-    metadata: dict[str, Any] | None = None,
+    metadata: JsonObject | None = None,
 ) -> dict[str, str] | None:
     code = int(exit_code)
     if code == 0:
@@ -783,12 +802,12 @@ def _http_status_diagnostic(status: int) -> dict[str, str] | None:
 
 def _http_result(
     *,
-    metadata: dict[str, Any],
+    metadata: JsonObject,
     header_path: Path,
     output_path: Path,
     response_max_bytes: int,
     preview_bytes: int,
-) -> dict[str, Any]:
+) -> JsonObject:
     blocks = _parse_header_blocks(header_path)
     final_block = blocks[-1] if blocks else None
     status = int(metadata.get("http_code") or (final_block or {}).get("status") or 0)
@@ -869,12 +888,12 @@ def _http_result(
 def curl_request_impl(
     url: str,
     method: str = "GET",
-    query: dict[str, Any] | None = None,
+    query: JsonObject | None = None,
     headers: dict[str, str] | None = None,
     cookies: dict[str, str] | None = None,
     body_text: str | None = None,
-    body_json: dict[str, Any] | list[Any] | None = None,
-    body_form: dict[str, Any] | None = None,
+    body_json: JsonObject | list[JsonValue] | None = None,
+    body_form: JsonObject | None = None,
     body_base64: str | None = None,
     body_file_id: str | None = None,
     body_content_type: str = "",
@@ -888,7 +907,7 @@ def curl_request_impl(
     max_response_bytes: int = _DEFAULT_REQUEST_MAX_BYTES,
     forward_sensitive_headers_on_redirect: bool = False,
     preview_bytes: int = _DEFAULT_PREVIEW_BYTES,
-) -> dict[str, Any]:
+) -> JsonObject:
     if max_response_bytes > _MAX_REQUEST_MAX_BYTES:
         raise CurlError(
             f"curl_request max_response_bytes may not exceed {_MAX_REQUEST_MAX_BYTES}; "
@@ -932,12 +951,12 @@ def curl_request_impl(
 def curl_download_impl(
     url: str,
     method: str = "GET",
-    query: dict[str, Any] | None = None,
+    query: JsonObject | None = None,
     headers: dict[str, str] | None = None,
     cookies: dict[str, str] | None = None,
     body_text: str | None = None,
-    body_json: dict[str, Any] | list[Any] | None = None,
-    body_form: dict[str, Any] | None = None,
+    body_json: JsonObject | list[JsonValue] | None = None,
+    body_form: JsonObject | None = None,
     body_base64: str | None = None,
     body_file_id: str | None = None,
     body_content_type: str = "",
@@ -953,7 +972,7 @@ def curl_download_impl(
     store_http_errors: bool = False,
     forward_sensitive_headers_on_redirect: bool = False,
     preview_bytes: int = _DEFAULT_PREVIEW_BYTES,
-) -> dict[str, Any]:
+) -> JsonObject:
     metadata, header_path, output_path = _execute_curl(
         method=method,
         url=url,
@@ -1044,12 +1063,12 @@ def curl_download_impl(
 def curl_stream_capture_impl(
     url: str,
     method: str = "GET",
-    query: dict[str, Any] | None = None,
+    query: JsonObject | None = None,
     headers: dict[str, str] | None = None,
     cookies: dict[str, str] | None = None,
     body_text: str | None = None,
-    body_json: dict[str, Any] | list[Any] | None = None,
-    body_form: dict[str, Any] | None = None,
+    body_json: JsonObject | list[JsonValue] | None = None,
+    body_form: JsonObject | None = None,
     body_base64: str | None = None,
     body_file_id: str | None = None,
     body_content_type: str = "",
@@ -1064,7 +1083,7 @@ def curl_stream_capture_impl(
     max_bytes: int = 16 * 1024 * 1024,
     forward_sensitive_headers_on_redirect: bool = False,
     preview_bytes: int = _DEFAULT_PREVIEW_BYTES,
-) -> dict[str, Any]:
+) -> JsonObject:
     if duration_seconds <= 0 or duration_seconds > _MAX_DURATION_SECONDS:
         raise CurlError(
             f"duration_seconds must be greater than 0 and at most {_MAX_DURATION_SECONDS}"
