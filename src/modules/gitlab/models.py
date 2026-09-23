@@ -14,7 +14,7 @@ def _unbound_token_resolver(_path: str, _name: str) -> str:
 
 class GitLabProfile(StrictModel):
     _token_resolver: Callable[[str, str], str] = PrivateAttr(
-        default=_unbound_token_resolver
+        default_factory=lambda: _unbound_token_resolver
     )
 
     profile_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
