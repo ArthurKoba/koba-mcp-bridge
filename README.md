@@ -4,7 +4,7 @@ Extensible MCP gateway for AI agents, local tools, isolated compute workers, dev
 
 ## Purpose
 
-`koba-mcp-bridge` is the single authenticated MCP entry point for tools and workloads running on user-owned infrastructure.
+`koba-mcp-bridge` is a modular MCP platform with one authenticated edge gateway and isolated provider/runtime processes.
 
 The project is designed around a few core ideas:
 
@@ -28,22 +28,35 @@ the roadmap as already implemented.
 ## Architecture
 
 ```text
-AI client / MCP client
+ChatGPT / MCP clients
         |
         | OAuth + MCP
         v
-koba-mcp-bridge
+koba-mcp-gateway
         |
-        +-- local bridge_* tools
-        +-- github_agent_* -> GitHub App development identity
-        +-- github_reviewer_* -> optional independent GitHub App reviewer identity
-        +-- ghidra_* -> optional Ghidra MCP backend
-        +-- future mounted MCP backends
-        +-- task/state management
-        +-- workers / files / automation
+        +-- github-mcp   (private)
+        +-- gitlab-mcp   (private)
+        +-- files-mcp    (private)
+        +-- http-mcp     (private)
+        +-- analysis-mcp (private)
+                              |
+                              +-- ghidra-mcp (native/private)
 ```
 
-Mounted MCP backends are optional. The public bridge starts normally when none are configured. FastMCP proxy providers connect lazily, so a temporarily unavailable backend does not prevent the gateway itself from starting.
+The gateway is the only public process. It exposes both an aggregate MCP and dedicated
+authenticated surfaces:
+
+```text
+/mcp
+/github/mcp
+/gitlab/mcp
+/files/mcp
+/http/mcp
+/analysis/mcp
+```
+
+Deploying or restarting one private runtime does not require restarting the others.
+The raw Ghidra MCP remains native and is consumed only behind the analysis boundary.
 
 ## Files service
 
@@ -114,31 +127,17 @@ Browser presets reproduce HTTP request headers only. They do not emulate Chrome
 JavaScript execution, cookies/session state beyond what the caller supplies,
 TLS fingerprints, or browser HTTP/2 settings.
 
-## Ghidra integration
+## Analysis and Ghidra boundary
 
-Ghidra is a consumer of the files service, not the owner of uploaded files.
-`ghidra_import_file(file_id, ...)` resolves the immutable object
-internally, imports it into the currently open Ghidra project, and records a
-durable `ghidra-project` source reference.
+The public Koba data model is Files. The analysis runtime consumes `file_id` values and
+uses the native `ghidra-mcp` service internally.
 
-After import, Ghidra stores the program in its own project database under
-`/projects`. The canonical source file remains independently available for
-re-import, verification, or use by another backend. `ghidra_project_sources`
-lists the retained source objects for the current project.
+Raw Ghidra stays on the private Docker network and keeps its own native tool vocabulary.
+Koba does not rename or modify the Ghidra backend merely to match platform terminology.
 
-Ghidra outputs can be brought back into the same universal file store with:
-
-- `ghidra_export_program_file` for GZF;
-- `ghidra_archive_project_file` for GAR.
-
-Set the runtime variable below to mount the internal Ghidra MCP server:
-
-```text
-GHIDRA_MCP_URL=http://ghidra-mcp:8081/mcp
-```
-
-The mounted backend is namespaced as `ghidra`. Ghidra itself stays on the
-private Docker network.
+The current analysis surface includes the existing high-level import/export workflows.
+Further analysis/recovery vocabulary can evolve in `analysis-mcp` without changing the
+native Ghidra service.
 
 ## Secrets / Infisical
 
@@ -158,10 +157,9 @@ INFISICAL_CLIENT_SECRET=<machine identity client secret>
 INFISICAL_VERIFY_TLS=true
 ```
 
-Connectors resolve values by convention below `INFISICAL_BASE_PATH`. Explicit
-`env://`, `file://`, and `infisical://` references remain available as
-low-level compatibility primitives, but normal connector configuration does not
-require per-secret `*_REF` variables.
+Provider connectors resolve their credentials by convention below `INFISICAL_BASE_PATH`.
+GitHub and GitLab provider credentials are not read from legacy provider-specific
+environment variables or JSON profile files.
 
 Deployment and migration instructions are in
 [`deploy/infisical/README.md`](deploy/infisical/README.md).
@@ -195,9 +193,8 @@ GitLab profiles are discovered from Infisical folders below:
 └── CA_FILE      # optional
 ```
 
-Creating a new account folder makes the profile discoverable without adding Coolify
-environment variables. Legacy `GITLAB_PROFILES_FILE` and `GITLAB_PROFILES_JSON`
-remain fallback-only during migration.
+Creating a new account folder makes the profile discoverable without adding provider
+credentials to Coolify. Infisical is the GitLab account registry.
 
 Supported authentication modes are:
 
@@ -244,8 +241,6 @@ The development identity is resolved from Infisical:
 ├── APP_ID
 └── PRIVATE_KEY_PEM
 ```
-
-Legacy environment variables remain fallback-only during the migration window.
 
 The GitHub App installation is the single source of truth for repository access. There is no duplicated bridge-side repository allowlist. Adding or removing repositories in the GitHub App installation immediately changes the repository set visible to the bridge without changing Coolify environment variables.
 
@@ -342,8 +337,6 @@ The reviewer identity is resolved from Infisical:
 ├── APP_ID
 └── PRIVATE_KEY_PEM
 ```
-
-Legacy environment variables remain fallback-only during the migration window.
 
 The reviewer App installation is also the sole source of repository access. `github_reviewer_list_repositories` discovers its current installation repository set directly from GitHub. No reviewer repository list is duplicated in Coolify.
 
