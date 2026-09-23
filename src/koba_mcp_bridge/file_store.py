@@ -122,10 +122,59 @@ class FileStore:
         self.tmp = self.root / "tmp"
         self.database = self.root / "index.sqlite3"
 
+    def _migrate_pre_files_schema(self) -> None:
+        if not self.database.is_file():
+            return
+        db = sqlite3.connect(self.database, timeout=30)
+        try:
+            tables = {
+                str(row[0])
+                for row in db.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                ).fetchall()
+            }
+            if "artifacts" not in tables:
+                return
+
+            db.execute("PRAGMA foreign_keys = OFF")
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                db.execute("ALTER TABLE artifacts RENAME TO files")
+                db.execute(
+                    "ALTER TABLE files RENAME COLUMN artifact_id TO file_id"
+                )
+                db.execute(
+                    "ALTER TABLE aliases RENAME COLUMN artifact_id TO file_id"
+                )
+                db.execute(
+                    "ALTER TABLE collections "
+                    "RENAME COLUMN source_artifact_id TO source_file_id"
+                )
+                db.execute(
+                    "ALTER TABLE collection_items "
+                    "RENAME COLUMN artifact_id TO file_id"
+                )
+                db.execute("ALTER TABLE artifact_refs RENAME TO file_refs")
+                db.execute(
+                    "ALTER TABLE file_refs RENAME COLUMN artifact_id TO file_id"
+                )
+                db.execute("DROP INDEX IF EXISTS idx_collection_artifact")
+                db.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_collection_file "
+                    "ON collection_items(file_id)"
+                )
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
+        finally:
+            db.close()
+
     def ensure(self) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
         self.objects.mkdir(parents=True, exist_ok=True)
         self.tmp.mkdir(parents=True, exist_ok=True)
+        self._migrate_pre_files_schema()
         with self._connect() as db:
             db.executescript(
                 """
