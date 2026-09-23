@@ -7,11 +7,17 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
 from pathlib import Path
+
+from pydantic import ConfigDict, Field, ValidationError
 from .config import env_bool
-from .json import JsonTypeError, json_loads, json_object
-from .types import JsonObject
+from .models import (
+    JsonObject,
+    ProviderModel,
+    StrictModel,
+    json_object,
+    model_json,
+)
 
 
 class SecretError(RuntimeError):
@@ -60,8 +66,12 @@ def _read_bootstrap_value(env_name: str, file_env_name: str) -> tuple[str, str]:
     return "", ""
 
 
-@dataclass(frozen=True)
-class InfisicalConfig:
+class InfisicalConfig(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        strict=True,
+        frozen=True,
+    )
     host: str
     project_id: str
     client_id: str
@@ -114,7 +124,7 @@ class InfisicalConfig:
             and self.client_secret
         )
 
-    def validate(self) -> None:
+    def validate_config(self) -> None:
         if not self.host:
             raise SecretError("INFISICAL_HOST is not configured")
         parsed = urllib.parse.urlsplit(self.host)
@@ -143,8 +153,12 @@ class InfisicalConfig:
         }
 
 
-@dataclass(frozen=True)
-class SecretReference:
+class SecretReference(StrictModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        strict=True,
+        frozen=True,
+    )
     raw: str
     scheme: str
     environment: str = ""
@@ -220,6 +234,33 @@ class SecretReference:
         }
 
 
+
+class InfisicalAuthResponse(ProviderModel):
+    access_token: str = Field(alias="accessToken", min_length=1)
+    expires_in: float = Field(alias="expiresIn", gt=0)
+
+
+class InfisicalFolder(ProviderModel):
+    name: str = Field(min_length=1)
+
+
+class InfisicalFolderResponse(ProviderModel):
+    folders: list[InfisicalFolder]
+
+
+class InfisicalSecret(ProviderModel):
+    secret_value: str = Field(alias="secretValue")
+    id: str | int | None = None
+    secret_key: str | None = Field(default=None, alias="secretKey")
+    secret_path: str | None = Field(default=None, alias="secretPath")
+    version: str | int | None = None
+    updated_at: str | None = Field(default=None, alias="updatedAt")
+
+
+class InfisicalSecretResponse(ProviderModel):
+    secret: InfisicalSecret
+
+
 class InfisicalClient:
     def __init__(self, config: InfisicalConfig | None = None) -> None:
         self.config = config or InfisicalConfig.from_env()
@@ -249,14 +290,16 @@ class InfisicalClient:
                 context=self._ssl_context(),
             ) as response:
                 raw = response.read()
-                data = (
-                    json_object(
-                        json_loads(raw.decode("utf-8")),
-                        context="Infisical response",
-                    )
-                    if raw
-                    else {}
-                )
+                if not raw:
+                    return response.status, {}
+                try:
+                    from pydantic import TypeAdapter
+                    from pydantic import JsonValue
+
+                    parsed = TypeAdapter(JsonValue).validate_json(raw)
+                    data = json_object(parsed, context="Infisical response")
+                except ValidationError as exc:
+                    raise SecretError("Infisical returned invalid JSON") from exc
                 return response.status, data
         except urllib.error.HTTPError as exc:
             raw = exc.read()
@@ -264,11 +307,11 @@ class InfisicalClient:
             raise SecretError(f"Infisical API HTTP {exc.code}: {detail}") from exc
         except urllib.error.URLError as exc:
             raise SecretError(f"Infisical API transport error: {exc.reason}") from exc
-        except (ValueError, JsonTypeError) as exc:
+        except ValueError as exc:
             raise SecretError("Infisical returned invalid JSON") from exc
 
     def _login_locked(self) -> str:
-        self.config.validate()
+        self.config.validate_config()
         now = time.time()
         if self._access_token and self._access_token_expiry > now + 60:
             return self._access_token
@@ -290,17 +333,13 @@ class InfisicalClient:
             },
         )
         _, data = self._json_request(request)
-        access_token = str(data.get("accessToken", "")).strip()
-        expires_in = data.get("expiresIn", 0)
         try:
-            ttl = float(expires_in)
-        except (TypeError, ValueError):
-            ttl = 0
-        if not access_token or ttl <= 0:
-            raise SecretError("Infisical Universal Auth response is incomplete")
-        self._access_token = access_token
-        self._access_token_expiry = now + ttl
-        return access_token
+            auth = InfisicalAuthResponse.model_validate(data)
+        except ValidationError as exc:
+            raise SecretError("Infisical Universal Auth response is incomplete") from exc
+        self._access_token = auth.access_token
+        self._access_token_expiry = now + auth.expires_in
+        return self._access_token
 
     def access_token(self) -> str:
         with self._lock:
@@ -341,10 +380,11 @@ class InfisicalClient:
             },
         )
         _, data = self._json_request(request)
-        folders = data.get("folders")
-        if not isinstance(folders, list):
-            raise SecretError("Infisical folder response has no folders list")
-        return [item for item in folders if isinstance(item, dict)]
+        try:
+            response = InfisicalFolderResponse.model_validate(data)
+        except ValidationError as exc:
+            raise SecretError("Infisical folder response is invalid") from exc
+        return [json_object(item.model_dump(mode="json")) for item in response.folders]
 
     def get_secret(
         self,
@@ -386,22 +426,21 @@ class InfisicalClient:
             },
         )
         _, data = self._json_request(request)
-        secret = data.get("secret")
-        if not isinstance(secret, dict):
-            raise SecretError("Infisical secret response has no secret object")
-        value = secret.get("secretValue")
-        if not isinstance(value, str):
-            raise SecretError("Infisical secret response has no string secretValue")
-        metadata = {
-            "id": secret.get("id"),
-            "secret_name": secret.get("secretKey", name),
-            "secret_path": secret.get("secretPath", path),
+        try:
+            response = InfisicalSecretResponse.model_validate(data)
+        except ValidationError as exc:
+            raise SecretError("Infisical secret response is invalid") from exc
+        secret = response.secret
+        metadata: JsonObject = {
+            "id": secret.id,
+            "secret_name": secret.secret_key or name,
+            "secret_path": secret.secret_path or path,
             "environment": env,
             "project_id": project,
-            "version": secret.get("version"),
-            "updated_at": secret.get("updatedAt"),
+            "version": secret.version,
+            "updated_at": secret.updated_at,
         }
-        return value, metadata
+        return secret.secret_value, metadata
 
     def status(self, *, authenticate: bool = False) -> JsonObject:
         result = self.config.public()
