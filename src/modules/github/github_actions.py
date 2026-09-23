@@ -6,6 +6,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from common.models import json_bool, json_int, json_member_array, json_member_object, json_str
+
 from .github_agent import GitHubAgentError
 from .github_collab import GitHubCollabClient, required_reviewer_logins_from_env
 from .github_history import GitHubHistoryMixin
@@ -55,8 +57,8 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
         )
         if not isinstance(pull, dict):
             raise GitHubAgentError("unexpected pull request response")
-        head = pull.get("head") if isinstance(pull.get("head"), dict) else {}
-        head_sha = str(head.get("sha", ""))
+        head = json_member_object(pull, "head")
+        head_sha = json_str(head.get("sha"))
         if not head_sha:
             raise GitHubAgentError("pull request head has no sha")
 
@@ -72,10 +74,10 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
         for item in result:
             if not isinstance(item, dict):
                 continue
-            user = item.get("user") if isinstance(item.get("user"), dict) else {}
-            login = str(user.get("login", "")).casefold()
-            state = str(item.get("state", "")).upper()
-            commit_id = str(item.get("commit_id", ""))
+            user = json_member_object(item, "user")
+            login = json_str(user.get("login")).casefold()
+            state = json_str(item.get("state")).upper()
+            commit_id = json_str(item.get("commit_id"))
             if login and state in {"APPROVED", "CHANGES_REQUESTED", "DISMISSED"}:
                 decisive_state[login] = (state, commit_id)
 
@@ -121,8 +123,8 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
         )
         if not isinstance(pull, dict):
             raise GitHubAgentError("unexpected pull request response")
-        base = pull.get("base") if isinstance(pull.get("base"), dict) else {}
-        base_ref = str(base.get("ref", ""))
+        base = json_member_object(pull, "base")
+        base_ref = json_str(base.get("ref"))
         if not base_ref:
             raise GitHubAgentError("pull request base has no ref")
         if base_ref.casefold() in protected_branches_from_env():
@@ -240,25 +242,25 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
         )
         if not isinstance(result, dict):
             raise GitHubAgentError("unexpected workflow file response")
-        raw = result.get("artifacts") if isinstance(result.get("artifacts"), list) else []
+        raw = json_member_array(result, "artifacts")
         files = []
         for item in raw:
             if not isinstance(item, dict):
                 continue
             files.append(
                 {
-                    "id": int(item.get("id", 0)),
-                    "name": str(item.get("name", "")),
-                    "size_in_bytes": int(item.get("size_in_bytes", 0)),
-                    "expired": bool(item.get("expired", False)),
-                    "created_at": str(item.get("created_at", "")),
-                    "expires_at": str(item.get("expires_at", "")),
+                    "id": json_int(item.get("id")),
+                    "name": json_str(item.get("name")),
+                    "size_in_bytes": json_int(item.get("size_in_bytes")),
+                    "expired": json_bool(item.get("expired")),
+                    "created_at": json_str(item.get("created_at")),
+                    "expires_at": json_str(item.get("expires_at")),
                 }
             )
         return {
             "repository": repository,
             "run_id": run_id,
-            "total_count": int(result.get("total_count", len(files))),
+            "total_count": json_int(result.get("total_count"), default=len(files)),
             "files": files,
             "page": page,
         }

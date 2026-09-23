@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from common.models import JsonObject, json_int, json_member_object, json_str
+
 from .github_agent import GitHubAgentError
 from .github_workflow import GitHubDevClient
 from .models import ReviewComment
@@ -13,7 +15,7 @@ class GitHubReviewClient(GitHubDevClient):
         repository: str,
         query: str,
         variables: dict[str, object],
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         token = self._installation_token(repository)
         _, result = self._request(
@@ -27,10 +29,10 @@ class GitHubReviewClient(GitHubDevClient):
         errors = result.get("errors")
         if isinstance(errors, list) and errors:
             raise GitHubAgentError(f"GitHub GraphQL error: {errors}")
-        data = result.get("data")
-        if not isinstance(data, dict):
-            raise GitHubAgentError("GitHub GraphQL response has no data")
-        return data
+        try:
+            return json_member_object(result, "data", required=True)
+        except ValueError as exc:
+            raise GitHubAgentError("GitHub GraphQL response has no data") from exc
 
     def update_pull_branch_graphql(
         self,
@@ -51,15 +53,15 @@ class GitHubReviewClient(GitHubDevClient):
         )
         if not isinstance(pull, dict):
             raise GitHubAgentError("unexpected pull request response")
-        node_id = str(pull.get("node_id", ""))
-        head = pull.get("head") if isinstance(pull.get("head"), dict) else {}
-        head_repo = head.get("repo") if isinstance(head.get("repo"), dict) else {}
-        if str(head_repo.get("full_name", "")).casefold() != repository.casefold():
+        node_id = json_str(pull.get("node_id"))
+        head = json_member_object(pull, "head")
+        head_repo = json_member_object(head, "repo")
+        if json_str(head_repo.get("full_name")).casefold() != repository.casefold():
             raise GitHubAgentError("cross-repository pull request update is disabled")
         if not node_id:
             raise GitHubAgentError("pull request has no GraphQL node id")
 
-        current_head = str(head.get("sha", ""))
+        current_head = json_str(head.get("sha"))
         if expected_head_sha and current_head != expected_head_sha:
             raise GitHubAgentError(
                 f"pull request head changed: expected {expected_head_sha}, found {current_head}"
@@ -85,17 +87,20 @@ class GitHubReviewClient(GitHubDevClient):
         if expected_head_sha:
             input_data["expectedHeadOid"] = expected_head_sha
         data = self._graphql(repository, mutation, {"input": input_data})
-        update = data.get("updatePullRequestBranch")
-        if not isinstance(update, dict) or not isinstance(update.get("pullRequest"), dict):
-            raise GitHubAgentError("GraphQL updatePullRequestBranch returned no pull request")
-        result = update["pullRequest"]
+        try:
+            update = json_member_object(data, "updatePullRequestBranch", required=True)
+            result = json_member_object(update, "pullRequest", required=True)
+        except ValueError as exc:
+            raise GitHubAgentError(
+                "GraphQL updatePullRequestBranch returned no pull request"
+            ) from exc
         return {
             "repository": repository,
-            "number": int(result.get("number", number)),
-            "head": str(result.get("headRefName", "")),
-            "head_sha": str(result.get("headRefOid", "")),
-            "base": str(result.get("baseRefName", "")),
-            "mergeable": str(result.get("mergeable", "")),
+            "number": json_int(result.get("number"), default=number),
+            "head": json_str(result.get("headRefName")),
+            "head_sha": json_str(result.get("headRefOid")),
+            "base": json_str(result.get("baseRefName")),
+            "mergeable": json_str(result.get("mergeable")),
             "method": method,
         }
 
@@ -131,9 +136,9 @@ class GitHubReviewClient(GitHubDevClient):
         return {
             "repository": repository,
             "number": number,
-            "review_id": int(result.get("id", 0)),
-            "state": str(result.get("state", "")),
-            "commit_id": str(result.get("commit_id", "")),
+            "review_id": json_int(result.get("id")),
+            "state": json_str(result.get("state")),
+            "commit_id": json_str(result.get("commit_id")),
         }
 
     def list_conversation_comments(
@@ -153,15 +158,15 @@ class GitHubReviewClient(GitHubDevClient):
         for item in result:
             if not isinstance(item, dict):
                 continue
-            user = item.get("user") if isinstance(item.get("user"), dict) else {}
+            user = json_member_object(item, "user")
             comments.append(
                 {
-                    "id": int(item.get("id", 0)),
-                    "user": str(user.get("login", "")),
-                    "body": str(item.get("body", "") or ""),
-                    "created_at": str(item.get("created_at", "")),
-                    "updated_at": str(item.get("updated_at", "")),
-                    "html_url": str(item.get("html_url", "")),
+                    "id": json_int(item.get("id")),
+                    "user": json_str(user.get("login")),
+                    "body": json_str(item.get("body")),
+                    "created_at": json_str(item.get("created_at")),
+                    "updated_at": json_str(item.get("updated_at")),
+                    "html_url": json_str(item.get("html_url")),
                 }
             )
         return {"repository": repository, "number": number, "comments": comments}
@@ -188,11 +193,11 @@ class GitHubReviewClient(GitHubDevClient):
                 {
                     "id": int(item.get("id", 0)),
                     "user": str(user.get("login", "")),
-                    "path": str(item.get("path", "")),
+                    "path": json_str(item.get("path")),
                     "line": item.get("line"),
                     "side": item.get("side"),
                     "body": str(item.get("body", "") or ""),
-                    "commit_id": str(item.get("commit_id", "")),
+                    "commit_id": json_str(item.get("commit_id")),
                     "html_url": str(item.get("html_url", "")),
                 }
             )

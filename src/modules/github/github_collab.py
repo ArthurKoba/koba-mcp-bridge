@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 
+from common.models import json_int, json_member_array, json_member_object, json_str
+
 from .github_agent import GitHubAgentError
 from .github_review import GitHubReviewClient
 
@@ -41,9 +43,9 @@ class GitHubCollabClient(GitHubReviewClient):
         for item in result:
             if not isinstance(item, dict):
                 continue
-            user = item.get("user") if isinstance(item.get("user"), dict) else {}
-            login = str(user.get("login", "")).casefold()
-            state = str(item.get("state", "")).upper()
+            user = json_member_object(item, "user")
+            login = json_str(user.get("login")).casefold()
+            state = json_str(item.get("state")).upper()
             if login and state in {"APPROVED", "CHANGES_REQUESTED", "DISMISSED"}:
                 decisive_state[login] = state
 
@@ -115,7 +117,7 @@ class GitHubCollabClient(GitHubReviewClient):
             "head": head,
             "status": status,
             "merged": True,
-            "commit_sha": str(result.get("sha", "")),
+            "commit_sha": json_str(result.get("sha")),
         }
 
     def request_reviewers(
@@ -147,14 +149,14 @@ class GitHubCollabClient(GitHubReviewClient):
             "repository": repository,
             "number": number,
             "reviewers": [
-                str(item.get("login", ""))
+                json_str(item.get("login"))
                 for item in users
                 if isinstance(item, dict)
             ]
             if isinstance(users, list)
             else [],
             "teams": [
-                str(item.get("slug", ""))
+                json_str(item.get("slug"))
                 for item in teams
                 if isinstance(item, dict)
             ]
@@ -203,8 +205,8 @@ class GitHubCollabClient(GitHubReviewClient):
         return {
             "repository": repository,
             "comment_id": int(result.get("id", comment_id)),
-            "body": str(result.get("body", "") or ""),
-            "html_url": str(result.get("html_url", "")),
+            "body": json_str(result.get("body")),
+            "html_url": json_str(result.get("html_url")),
         }
 
     def reply_to_review_comment(
@@ -226,9 +228,9 @@ class GitHubCollabClient(GitHubReviewClient):
         return {
             "repository": repository,
             "number": number,
-            "comment_id": int(result.get("id", 0)),
+            "comment_id": json_int(result.get("id")),
             "in_reply_to_id": int(result.get("in_reply_to_id", comment_id)),
-            "html_url": str(result.get("html_url", "")),
+            "html_url": json_str(result.get("html_url")),
         }
 
     def list_review_threads(
@@ -302,20 +304,20 @@ class GitHubCollabClient(GitHubReviewClient):
                         )
                         comments.append(
                             {
-                                "id": str(comment.get("id", "")),
+                                "id": json_str(comment.get("id")),
                                 "database_id": comment.get("databaseId"),
-                                "author": str(author.get("login", "")),
-                                "body": str(comment.get("body", "") or ""),
-                                "created_at": str(comment.get("createdAt", "")),
-                                "url": str(comment.get("url", "")),
+                                "author": json_str(author.get("login")),
+                                "body": json_str(comment.get("body")),
+                                "created_at": json_str(comment.get("createdAt")),
+                                "url": json_str(comment.get("url")),
                             }
                         )
                 threads.append(
                     {
-                        "id": str(thread.get("id", "")),
+                        "id": json_str(thread.get("id")),
                         "resolved": bool(thread.get("isResolved", False)),
                         "outdated": bool(thread.get("isOutdated", False)),
-                        "path": str(thread.get("path", "")),
+                        "path": json_str(thread.get("path")),
                         "line": thread.get("line"),
                         "start_line": thread.get("startLine"),
                         "comments": comments,
@@ -371,7 +373,7 @@ class GitHubCollabClient(GitHubReviewClient):
         )
         if not isinstance(pull, dict):
             raise GitHubAgentError("unexpected pull request response")
-        node_id = str(pull.get("node_id", ""))
+        node_id = json_str(pull.get("node_id"))
         if not node_id:
             raise GitHubAgentError("pull request has no GraphQL node id")
         mutation = """
