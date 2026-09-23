@@ -9,7 +9,9 @@ from fastmcp.server import create_proxy
 from fastmcp.server.auth import AuthContext
 from fastmcp.server.auth.providers.github import GitHubProvider
 from fastmcp.server.middleware import AuthMiddleware
+from starlette.applications import Starlette
 
+from common.config import env_bool, env_list
 from common.runtime_annotations import READ_EXTERNAL, READ_ONLY_LOCAL
 from common.secrets import SecretError, resolve_config_secret
 from common.secrets_tools import register_secrets_tools
@@ -18,13 +20,6 @@ from . import __version__
 
 _STARTED_AT = datetime.now(UTC).isoformat()
 _CHATGPT_OAUTH_REDIRECT = "https://chatgpt.com/connector_platform_oauth_redirect"
-
-
-def _env_bool(name: str, default: bool = False) -> bool:
-    value = os.getenv(name)
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _github_oauth_value(secret_name: str) -> str:
@@ -49,7 +44,7 @@ def _github_user_allowed(ctx: AuthContext) -> bool:
 
 
 def _build_auth() -> tuple[GitHubProvider | None, list[AuthMiddleware]]:
-    if not _env_bool("OAUTH_ENABLED"):
+    if not env_bool("OAUTH_ENABLED"):
         return None, []
 
     provider = GitHubProvider(
@@ -84,7 +79,7 @@ def _configured_backends() -> dict[str, str]:
     }
 
 
-def _proxy(name: str, url: str):
+def _proxy(name: str, url: str) -> FastMCP:
     return create_proxy(url, name=f"{name}-backend", mode="auto")
 
 
@@ -207,22 +202,17 @@ def bridge_capabilities() -> dict[str, object]:
 register_secrets_tools(mcp, READ_EXTERNAL)
 
 
-def _split_env(name: str, default: str) -> list[str]:
-    value = os.getenv(name, default)
-    return [item.strip() for item in value.split(",") if item.strip()]
-
-
-_allowed_hosts = _split_env(
+_allowed_hosts = env_list(
     "MCP_ALLOWED_HOSTS",
     "localhost:*,127.0.0.1:*,[::1]:*",
 )
-_allowed_origins = _split_env(
+_allowed_origins = env_list(
     "MCP_ALLOWED_ORIGINS",
     "http://localhost:*,http://127.0.0.1:*,http://[::1]:*",
 )
 
 
-def _http_app(surface: FastMCP):
+def _http_app(surface: FastMCP) -> Starlette:
     return surface.http_app(
         path="/mcp",
         allowed_hosts=_allowed_hosts,
