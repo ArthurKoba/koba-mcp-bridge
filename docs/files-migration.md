@@ -8,7 +8,7 @@ for the previous storage schema or previous connector credential sources.
 1. Finish or stop all workflows that can mutate persistent Files state.
 2. Stop the current bridge.
 3. Take a backup of the current persistent storage and FastMCP OAuth state.
-4. Create the new `koba-files` volume.
+4. Create the new `files-data` volume.
 5. Perform the one-time offline data conversion into the new Files schema.
 6. Verify the converted database and content-addressed object tree.
 7. Save the new Coolify Compose configuration without starting it against the old image.
@@ -31,7 +31,7 @@ file_id=sha256:<digest>
 Internet / ChatGPT
         |
         v
-koba-mcp-gateway :8000
+mcp-gateway :8000
         |
         +-- github-mcp   :8000 (private)
         +-- gitlab-mcp   :8000 (private)
