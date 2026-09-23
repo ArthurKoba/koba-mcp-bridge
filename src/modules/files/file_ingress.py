@@ -15,7 +15,6 @@ from common.models import JsonObject, validated_call
 
 from .file_store import FileError, FileStore, upload_max_bytes
 from .models import AttachmentIngestResponse, ClientFile, FileInfo
-from .upload_manager import FileUploadManager
 from .validation import validate_file_name as _validate_name
 from .validation import validate_sha256 as _validate_sha256
 

@@ -14,8 +14,23 @@ from .models import GitLabProfile, GitLabResponse
 
 
 class GitLabApiClient:
-    def __init__(self, profiles: dict[str, GitLabProfile]) -> None:
-        self._profiles = profiles
+    def __init__(self, profile: GitLabProfile, *, max_connections: int = 4) -> None:
+        profile.bind_token_resolver(credentials.resolve_config_secret)
+        self.profile = profile
+        self.max_connections = max(1, int(max_connections))
+        parsed = urllib.parse.urlsplit(profile.base_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise GitLabError(
+                f"profile {profile.profile_id!r} has invalid base_url"
+            )
+        self._scheme = parsed.scheme
+        self._hostname = parsed.hostname
+        self._port = parsed.port
+        self._transport = PooledHttpTransport(
+            self._new_connection,
+            max_connections=self.max_connections,
+            acquire_timeout=45,
+        )
 
     def _ssl_context(self) -> ssl.SSLContext | None:
         if self._scheme != "https":

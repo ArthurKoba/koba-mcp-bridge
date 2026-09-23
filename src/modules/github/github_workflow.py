@@ -25,24 +25,6 @@ from .policy import protected_branches_from_env, require_mutable_branch
 _DEFAULT_REQUIRED_CHECKS = "test,docker"
 
 
-def protected_branches_from_env() -> set[str]:
-    try:
-        raw = resolve_config_secret(
-            "github/development",
-            "PROTECTED_BRANCHES",
-        )
-    except SecretError:
-        raw = os.getenv(
-            "GITHUB_AGENT_PROTECTED_BRANCHES",
-            _DEFAULT_PROTECTED_BRANCHES,
-        )
-    return {
-        item.strip().casefold()
-        for item in raw.split(",")
-        if item.strip()
-    }
-
-
 def required_checks_from_env() -> list[str]:
     return env_list("GITHUB_AGENT_REQUIRED_CHECKS", _DEFAULT_REQUIRED_CHECKS)
 
