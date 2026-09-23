@@ -174,10 +174,6 @@ def test_configured_backends_proxy_mode(monkeypatch: pytest.MonkeyPatch) -> None
             "url": "http://github-mcp:8000/mcp",
             "namespace": "",
         },
-        "gitlab": {
-            "url": "http://gitlab-mcp:8000/mcp",
-            "namespace": "gitlab",
-        },
         "files": {
             "url": "http://files-mcp:8000/mcp",
             "namespace": "",
@@ -230,7 +226,7 @@ def test_mounted_backend_negotiates_protocol_independently(
 
     result = _mount_backends(DummyServer())  # type: ignore[arg-type]
 
-    assert sorted(result) == ["files", "ghidra", "github", "gitlab", "http"]
+    assert sorted(result) == ["files", "ghidra", "github", "http"]
     assert calls == [
         (
             "http://ghidra-mcp:8081/mcp",
@@ -239,10 +235,6 @@ def test_mounted_backend_negotiates_protocol_independently(
         (
             "http://github-mcp:8000/mcp",
             {"name": "github-backend", "mode": "auto"},
-        ),
-        (
-            "http://gitlab-mcp:8000/mcp",
-            {"name": "gitlab-backend", "mode": "auto"},
         ),
         (
             "http://files-mcp:8000/mcp",
@@ -256,7 +248,6 @@ def test_mounted_backend_negotiates_protocol_independently(
     assert mounted == [
         (proxy, "ghidra"),
         (proxy, None),
-        (proxy, "gitlab"),
         (proxy, None),
         (proxy, None),
     ]
