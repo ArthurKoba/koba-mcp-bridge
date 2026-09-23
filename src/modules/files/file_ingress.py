@@ -12,22 +12,25 @@ import uuid
 from contextlib import contextmanager, suppress
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import NotRequired, TypedDict
-
-from common.types import JsonObject
+from common.models import JsonObject, validated_call
 
 from .file_store import FileError, FileStore, upload_max_bytes
+from .models import (
+    AttachmentIngestResponse,
+    ClientFile,
+    FileInfo,
+    UploadAlreadyAbsentResponse,
+    UploadAlreadyCommittedResponse,
+    UploadCancelResponse,
+    UploadCleanupItem,
+    UploadCleanupPreviewResponse,
+    UploadCleanupResponse,
+    UploadFinishResponse,
+    UploadListResponse,
+    UploadStatus,
+)
 
 _DEFAULT_CHUNK_BYTES = 1024 * 1024
-
-
-class ClientFile(TypedDict):
-    """ChatGPT/OpenAI file parameter payload."""
-
-    download_url: str
-    file_id: NotRequired[str]
-    mime_type: NotRequired[str]
-    file_name: NotRequired[str]
 
 
 def _now() -> str:
@@ -139,6 +142,7 @@ def _attachment_name(parsed: urllib.parse.SplitResult, requested_name: str) -> s
     return _validate_name(candidate or "attachment.bin")
 
 
+@validated_call
 def ingest_file(
     file: ClientFile,
     name: str = "",
@@ -150,12 +154,10 @@ def ingest_file(
     store = FileStore()
     store.ensure()
 
-    download_url = str(file.get("download_url", "")).strip()
-    if not download_url:
-        raise FileError("file.download_url is required")
+    download_url = file.download_url.strip()
     parsed = _validate_remote_file_url(download_url)
 
-    file_name = str(file.get("file_name", "")).strip()
+    file_name = (file.file_name or "").strip()
     clean_name = _attachment_name(parsed, name or file_name)
     expected_digest = _validate_sha256(expected_sha256)
 
@@ -174,7 +176,7 @@ def ingest_file(
     temporary = store.tmp / f"attachment-{uuid.uuid4().hex}.part"
     digest = hashlib.sha256()
     total = 0
-    detected_mime = mime_type.strip() or str(file.get("mime_type", "")).strip()
+    detected_mime = mime_type.strip() or (file.mime_type or "").strip()
 
     try:
         try:
@@ -245,11 +247,11 @@ def ingest_file(
         )
         if str(file["sha256"]) != actual_digest:
             raise FileError("file store returned an unexpected SHA-256")
-        return {
-            "file": file,
-            "completed": True,
-            "transport": "client-file",
-        }
+        return AttachmentIngestResponse(
+            file=FileInfo.model_validate(file),
+            completed=True,
+            transport="client-file",
+        ).to_json()
     finally:
         with suppress(FileNotFoundError):
             temporary.unlink()
@@ -327,23 +329,23 @@ class FileUploadManager:
         received = int(row["bytes_received"])
         state = str(row["state"])
         file_id = str(row["file_id"])
-        return {
-            "upload_id": str(row["upload_id"]),
-            "name": str(row["name"]),
-            "mime_type": str(row["mime_type"]),
-            "expected_size": expected,
-            "expected_sha256": str(row["expected_sha256"]),
-            "bytes_received": received,
-            "next_offset": received,
-            "remaining_bytes": max(0, expected - received),
-            "complete": received == expected,
-            "committed": state == "completed",
-            "file_id": file_id or None,
-            "chunk_bytes": upload_chunk_bytes(),
-            "created_at": str(row["created_at"]),
-            "updated_at": str(row["updated_at"]),
-            "completed_at": str(row["completed_at"]) or None,
-        }
+        return UploadStatus(
+            upload_id=str(row["upload_id"]),
+            name=str(row["name"]),
+            mime_type=str(row["mime_type"]),
+            expected_size=expected,
+            expected_sha256=str(row["expected_sha256"]),
+            bytes_received=received,
+            next_offset=received,
+            remaining_bytes=max(0, expected - received),
+            complete=received == expected,
+            committed=state == "completed",
+            file_id=file_id or None,
+            chunk_bytes=upload_chunk_bytes(),
+            created_at=str(row["created_at"]),
+            updated_at=str(row["updated_at"]),
+            completed_at=str(row["completed_at"]) or None,
+        ).to_json()
 
     def _reconcile_open_row(
         self,
@@ -486,13 +488,16 @@ class FileUploadManager:
                 [*params, limit, offset],
             ).fetchall()
 
-        return {
-            "sessions": [self._public_status(row) for row in rows],
-            "offset": offset,
-            "limit": limit,
-            "total": total,
-            "truncated": offset + len(rows) < total,
-        }
+        return UploadListResponse(
+            sessions=[
+                UploadStatus.model_validate(self._public_status(row))
+                for row in rows
+            ],
+            offset=offset,
+            limit=limit,
+            total=total,
+            truncated=offset + len(rows) < total,
+        ).to_json()
 
     def write(
         self,
@@ -564,12 +569,12 @@ class FileUploadManager:
             file_id = str(current["file_id"])
             with suppress(FileNotFoundError):
                 self._part_path(normalized).unlink()
-            return {
-                "upload_id": normalized,
-                "file": self.store.info(file_id),
-                "completed": True,
-                "already_committed": True,
-            }
+            return UploadFinishResponse(
+                upload_id=normalized,
+                file=FileInfo.model_validate(self.store.info(file_id)),
+                completed=True,
+                already_committed=True,
+            ).to_json()
         if not current["complete"]:
             raise FileError(
                 "upload is incomplete: "
@@ -642,12 +647,12 @@ class FileUploadManager:
         with suppress(FileNotFoundError):
             part.unlink()
 
-        return {
-            "upload_id": normalized,
-            "file": file,
-            "completed": True,
-            "already_committed": False,
-        }
+        return UploadFinishResponse(
+            upload_id=normalized,
+            file=FileInfo.model_validate(file),
+            completed=True,
+            already_committed=False,
+        ).to_json()
 
     def cancel(self, upload_id: str) -> JsonObject:
         normalized = _normalize_upload_id(upload_id)
@@ -659,13 +664,16 @@ class FileUploadManager:
                 (normalized,),
             ).fetchone()
             if row is None:
-                return {"upload_id": normalized, "already_absent": True}
+                return UploadAlreadyAbsentResponse(
+                    upload_id=normalized,
+                    already_absent=True,
+                ).to_json()
             if str(row["state"]) == "completed":
-                return {
-                    "upload_id": normalized,
-                    "already_committed": True,
-                    "file_id": str(row["file_id"]),
-                }
+                return UploadAlreadyCommittedResponse(
+                    upload_id=normalized,
+                    already_committed=True,
+                    file_id=str(row["file_id"]),
+                ).to_json()
             bytes_received = int(row["bytes_received"])
             db.execute(
                 "DELETE FROM upload_sessions WHERE upload_id = ?",
@@ -673,11 +681,11 @@ class FileUploadManager:
             )
         with suppress(FileNotFoundError):
             self._part_path(normalized).unlink()
-        return {
-            "upload_id": normalized,
-            "cancelled": True,
-            "discarded_bytes": bytes_received,
-        }
+        return UploadCancelResponse(
+            upload_id=normalized,
+            cancelled=True,
+            discarded_bytes=bytes_received,
+        ).to_json()
 
     def cleanup(
         self,
@@ -705,26 +713,26 @@ class FileUploadManager:
             ).fetchall()
 
         sessions = [
-            {
-                "upload_id": str(row["upload_id"]),
-                "state": str(row["state"]),
-                "bytes_received": int(row["bytes_received"]),
-                "file_id": str(row["file_id"]) or None,
-                "updated_at": str(row["updated_at"]),
-            }
+            UploadCleanupItem(
+                upload_id=str(row["upload_id"]),
+                state=str(row["state"]),
+                bytes_received=int(row["bytes_received"]),
+                file_id=str(row["file_id"]) or None,
+                updated_at=str(row["updated_at"]),
+            )
             for row in rows
         ]
         if dry_run:
-            return {
-                "dry_run": True,
-                "older_than_hours": older_than_hours,
-                "sessions": sessions,
-                "count": len(sessions),
-            }
+            return UploadCleanupPreviewResponse(
+                dry_run=True,
+                older_than_hours=older_than_hours,
+                sessions=sessions,
+                count=len(sessions),
+            ).to_json()
 
-        removed: list[JsonObject] = []
+        removed: list[UploadCleanupItem] = []
         for item in sessions:
-            upload_id = str(item["upload_id"])
+            upload_id = item.upload_id
             with self._connect() as db:
                 db.execute("BEGIN IMMEDIATE")
                 row = db.execute(
@@ -741,12 +749,12 @@ class FileUploadManager:
                 self._part_path(upload_id).unlink()
             removed.append(item)
 
-        return {
-            "dry_run": False,
-            "older_than_hours": older_than_hours,
-            "removed": removed,
-            "count": len(removed),
-        }
+        return UploadCleanupResponse(
+            dry_run=False,
+            older_than_hours=older_than_hours,
+            removed=removed,
+            count=len(removed),
+        ).to_json()
 
     def active_count(self) -> int:
         self.ensure()
