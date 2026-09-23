@@ -281,9 +281,10 @@ def test_protected_pull_request_merge_requires_administrator(
 
 @pytest.mark.asyncio
 async def test_dispatch_workflow_is_exposed_on_fastmcp_surface() -> None:
-    from modules.github.github_actions_tools import register_github_actions_tools
     from fastmcp import Client, FastMCP
     from mcp.types import ToolAnnotations
+
+    from modules.github.github_actions_tools import register_github_actions_tools
 
     server = FastMCP("github-actions-surface")
     read = ToolAnnotations(read_only_hint=True, open_world_hint=True)

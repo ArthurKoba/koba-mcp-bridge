@@ -13,8 +13,8 @@ from common.models import (
     json_str,
 )
 
-from .github_agent import GitHubAgentError
 from .base import GitHubRepositoryClientBase
+from .github_agent import GitHubAgentError
 from .models import ReviewComment
 
 
