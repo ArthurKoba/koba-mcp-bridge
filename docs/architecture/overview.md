@@ -1,94 +1,64 @@
 # Architecture overview
 
-## Current platform
-
-The current MCP Bridge platform scope is intentionally narrow:
-
-- Secrets;
-- GitHub;
-- GitLab;
-- Ghidra;
-- Files;
-- HTTP/curl.
-
-Other future platform ideas are outside the current stabilization pass.
-
-```mermaid
-flowchart LR
-    C[ChatGPT / MCP clients] -->|OAuth + MCP| B[mcp-bridge]
-
-    B --> S[Secrets resolver]
-    S --> I[Infisical]
-
-    B --> GH[GitHub]
-    B --> GL[GitLab]
-    B --> HTTP[HTTP / curl]
-    B --> F[Files]
-    B --> GA[transitional Ghidra adapter]
-    GA --> GM[ghidra-mcp]
-
-    GH --> GitHub[GitHub API]
-    GL --> GitLab[GitLab instances]
-    HTTP --> Internet[HTTP endpoints]
-    F --> Store[(content-addressed file storage)]
-    GM --> Ghidra[Ghidra workers]
-```
-
-## Stabilization direction
-
-The repository may remain a monorepo, but connector/runtime failure domains should become independent.
+MCP Bridge is a monorepo with independent runtime and source-package boundaries.
 
 ```mermaid
 flowchart TB
-    Client[ChatGPT / MCP clients]
+    Client[ChatGPT / MCP clients] -->|OAuth + MCP| GW[mcp_bridge gateway]
 
-    GW[gateway-mcp]
-    GH[github-mcp]
-    GL[gitlab-mcp]
-    FI[files-mcp]
-    HT[http-mcp]
-    AN[future analysis/recovery MCP]
-    GD[ghidra-mcp]
-    SEC[Infisical]
+    GW --> GH[github_mcp]
+    GW --> GL[gitlab_mcp]
+    GW --> FI[files_mcp]
+    GW --> HT[http_mcp]
+    GW --> AN[analysis_mcp]
 
-    Client --> GW
-    Client --> GH
-    Client --> GL
-    Client --> FI
-    Client --> HT
-    Client --> AN
-
-    GW -. optional aggregation .-> GH
-    GW -. optional aggregation .-> GL
-    GW -. optional aggregation .-> FI
-    GW -. optional aggregation .-> HT
-    GW -. optional aggregation .-> AN
-
-    AN --> FI
-    AN --> GD
-
-    GH --> SEC
+    GH --> SEC[Infisical]
     GL --> SEC
-    HT --> SEC
+    GW --> SEC
+
+    FI --> STORE[(files-data)]
+    HT --> STORE
+    AN --> STORE
+    AN --> GD[native Ghidra MCP bridge :8081]
 ```
 
-Raw `ghidra-mcp` remains a native internal backend. MCP Bridge does not rename or reshape
-that backend. A future analysis/recovery MCP will hide Ghidra-specific terminology from
-clients and translate MCP Bridge file-oriented operations into the native Ghidra contract.
+Only `mcp_bridge` owns the public OAuth boundary and aggregate/dedicated routing.
+It does not contain provider clients, Files storage, HTTP implementation, GitHub
+workflow logic, GitLab logic, or Ghidra adapter logic.
 
-The aggregate gateway may remain for compatibility, while dedicated endpoints let a
-client attach only the capabilities it needs.
+## Source ownership
 
-## Design principles
+- `mcp_bridge` — public gateway only.
+- `mcp_common` — shared runtime primitives and secret resolution.
+- `github_mcp` — GitHub development/reviewer workflow.
+- `gitlab_mcp` — GitLab accounts, repositories, MRs and CI.
+- `files_mcp` — persistent content-addressed Files data plane.
+- `http_mcp` — structured curl request/download/stream support.
+- `analysis_mcp` — Files-oriented analysis boundary over native Ghidra.
 
+Each runtime is a separate Compose service. A failure or restart of one provider
+runtime does not require restarting the others.
+
+## Public surfaces
+
+```text
+/mcp
+/github/mcp
+/gitlab/mcp
+/files/mcp
+/http/mcp
+/analysis/mcp
+```
+
+Raw Ghidra remains a separate native service and is not renamed or reshaped by this
+repository. The current `analysis_mcp` package is the adapter boundary; Ghidra-specific
+public vocabulary can be replaced later without modifying the raw backend.
+
+## Design rules
+
+- Provider code must not move back into `mcp_bridge`.
+- Shared code belongs in `mcp_common` only when it is genuinely provider-neutral.
+- Files are the canonical persistent data model: `file_id = sha256:<digest>`.
+- Provider secrets are resolved internally through Infisical.
 - No process-global current account/project/provider state.
-- Explicit selectors such as `profile_id` and `project_id`.
-- Provider secrets are resolved internally and are never model-visible.
-- Infisical machine identities replace scattered provider credentials.
-- Connectors should fail and deploy independently.
-- Provider-side permissions remain authoritative; MCP Bridge adds guardrails.
-- Shared libraries are preferred over duplicated provider logic.
-- Files are the canonical MCP Bridge storage concept.
-- File identifiers use `file_id = sha256:<digest>`.
 - Raw backend vocabulary may remain native behind an adapter boundary.
-- Migrations are incremental and must include data migration and rollback planning.
