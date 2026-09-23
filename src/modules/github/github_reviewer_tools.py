@@ -7,13 +7,13 @@ from mcp.types import ToolAnnotations
 
 from common.models import JsonObject
 
-from .github_collab import GitHubCollabClient
+from .github_actions import GitHubActionsClient
 from .models import ReviewComment
 
 
 def register_github_reviewer_tools(
     mcp: FastMCP,
-    client_factory: Callable[[], GitHubCollabClient],
+    client_factory: Callable[[], GitHubActionsClient],
     read_annotations: ToolAnnotations,
     write_annotations: ToolAnnotations,
 ) -> None:
