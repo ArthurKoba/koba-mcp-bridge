@@ -11,7 +11,6 @@ import urllib.parse
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Self
-from typing import Self
 
 import jwt
 

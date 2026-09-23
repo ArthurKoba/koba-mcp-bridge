@@ -8,7 +8,6 @@ from common.models import JsonObject
 from .file_ingress import FileUploadManager, ingest_file
 from .file_store import FileStore
 from .models import ClientFile, FileReference, FileReferenceListResponse
-from .models import ClientFile, FileReference, FileReferenceListResponse
 
 
 def register_file_tools(
