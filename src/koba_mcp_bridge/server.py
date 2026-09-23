@@ -116,7 +116,6 @@ def _configured_backends() -> dict[str, dict[str, str]]:
     if _gateway_mode() == "proxy":
         for name, env_name, namespace in (
             ("github", "GITHUB_MCP_URL", ""),
-            ("gitlab", "GITLAB_MCP_URL", "gitlab"),
             ("files", "FILES_MCP_URL", ""),
             ("http", "HTTP_MCP_URL", ""),
         ):
@@ -189,7 +188,20 @@ if _gateway_mode() == "embedded":
         WRITE_EXTERNAL,
         DESTRUCTIVE_EXTERNAL,
     )
-    mcp.mount(gitlab_mcp, namespace="gitlab")
+else:
+    gitlab_url = os.getenv("GITLAB_MCP_URL", "").strip()
+    if not gitlab_url:
+        raise RuntimeError(
+            "GITLAB_MCP_URL is required when KOBA_GATEWAY_MODE=proxy"
+        )
+    gitlab_proxy = create_proxy(
+        gitlab_url,
+        name="gitlab-backend",
+        mode="auto",
+    )
+    gitlab_mcp.mount(server=gitlab_proxy)
+
+mcp.mount(gitlab_mcp, namespace="gitlab")
 
 
 @mcp.tool(
