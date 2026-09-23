@@ -48,6 +48,9 @@ services:
       - http-mcp
       - analysis-mcp
       - otel-collector
+    networks:
+      - default
+      - coolify
 
   github-mcp:
     <<: *mcp-service
@@ -135,9 +138,12 @@ services:
       <<: *observability
       OTEL_SERVICE_NAME: analysis-mcp
       FILE_ROOT: /files
-      GHIDRA_MCP_URL: ${GHIDRA_MCP_URL:-http://ghidra-mcp:8081/mcp}
+      GHIDRA_MCP_URL: ${GHIDRA_MCP_URL:-http://bridge:8081/mcp}
     volumes:
       - files-data:/files
+    networks:
+      - default
+      - coolify
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
@@ -148,6 +154,13 @@ services:
 
 volumes:
   files-data:
+    external: true
     name: files-data
   fastmcp-data:
+    external: true
     name: fastmcp-data
+
+networks:
+  coolify:
+    external: true
+    name: coolify
