@@ -7,6 +7,7 @@ from pydantic import JsonValue as JsonValue
 
 type JsonObject = dict[str, JsonValue]
 type JsonArray = list[JsonValue]
+type JsonContainer = JsonObject | JsonArray
 
 
 class StrictModel(BaseModel):
@@ -70,6 +71,13 @@ def json_array(value: object, *, context: str = "value") -> JsonArray:
         return _JSON_ARRAY.validate_python(value, strict=True)
     except ValidationError as exc:
         raise ValueError(f"{context} must be a JSON array") from exc
+
+
+def json_container(value: object, *, context: str = "value") -> JsonContainer:
+    normalized = json_value(value, context=context)
+    if isinstance(normalized, (dict, list)):
+        return normalized
+    raise ValueError(f"{context} must be a JSON object or array")
 
 
 def json_str(value: JsonValue | object, *, default: str = "", field: str = "value") -> str:

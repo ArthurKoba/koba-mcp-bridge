@@ -3,7 +3,7 @@ from __future__ import annotations
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 
-from common.models import JsonObject, JsonValue, json_object
+from common.models import JsonContainer, JsonObject, json_object
 
 from .github_actions import GitHubActionsClient
 from .github_agent import GitHubAgentError
@@ -91,7 +91,7 @@ class GitHubPrettyIdentityClient(GitHubActionsClient):
         *,
         payload: object | None = None,
         allowed_errors: set[int] | None = None,
-    ) -> tuple[int, JsonValue]:
+    ) -> tuple[int, JsonContainer]:
         updated = self._copy_payload(payload)
         contents_prefix = f"/repos/{repository}/contents/"
         commit_path = f"/repos/{repository}/git/commits"

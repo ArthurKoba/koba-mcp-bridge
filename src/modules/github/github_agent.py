@@ -14,8 +14,9 @@ from datetime import datetime
 import jwt
 
 from common.models import (
-    JsonValue,
+    JsonContainer,
     json_bool,
+    json_container,
     json_int,
     json_loads,
     json_member_array,
@@ -153,11 +154,14 @@ class GitHubAppClient:
         return str(token)
 
     @staticmethod
-    def _decode_json(data: bytes) -> JsonValue:
+    def _decode_json(data: bytes) -> JsonContainer:
         if not data:
             return {}
         try:
-            return json_loads(data, context="GitHub response")
+            return json_container(
+                json_loads(data, context="GitHub response"),
+                context="GitHub response",
+            )
         except ValueError as exc:
             raise GitHubAgentError("GitHub returned invalid JSON") from exc
 
@@ -252,7 +256,7 @@ class GitHubAppClient:
         token: str | None = None,
         payload: object | None = None,
         allowed_errors: set[int] | None = None,
-    ) -> tuple[int, JsonValue]:
+    ) -> tuple[int, JsonContainer]:
         body = (
             None
             if payload is None
