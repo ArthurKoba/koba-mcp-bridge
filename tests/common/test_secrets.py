@@ -9,9 +9,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
-from fastmcp import Client
 
-from bridge.server import mcp
 from common.secrets import (
     InfisicalClient,
     InfisicalConfig,

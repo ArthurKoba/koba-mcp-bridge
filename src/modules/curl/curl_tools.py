@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Compatibility facade for the structured curl implementation."""
+
+from __future__ import annotations
 
 from .errors import CurlError
 from .operations import curl_download_impl, curl_request_impl, curl_stream_capture_impl

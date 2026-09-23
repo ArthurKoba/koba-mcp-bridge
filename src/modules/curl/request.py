@@ -14,7 +14,7 @@ from modules.files.file_store import FileStore, upload_max_bytes
 from modules.files.models import FileInfo
 
 from .errors import CurlError
-from .presets import DEFAULT_CURL_PRESET, _PRESETS
+from .presets import _PRESETS, DEFAULT_CURL_PRESET
 
 _METHOD_RE = re.compile(r"^[A-Za-z!#$%&'*+.^_|~-]+$")
 _HEADER_NAME_RE = re.compile(r"^[!#$%&'*+\-.^_~|0-9A-Za-z]+$")
