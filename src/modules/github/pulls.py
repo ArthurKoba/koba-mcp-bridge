@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import urllib.parse
+
 from common.models import (
     JsonObject,
     json_array,
-    json_bool,
     json_int,
     json_member_array,
     json_member_object,
@@ -49,8 +50,6 @@ class GitHubPullClient(GitHubRepositoryClientBase):
             ],
             "page": page,
         }
-
-    @staticmethod
 
     def get_pull_request(self, repository: str, number: int) -> JsonObject:
         repository = self._assert_allowed(repository)

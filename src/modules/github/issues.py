@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import urllib.parse
+
 from common.models import JsonObject, json_array, json_int, json_str
 
 from .base import GitHubRepositoryClientBase
@@ -41,8 +43,6 @@ class GitHubIssueClient(GitHubRepositoryClientBase):
             "issues": json_array(issues, context="GitHub issues"),
             "page": page,
         }
-
-    @staticmethod
 
     def get_issue(self, repository: str, number: int) -> JsonObject:
         repository = self._assert_allowed(repository)

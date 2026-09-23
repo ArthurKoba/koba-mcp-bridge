@@ -7,8 +7,8 @@ import urllib.parse
 
 import pytest
 
-from modules.files.upload_manager import FileUploadManager
 from modules.files.file_store import FileError, FileStore
+from modules.files.upload_manager import FileUploadManager
 
 
 @pytest.fixture
