@@ -2,7 +2,7 @@
 
 ## Current platform
 
-The current Koba platform scope is intentionally narrow:
+The current MCP Bridge platform scope is intentionally narrow:
 
 - Secrets;
 - GitHub;
@@ -15,7 +15,7 @@ Other future platform ideas are outside the current stabilization pass.
 
 ```mermaid
 flowchart LR
-    C[ChatGPT / MCP clients] -->|OAuth + MCP| B[koba-mcp-bridge]
+    C[ChatGPT / MCP clients] -->|OAuth + MCP| B[mcp-bridge]
 
     B --> S[Secrets resolver]
     S --> I[Infisical]
@@ -72,9 +72,9 @@ flowchart TB
     HT --> SEC
 ```
 
-Raw `ghidra-mcp` remains a native internal backend. Koba does not rename or reshape
+Raw `ghidra-mcp` remains a native internal backend. MCP Bridge does not rename or reshape
 that backend. A future analysis/recovery MCP will hide Ghidra-specific terminology from
-clients and translate Koba file-oriented operations into the native Ghidra contract.
+clients and translate MCP Bridge file-oriented operations into the native Ghidra contract.
 
 The aggregate gateway may remain for compatibility, while dedicated endpoints let a
 client attach only the capabilities it needs.
@@ -86,9 +86,9 @@ client attach only the capabilities it needs.
 - Provider secrets are resolved internally and are never model-visible.
 - Infisical machine identities replace scattered provider credentials.
 - Connectors should fail and deploy independently.
-- Provider-side permissions remain authoritative; Koba adds guardrails.
+- Provider-side permissions remain authoritative; MCP Bridge adds guardrails.
 - Shared libraries are preferred over duplicated provider logic.
-- Files are the canonical Koba storage concept.
+- Files are the canonical MCP Bridge storage concept.
 - File identifiers use `file_id = sha256:<digest>`.
 - Raw backend vocabulary may remain native behind an adapter boundary.
 - Migrations are incremental and must include data migration and rollback planning.
