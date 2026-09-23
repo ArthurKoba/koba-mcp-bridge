@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 from functools import lru_cache
-from typing import Literal, cast
+from typing import Literal, Protocol, cast
 
 from pydantic import AliasChoices, ConfigDict, Field, create_model
 from pydantic.fields import FieldInfo
@@ -26,6 +26,17 @@ class ToolAlias(StrictModel):
     ghidra_name: str
     analysis_name: str
     argument_aliases: dict[str, str]
+
+
+class _DynamicModelFactory(Protocol):
+    def __call__(
+        self,
+        model_name: str,
+        /,
+        *,
+        __base__: type[ToolArgumentsBase],
+        **field_definitions: tuple[object, FieldInfo],
+    ) -> type[ToolArgumentsBase]: ...
 
 
 _ARGUMENT_ALIASES: dict[str, str] = {
@@ -222,21 +233,24 @@ def _argument_model(schema_key: str) -> type[ToolArgumentsBase]:
             default = property_schema.get("default")
         analysis_name = analysis_argument_name(ghidra_name, property_schema)
         if analysis_name == ghidra_name:
-            field = Field(default=default)
+            field = cast(FieldInfo, Field(default=default))
         else:
-            field = Field(
-                default=default,
-                validation_alias=AliasChoices(ghidra_name, analysis_name),
-                serialization_alias=analysis_name,
+            field = cast(
+                FieldInfo,
+                Field(
+                    default=default,
+                    validation_alias=AliasChoices(ghidra_name, analysis_name),
+                    serialization_alias=analysis_name,
+                ),
             )
         fields[ghidra_name] = (field_type, field)
 
-    model = create_model(
+    model_factory = cast(_DynamicModelFactory, create_model)
+    return model_factory(
         "ToolArguments",
         __base__=ToolArgumentsBase,
         **fields,
     )
-    return cast(type[ToolArgumentsBase], model)
 
 
 def _python_type(property_schema: JsonObject) -> object:
