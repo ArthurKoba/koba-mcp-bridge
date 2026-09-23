@@ -9,7 +9,6 @@ from urllib.parse import urlsplit
 
 import pytest
 
-from koba_mcp_bridge.file_store import FileStore
 from koba_mcp_bridge.curl_tools import (
     DEFAULT_CURL_PRESET,
     CurlError,
@@ -20,6 +19,7 @@ from koba_mcp_bridge.curl_tools import (
     curl_request_impl,
     curl_stream_capture_impl,
 )
+from koba_mcp_bridge.file_store import FileStore
 
 
 class _Handler(BaseHTTPRequestHandler):
