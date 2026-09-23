@@ -7,7 +7,6 @@ import koba_mcp_bridge.github_agent as github_agent
 from koba_mcp_bridge.github_agent import (
     GitHubAgentError,
     GitHubAppClient,
-    github_agent_configured,
 )
 
 
