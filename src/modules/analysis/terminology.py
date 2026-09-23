@@ -6,6 +6,7 @@ from functools import lru_cache
 from typing import Literal, cast
 
 from pydantic import AliasChoices, ConfigDict, Field, create_model
+from pydantic.fields import FieldInfo
 
 from common.models import JsonObject, JsonValue, StrictModel, json_object, json_value
 
@@ -89,7 +90,14 @@ _TEXT_TERMS: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 
-def analysis_argument_name(ghidra_name: str) -> str:
+def analysis_argument_name(
+    ghidra_name: str,
+    property_schema: JsonObject | None = None,
+) -> str:
+    if property_schema is not None:
+        schema_alias = property_schema.get("x-analysis-alias")
+        if isinstance(schema_alias, str) and schema_alias.strip():
+            return schema_alias.strip()
     return _ARGUMENT_ALIASES.get(ghidra_name, ghidra_name)
 
 
@@ -112,9 +120,9 @@ def analysis_text(text: str) -> str:
 def tool_alias(ghidra_name: str, input_schema: JsonObject) -> ToolAlias:
     properties = _schema_properties(input_schema)
     aliases = {
-        name: analysis_argument_name(name)
-        for name in properties
-        if analysis_argument_name(name) != name
+        name: analysis_argument_name(name, property_schema)
+        for name, property_schema in properties.items()
+        if analysis_argument_name(name, property_schema) != name
     }
     return ToolAlias(
         ghidra_name=ghidra_name,
@@ -133,7 +141,8 @@ def analysis_schema(input_schema: JsonObject) -> JsonObject:
     owners: dict[str, str] = {}
     for ghidra_name, raw_property in properties.items():
         canonical = str(ghidra_name)
-        alias = analysis_argument_name(canonical)
+        property_schema = json_object(raw_property, context="tool property schema")
+        alias = analysis_argument_name(canonical, property_schema)
         owner = owners.get(alias)
         if owner is not None and owner != canonical:
             raise ValueError(
@@ -141,7 +150,6 @@ def analysis_schema(input_schema: JsonObject) -> JsonObject:
                 f"{canonical!r} -> {alias!r}"
             )
         owners[alias] = canonical
-        property_schema = json_object(raw_property, context="tool property schema")
         description = property_schema.get("description")
         if isinstance(description, str):
             property_schema["description"] = analysis_text(description)
@@ -150,7 +158,14 @@ def analysis_schema(input_schema: JsonObject) -> JsonObject:
 
     required = schema.get("required")
     if isinstance(required, list):
-        schema["required"] = [analysis_argument_name(str(name)) for name in required]
+        source_properties = _schema_properties(input_schema)
+        schema["required"] = [
+            analysis_argument_name(
+                str(name),
+                source_properties.get(str(name)),
+            )
+            for name in required
+        ]
     return json_object(schema, context="analysis tool schema")
 
 
@@ -197,7 +212,7 @@ def _argument_model(schema_key: str) -> type[ToolArgumentsBase]:
     required_raw = schema.get("required")
     required = {str(name) for name in required_raw} if isinstance(required_raw, list) else set()
 
-    fields: dict[str, object] = {}
+    fields: dict[str, tuple[object, FieldInfo]] = {}
     for ghidra_name, property_schema in properties.items():
         field_type = _python_type(property_schema)
         default: object
@@ -205,7 +220,7 @@ def _argument_model(schema_key: str) -> type[ToolArgumentsBase]:
             default = ...
         else:
             default = property_schema.get("default")
-        analysis_name = analysis_argument_name(ghidra_name)
+        analysis_name = analysis_argument_name(ghidra_name, property_schema)
         if analysis_name == ghidra_name:
             field = Field(default=default)
         else:
@@ -227,9 +242,14 @@ def _argument_model(schema_key: str) -> type[ToolArgumentsBase]:
 def _python_type(property_schema: JsonObject) -> object:
     raw_type = property_schema.get("type")
     if isinstance(raw_type, list):
-        non_null = [value for value in raw_type if value != "null"]
-        if len(non_null) == 1:
-            raw_type = non_null[0]
+        non_null = [
+            value
+            for value in raw_type
+            if isinstance(value, str) and value != "null"
+        ]
+        raw_type = non_null[0] if len(non_null) == 1 else None
+    if not isinstance(raw_type, str):
+        return JsonValue
     return {
         "string": str,
         "integer": int,
@@ -241,8 +261,8 @@ def _python_type(property_schema: JsonObject) -> object:
 
 
 def _reject_alias_conflicts(input_schema: JsonObject, arguments: JsonObject) -> None:
-    for ghidra_name in _schema_properties(input_schema):
-        analysis_name = analysis_argument_name(ghidra_name)
+    for ghidra_name, property_schema in _schema_properties(input_schema).items():
+        analysis_name = analysis_argument_name(ghidra_name, property_schema)
         if analysis_name == ghidra_name:
             continue
         if ghidra_name not in arguments or analysis_name not in arguments:
