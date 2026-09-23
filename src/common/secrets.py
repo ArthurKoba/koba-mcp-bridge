@@ -15,8 +15,8 @@ from .models import (
     JsonObject,
     ProviderModel,
     StrictModel,
+    json_loads,
     json_object,
-    model_json,
 )
 
 
@@ -292,14 +292,10 @@ class InfisicalClient:
                 raw = response.read()
                 if not raw:
                     return response.status, {}
-                try:
-                    from pydantic import TypeAdapter
-                    from pydantic import JsonValue
-
-                    parsed = TypeAdapter(JsonValue).validate_json(raw)
-                    data = json_object(parsed, context="Infisical response")
-                except ValidationError as exc:
-                    raise SecretError("Infisical returned invalid JSON") from exc
+                data = json_object(
+                    json_loads(raw, context="Infisical response"),
+                    context="Infisical response",
+                )
                 return response.status, data
         except urllib.error.HTTPError as exc:
             raw = exc.read()
