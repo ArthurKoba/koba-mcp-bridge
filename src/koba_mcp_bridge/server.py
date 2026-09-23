@@ -10,14 +10,13 @@ from fastmcp.server import create_proxy
 from fastmcp.server.auth import AuthContext
 from fastmcp.server.auth.providers.github import GitHubProvider
 from fastmcp.server.middleware import AuthMiddleware
-from mcp.types import ToolAnnotations
-
 from . import __version__
 from .artifact_tools import register_artifact_tools
 from .curl_mcp_tools import register_curl_tools
 from .github_actions_tools import register_github_actions_tools
 from .github_agent import github_agent_configured
 from .github_collab_tools import register_github_collab_tools
+from .github_core_tools import register_github_core_tools
 from .github_identity import GitHubPrettyIdentityClient
 from .github_review_tools import register_github_review_tools
 from .github_reviewer import github_reviewer_client_from_env, github_reviewer_configured
@@ -25,42 +24,18 @@ from .github_reviewer_tools import register_github_reviewer_tools
 from .github_tools import register_github_workflow_tools
 from .gitlab_tools import register_gitlab_tools
 from .reverse_workflow import register_reverse_workflow_tools
+from .runtime_annotations import (
+    DESTRUCTIVE_EXTERNAL,
+    DESTRUCTIVE_LOCAL,
+    READ_EXTERNAL,
+    READ_ONLY_LOCAL,
+    WRITE_EXTERNAL,
+    WRITE_LOCAL,
+)
 from .secrets import SecretError, resolve_config_secret, resolve_secret
 from .secrets_tools import register_secrets_tools
 
 _STARTED_AT = datetime.now(UTC).isoformat()
-_READ_ONLY_LOCAL = ToolAnnotations(
-    read_only_hint=True,
-    open_world_hint=False,
-)
-_READ_EXTERNAL = ToolAnnotations(
-    read_only_hint=True,
-    open_world_hint=True,
-)
-_WRITE_EXTERNAL = ToolAnnotations(
-    read_only_hint=False,
-    destructive_hint=False,
-    idempotent_hint=False,
-    open_world_hint=True,
-)
-_WRITE_LOCAL = ToolAnnotations(
-    read_only_hint=False,
-    destructive_hint=False,
-    idempotent_hint=False,
-    open_world_hint=False,
-)
-_DESTRUCTIVE_EXTERNAL = ToolAnnotations(
-    read_only_hint=False,
-    destructive_hint=True,
-    idempotent_hint=False,
-    open_world_hint=True,
-)
-_DESTRUCTIVE_LOCAL = ToolAnnotations(
-    read_only_hint=False,
-    destructive_hint=True,
-    idempotent_hint=False,
-    open_world_hint=False,
-)
 _CHATGPT_OAUTH_REDIRECT = "https://chatgpt.com/connector_platform_oauth_redirect"
 
 
@@ -198,16 +173,16 @@ gitlab_mcp = FastMCP(
 )
 register_gitlab_tools(
     gitlab_mcp,
-    _READ_EXTERNAL,
-    _WRITE_EXTERNAL,
-    _DESTRUCTIVE_EXTERNAL,
+    READ_EXTERNAL,
+    WRITE_EXTERNAL,
+    DESTRUCTIVE_EXTERNAL,
 )
 mcp.mount(gitlab_mcp, namespace="gitlab")
 
 
 @mcp.tool(
     title="Bridge ping",
-    annotations=_READ_ONLY_LOCAL,
+    annotations=READ_ONLY_LOCAL,
 )
 def bridge_ping() -> dict[str, str]:
     """Check that the bridge is alive and reachable."""
@@ -221,7 +196,7 @@ def bridge_ping() -> dict[str, str]:
 
 @mcp.tool(
     title="Bridge build info",
-    annotations=_READ_ONLY_LOCAL,
+    annotations=READ_ONLY_LOCAL,
 )
 def bridge_build_info() -> dict[str, str]:
     """Return build metadata for the currently running bridge instance."""
@@ -237,7 +212,7 @@ def bridge_build_info() -> dict[str, str]:
 
 @mcp.tool(
     title="Bridge capabilities",
-    annotations=_READ_ONLY_LOCAL,
+    annotations=READ_ONLY_LOCAL,
 )
 def bridge_capabilities() -> dict[str, object]:
     """Return the currently enabled high-level bridge capabilities."""
@@ -286,116 +261,51 @@ def bridge_capabilities() -> dict[str, object]:
     }
 
 
-@mcp.tool(title="GitHub agent list repositories", annotations=_READ_EXTERNAL)
-def github_agent_list_repositories() -> dict[str, object]:
-    """List repositories currently granted to the development GitHub App installation."""
-    return _github_agent_client().list_repositories()
-
-
-@mcp.tool(title="GitHub agent status", annotations=_READ_EXTERNAL)
-def github_agent_status(repository: str) -> dict[str, object]:
-    """Verify development GitHub App installation access to one repository."""
-    return _github_agent_client().status(repository)
-
-
-@mcp.tool(title="GitHub agent get file", annotations=_READ_EXTERNAL)
-def github_agent_get_file(repository: str, path: str, ref: str | None = None) -> dict[str, object]:
-    """Read one UTF-8 repository file through the development GitHub App."""
-    return _github_agent_client().get_file(repository, path, ref)
-
-
-@mcp.tool(title="GitHub agent list branches", annotations=_READ_EXTERNAL)
-def github_agent_list_branches(repository: str) -> dict[str, object]:
-    """List branches in a repository installed for the development GitHub App."""
-    return _github_agent_client().list_branches(repository)
-
-
-@mcp.tool(title="GitHub agent create branch", annotations=_WRITE_EXTERNAL)
-def github_agent_create_branch(
-    repository: str,
-    branch: str,
-    from_branch: str = "main",
-) -> dict[str, object]:
-    """Create a new branch from an existing branch in an installed repository."""
-    return _github_agent_client().create_branch(repository, branch, from_branch)
-
-
-@mcp.tool(title="GitHub agent put file", annotations=_WRITE_EXTERNAL)
-def github_agent_put_file(
-    repository: str,
-    path: str,
-    content: str,
-    message: str,
-    branch: str,
-) -> dict[str, object]:
-    """Create or fully replace one UTF-8 file on a non-protected branch."""
-    return _github_agent_client().put_file(repository, path, content, message, branch)
-
-
-@mcp.tool(title="GitHub agent delete file", annotations=_DESTRUCTIVE_EXTERNAL)
-def github_agent_delete_file(
-    repository: str,
-    path: str,
-    message: str,
-    branch: str,
-) -> dict[str, object]:
-    """Delete one file and commit the deletion on a non-protected branch."""
-    return _github_agent_client().delete_file(repository, path, message, branch)
-
-
-@mcp.tool(title="GitHub agent compare refs", annotations=_READ_EXTERNAL)
-def github_agent_compare(repository: str, base: str, head: str) -> dict[str, object]:
-    """Compare two branches, tags, or commit refs in an installed repository."""
-    return _github_agent_client().compare(repository, base, head)
-
-
-@mcp.tool(title="GitHub agent fast-forward branch", annotations=_WRITE_EXTERNAL)
-def github_agent_fast_forward(
-    repository: str,
-    branch: str,
-    to_ref: str,
-) -> dict[str, object]:
-    """Fast-forward a non-protected branch to another ref without force updates."""
-    return _github_agent_client().fast_forward(repository, branch, to_ref)
-
+register_github_core_tools(
+    mcp,
+    _github_agent_client,
+    READ_EXTERNAL,
+    WRITE_EXTERNAL,
+    DESTRUCTIVE_EXTERNAL,
+)
 
 register_github_workflow_tools(
     mcp,
     _github_agent_client,
-    _READ_EXTERNAL,
-    _WRITE_EXTERNAL,
-    _DESTRUCTIVE_EXTERNAL,
+    READ_EXTERNAL,
+    WRITE_EXTERNAL,
+    DESTRUCTIVE_EXTERNAL,
 )
 register_github_review_tools(
     mcp,
     _github_agent_client,
-    _READ_EXTERNAL,
-    _WRITE_EXTERNAL,
+    READ_EXTERNAL,
+    WRITE_EXTERNAL,
 )
 register_github_collab_tools(
     mcp,
     _github_agent_client,
-    _READ_EXTERNAL,
-    _WRITE_EXTERNAL,
+    READ_EXTERNAL,
+    WRITE_EXTERNAL,
 )
 register_github_actions_tools(
     mcp,
     _github_agent_client,
-    _READ_EXTERNAL,
-    _WRITE_EXTERNAL,
-    _DESTRUCTIVE_EXTERNAL,
+    READ_EXTERNAL,
+    WRITE_EXTERNAL,
+    DESTRUCTIVE_EXTERNAL,
 )
-register_artifact_tools(mcp, _READ_ONLY_LOCAL, _WRITE_LOCAL, _DESTRUCTIVE_LOCAL)
-register_secrets_tools(mcp, _READ_EXTERNAL)
-register_curl_tools(mcp, _READ_ONLY_LOCAL, _WRITE_EXTERNAL)
-register_reverse_workflow_tools(mcp, _READ_ONLY_LOCAL, _WRITE_LOCAL)
+register_artifact_tools(mcp, READ_ONLY_LOCAL, WRITE_LOCAL, DESTRUCTIVE_LOCAL)
+register_secrets_tools(mcp, READ_EXTERNAL)
+register_curl_tools(mcp, READ_ONLY_LOCAL, WRITE_EXTERNAL)
+register_reverse_workflow_tools(mcp, READ_ONLY_LOCAL, WRITE_LOCAL)
 
 if github_reviewer_configured():
     register_github_reviewer_tools(
         mcp,
         github_reviewer_client_from_env,
-        _READ_EXTERNAL,
-        _WRITE_EXTERNAL,
+        READ_EXTERNAL,
+        WRITE_EXTERNAL,
     )
 
 
