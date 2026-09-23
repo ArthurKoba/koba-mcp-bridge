@@ -14,7 +14,6 @@ from datetime import datetime
 import jwt
 
 from common.models import (
-    JsonObject,
     JsonValue,
     json_bool,
     json_int,
