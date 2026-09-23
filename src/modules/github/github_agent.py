@@ -14,6 +14,7 @@ from datetime import datetime
 import jwt
 
 from common.models import JsonValue, json_loads, json_value
+from common.models import JsonValue, json_loads, json_value
 from common.secrets import SecretError, resolve_config_secret
 
 _GITHUB_API = "https://api.github.com"
