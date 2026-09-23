@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import platform
 from datetime import UTC, datetime
-from functools import lru_cache
 
 from fastmcp import FastMCP
 from fastmcp.server import create_proxy
@@ -12,27 +11,7 @@ from fastmcp.server.auth.providers.github import GitHubProvider
 from fastmcp.server.middleware import AuthMiddleware
 
 from . import __version__
-from .curl_mcp_tools import register_curl_tools
-from .file_tools import register_file_tools
-from .github_actions_tools import register_github_actions_tools
-from .github_agent import github_agent_configured
-from .github_collab_tools import register_github_collab_tools
-from .github_core_tools import register_github_core_tools
-from .github_identity import GitHubPrettyIdentityClient
-from .github_review_tools import register_github_review_tools
-from .github_reviewer import github_reviewer_client_from_env, github_reviewer_configured
-from .github_reviewer_tools import register_github_reviewer_tools
-from .github_tools import register_github_workflow_tools
-from .gitlab_tools import register_gitlab_tools
-from .reverse_workflow import register_reverse_workflow_tools
-from .runtime_annotations import (
-    DESTRUCTIVE_EXTERNAL,
-    DESTRUCTIVE_LOCAL,
-    READ_EXTERNAL,
-    READ_ONLY_LOCAL,
-    WRITE_EXTERNAL,
-    WRITE_LOCAL,
-)
+from .runtime_annotations import READ_EXTERNAL, READ_ONLY_LOCAL
 from .secrets import SecretError, resolve_config_secret
 from .secrets_tools import register_secrets_tools
 
@@ -142,11 +121,6 @@ def _mount_backends(server: FastMCP) -> dict[str, dict[str, str]]:
         else:
             server.mount(server=proxy)
     return backends
-
-
-@lru_cache(maxsize=1)
-def _github_agent_client() -> GitHubPrettyIdentityClient:
-    return GitHubPrettyIdentityClient.from_env()
 
 
 _auth, _auth_middleware = _build_auth()
