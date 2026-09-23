@@ -440,7 +440,7 @@ def test_gitlab_401_has_profile_credential_diagnostic(
 
     with pytest.raises(
         GitLabError,
-        match="authentication failed.*bad-auth.*private_token",
+        match=r"authentication failed.*bad-auth.*private_token",
     ):
         client.profile_status()
 
@@ -458,7 +458,7 @@ def test_infisical_profile_discovery_failure_is_not_silenced(
 
     with pytest.raises(
         GitLabError,
-        match="discover GitLab profiles.*HTTP 403",
+        match=r"discover GitLab profiles.*HTTP 403",
     ):
         GitLabProfileRegistry.from_infisical()
 

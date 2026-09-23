@@ -111,7 +111,7 @@ def test_app_id_must_be_positive_numeric() -> None:
 
 def test_invalid_private_key_reports_actionable_error() -> None:
     client = GitHubAppClient(app_id="123", private_key="not-a-pem")
-    with pytest.raises(GitHubAgentError, match="PRIVATE_KEY_PEM.*RSA private key"):
+    with pytest.raises(GitHubAgentError, match=r"PRIVATE_KEY_PEM.*RSA private key"):
         client._app_jwt()
 
 
@@ -160,7 +160,7 @@ def test_missing_installation_has_actionable_error() -> None:
             return 404, {"message": "Not Found"}
 
     client = MissingInstallationClient(app_id="123", private_key="unused")
-    with pytest.raises(GitHubAgentError, match="not installed.*add it"):
+    with pytest.raises(GitHubAgentError, match=r"not installed.*add it"):
         client._installation_id("owner/repo")
 
 
