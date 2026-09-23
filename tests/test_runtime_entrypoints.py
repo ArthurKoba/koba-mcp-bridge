@@ -3,11 +3,11 @@ from __future__ import annotations
 import pytest
 from fastmcp import Client
 
-from modules.analysis.runtime import mcp as analysis_mcp
-from modules.files.runtime import mcp as files_mcp
-from modules.github.runtime import mcp as github_mcp
-from modules.gitlab.runtime import mcp as gitlab_mcp
-from modules.curl.runtime import mcp as http_mcp
+from modules.analysis.runtime import mcp as analysis
+from modules.files.runtime import mcp as files
+from modules.github.runtime import mcp as github
+from modules.gitlab.runtime import mcp as gitlab
+from modules.curl.runtime import mcp as curl
 
 
 async def _tool_names(mcp) -> set[str]:
@@ -18,7 +18,7 @@ async def _tool_names(mcp) -> set[str]:
 
 @pytest.mark.asyncio
 async def test_github_runtime_surface_is_isolated() -> None:
-    names = await _tool_names(github_mcp)
+    names = await _tool_names(github)
 
     assert "github_agent_status" in names
     assert "github_agent_create_pull_request" in names
@@ -30,7 +30,7 @@ async def test_github_runtime_surface_is_isolated() -> None:
 
 @pytest.mark.asyncio
 async def test_gitlab_runtime_surface_is_isolated() -> None:
-    names = await _tool_names(gitlab_mcp)
+    names = await _tool_names(gitlab)
 
     assert "profiles" in names
     assert "profile_status" in names
@@ -42,7 +42,7 @@ async def test_gitlab_runtime_surface_is_isolated() -> None:
 
 @pytest.mark.asyncio
 async def test_files_runtime_surface_is_isolated() -> None:
-    names = await _tool_names(files_mcp)
+    names = await _tool_names(files)
 
     assert "file_status" in names
     assert "file_ingest" in names
@@ -54,7 +54,7 @@ async def test_files_runtime_surface_is_isolated() -> None:
 
 @pytest.mark.asyncio
 async def test_http_runtime_surface_is_isolated() -> None:
-    names = await _tool_names(http_mcp)
+    names = await _tool_names(curl)
 
     assert "curl_presets" in names
     assert "curl_request" in names
@@ -67,7 +67,7 @@ async def test_http_runtime_surface_is_isolated() -> None:
 
 @pytest.mark.asyncio
 async def test_analysis_runtime_surface_is_isolated() -> None:
-    names = await _tool_names(analysis_mcp)
+    names = await _tool_names(analysis)
 
     assert "ghidra_import_file" in names
     assert "ghidra_project_sources" in names

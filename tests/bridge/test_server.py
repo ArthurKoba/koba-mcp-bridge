@@ -73,37 +73,37 @@ def test_configured_backends_use_canonical_private_services(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     for name in (
-        "GITHUB_MCP_URL",
-        "GITLAB_MCP_URL",
-        "FILES_MCP_URL",
-        "HTTP_MCP_URL",
-        "ANALYSIS_MCP_URL",
+        "GITHUB_URL",
+        "GITLAB_URL",
+        "FILES_URL",
+        "CURL_URL",
+        "ANALYSIS_URL",
     ):
         monkeypatch.delenv(name, raising=False)
 
     assert _configured_backends() == {
-        "github": "http://github-mcp:8000/mcp",
-        "gitlab": "http://gitlab-mcp:8000/mcp",
-        "files": "http://files-mcp:8000/mcp",
-        "http": "http://http-mcp:8000/mcp",
-        "analysis": "http://analysis-mcp:8000/mcp",
+        "github": "http://github:8000/mcp",
+        "gitlab": "http://gitlab:8000/mcp",
+        "files": "http://files:8000/mcp",
+        "http": "http://curl:8000/mcp",
+        "analysis": "http://analysis:8000/mcp",
     }
 
 
 def test_configured_backends_allow_explicit_overrides(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("GITHUB_MCP_URL", "http://github-alt:9000/mcp")
-    monkeypatch.setenv("GITLAB_MCP_URL", "http://gitlab-alt:9000/mcp")
-    monkeypatch.setenv("FILES_MCP_URL", "http://files-alt:9000/mcp")
-    monkeypatch.setenv("HTTP_MCP_URL", "http://http-alt:9000/mcp")
-    monkeypatch.setenv("ANALYSIS_MCP_URL", "http://analysis-alt:9000/mcp")
+    monkeypatch.setenv("GITHUB_URL", "http://github-alt:9000/mcp")
+    monkeypatch.setenv("GITLAB_URL", "http://gitlab-alt:9000/mcp")
+    monkeypatch.setenv("FILES_URL", "http://files-alt:9000/mcp")
+    monkeypatch.setenv("CURL_URL", "http://curl-alt:9000/mcp")
+    monkeypatch.setenv("ANALYSIS_URL", "http://analysis-alt:9000/mcp")
 
     assert _configured_backends() == {
         "github": "http://github-alt:9000/mcp",
         "gitlab": "http://gitlab-alt:9000/mcp",
         "files": "http://files-alt:9000/mcp",
-        "http": "http://http-alt:9000/mcp",
+        "http": "http://curl-alt:9000/mcp",
         "analysis": "http://analysis-alt:9000/mcp",
     }
 
