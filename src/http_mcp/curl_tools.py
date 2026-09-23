@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from .file_store import FileStore, upload_max_bytes
+from files_mcp.file_store import FileStore, upload_max_bytes
 
 
 class CurlError(ValueError):
