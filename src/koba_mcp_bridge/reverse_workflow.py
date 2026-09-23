@@ -80,7 +80,7 @@ async def _cancel_stage(client: Client, project_id: str, stage_id: str) -> None:
         return
     with suppress(Exception):
         await client.call_tool(
-            "file_stage_cancel",
+            "artifact_stage_cancel",
             {"project_id": project_id, "stage_id": stage_id},
         )
 
@@ -92,7 +92,7 @@ async def _stage_file_for_ghidra(
     project_id: str,
 ) -> tuple[str, str]:
     begin_result = await client.call_tool(
-        "file_stage_begin",
+        "artifact_stage_begin",
         {
             "project_id": project_id,
             "name": str(file["name"]),
@@ -119,7 +119,7 @@ async def _stage_file_for_ghidra(
                 if not chunk:
                     break
                 write_result = await client.call_tool(
-                    "file_stage_write",
+                    "artifact_stage_write",
                     {
                         "project_id": project_id,
                         "stage_id": stage_id,
@@ -137,7 +137,7 @@ async def _stage_file_for_ghidra(
                 offset = next_offset
 
         finish_result = await client.call_tool(
-            "file_stage_finish",
+            "artifact_stage_finish",
             {"project_id": project_id, "stage_id": stage_id},
         )
         finish = _require_backend_success(finish_result, "file staging finish")
