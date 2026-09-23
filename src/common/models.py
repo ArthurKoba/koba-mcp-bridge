@@ -2,14 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    JsonValue as PydanticJsonValue,
-    TypeAdapter,
-    ValidationError,
-    validate_call,
-)
+from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError, validate_call
+from pydantic import JsonValue as PydanticJsonValue
 
 type JsonValue = PydanticJsonValue
 type JsonObject = dict[str, JsonValue]
@@ -44,11 +38,10 @@ _STRICT_CALL_CONFIG = ConfigDict(strict=True, arbitrary_types_allowed=True)
 
 
 def validated_call[**P, R](function: Callable[P, R]) -> Callable[P, R]:
-    wrapped = validate_call(
+    return validate_call(
         config=_STRICT_CALL_CONFIG,
         validate_return=True,
     )(function)
-    return wrapped
 
 
 def json_loads(data: str | bytes, *, context: str = "value") -> JsonValue:
