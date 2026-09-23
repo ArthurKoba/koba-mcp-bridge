@@ -26,12 +26,12 @@ RUN uv sync --no-dev \
     && mkdir -p /data/fastmcp /files/objects/sha256 /files/tmp /home/bridge \
     && chown -R 1000:1000 /data /files /home/bridge
 
-COPY deploy/docker-entrypoint.sh /usr/local/bin/koba-entrypoint
-RUN chmod 0755 /usr/local/bin/koba-entrypoint \
-    && test "$(/usr/local/bin/koba-entrypoint id -u)" = "1000" \
-    && /usr/local/bin/koba-entrypoint /app/.venv/bin/python -c "import koba_mcp_bridge.server"
+COPY deploy/docker-entrypoint.sh /usr/local/bin/mcp-bridge-entrypoint
+RUN chmod 0755 /usr/local/bin/mcp-bridge-entrypoint \
+    && test "$(/usr/local/bin/mcp-bridge-entrypoint id -u)" = "1000" \
+    && /usr/local/bin/mcp-bridge-entrypoint /app/.venv/bin/python -c "import koba_mcp_bridge.server"
 
 EXPOSE 8000
 
-ENTRYPOINT ["/usr/local/bin/koba-entrypoint"]
+ENTRYPOINT ["/usr/local/bin/mcp-bridge-entrypoint"]
 CMD ["/app/.venv/bin/opentelemetry-instrument", "/app/.venv/bin/uvicorn", "koba_mcp_bridge.server:app", "--host", "0.0.0.0", "--port", "8000"]
