@@ -11,9 +11,9 @@ from fastmcp.server.auth.providers.github import GitHubProvider
 from fastmcp.server.middleware import AuthMiddleware
 
 from . import __version__
-from .runtime_annotations import READ_EXTERNAL, READ_ONLY_LOCAL
-from .secrets import SecretError, resolve_config_secret
-from .secrets_tools import register_secrets_tools
+from mcp_common.runtime_annotations import READ_EXTERNAL, READ_ONLY_LOCAL
+from mcp_common.secrets import SecretError, resolve_config_secret
+from mcp_common.secrets_tools import register_secrets_tools
 
 _STARTED_AT = datetime.now(UTC).isoformat()
 _CHATGPT_OAUTH_REDIRECT = "https://chatgpt.com/connector_platform_oauth_redirect"

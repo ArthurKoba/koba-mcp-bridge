@@ -13,12 +13,12 @@ from .github_reviewer import (
 )
 from .github_reviewer_tools import register_github_reviewer_tools
 from .github_tools import register_github_workflow_tools
-from .runtime_annotations import (
+from mcp_common.runtime_annotations import (
     DESTRUCTIVE_EXTERNAL,
     READ_EXTERNAL,
     WRITE_EXTERNAL,
 )
-from .runtime_common import build_private_mcp, private_http_app
+from mcp_common.runtime_common import build_private_mcp, private_http_app
 
 
 @lru_cache(maxsize=1)

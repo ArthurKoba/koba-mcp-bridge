@@ -4,7 +4,7 @@ from functools import lru_cache
 
 from .github_agent import GitHubAgentError
 from .github_identity import GitHubPrettyIdentityClient
-from .secrets import SecretError, resolve_config_secret
+from mcp_common.secrets import SecretError, resolve_config_secret
 
 
 def github_reviewer_configured() -> bool:

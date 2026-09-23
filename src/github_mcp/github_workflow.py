@@ -6,7 +6,7 @@ import urllib.parse
 from typing import Any
 
 from .github_agent import GitHubAgentError, GitHubAppClient
-from .secrets import SecretError, resolve_config_secret
+from mcp_common.secrets import SecretError, resolve_config_secret
 
 _DEFAULT_PROTECTED_BRANCHES = "main,master"
 _DEFAULT_REQUIRED_CHECKS = "test,docker"
