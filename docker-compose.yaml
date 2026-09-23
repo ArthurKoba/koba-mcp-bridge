@@ -7,23 +7,25 @@ x-observability: &observability
   OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED: "true"
 
 x-infisical: &infisical
-  INFISICAL_HOST: ${INFISICAL_HOST}
-  INFISICAL_PROJECT_ID: ${INFISICAL_PROJECT_ID}
+  INFISICAL_HOST: ${INFISICAL_HOST:-}
+  INFISICAL_PROJECT_ID: ${INFISICAL_PROJECT_ID:-}
   INFISICAL_ENVIRONMENT: ${INFISICAL_ENVIRONMENT:-prod}
   INFISICAL_BASE_PATH: ${INFISICAL_BASE_PATH:-/}
-  INFISICAL_CLIENT_ID: ${INFISICAL_CLIENT_ID}
-  INFISICAL_CLIENT_SECRET: ${INFISICAL_CLIENT_SECRET}
+  INFISICAL_CLIENT_ID: ${INFISICAL_CLIENT_ID:-}
+  INFISICAL_CLIENT_SECRET: ${INFISICAL_CLIENT_SECRET:-}
   INFISICAL_VERIFY_TLS: ${INFISICAL_VERIFY_TLS:-true}
 
 x-mcp-service: &mcp-service
-  image: ghcr.io/arthurkoba/mcp-bridge:latest
+  build: .
   restart: unless-stopped
+  depends_on:
+    - otel-collector
 
 services:
   gateway:
     <<: *mcp-service
     ports:
-      - "8000"
+      - "8000:8000"
     command:
       - /app/.venv/bin/opentelemetry-instrument
       - /app/.venv/bin/uvicorn
@@ -35,10 +37,8 @@ services:
     environment:
       <<: [*observability, *infisical]
       OTEL_SERVICE_NAME: mcp-gateway
-      OAUTH_ENABLED: \${OAUTH_ENABLED:-false}
+      OAUTH_ENABLED: ${OAUTH_ENABLED:-false}
       OAUTH_BASE_URL: ${OAUTH_BASE_URL:-https://mcp.koba-nexus.ru}
-      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-mcp.koba-nexus.ru,localhost:*,127.0.0.1:*}
-      MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-https://mcp.koba-nexus.ru}
     volumes:
       - fastmcp-data:/data/fastmcp
     depends_on:
