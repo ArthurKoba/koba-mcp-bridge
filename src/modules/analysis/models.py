@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pydantic import Field
 
-from common.models import JsonObject, ProviderModel, StrictModel
+from common.models import JsonObject, JsonValue, ProviderModel, StrictModel
 from modules.files.models import FileId, FileInfo
 
 
@@ -71,4 +71,4 @@ class ExportFileResponse(StrictModel):
     project_id: str = Field(min_length=1)
     file: FileInfo
     project_name: str = Field(min_length=1)
-    ghidra_result: JsonObject | None
+    ghidra_result: JsonValue | None
