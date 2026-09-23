@@ -28,11 +28,11 @@ koba-mcp-bridge/
 
 - `server.py` — FastMCP composition, OAuth boundary, local registration, mounted backends and HTTP app wiring.
 
-### Files/artifact data plane
+### Files/file data plane
 
-- `artifact_store.py` — immutable object storage, metadata, collections and references.
-- `artifact_ingress.py` — attachment/file ingress and resumable uploads.
-- `artifact_tools.py` — MCP surface for artifact/file operations.
+- `file_store.py` — immutable object storage, metadata, collections and references.
+- `file_ingress.py` — attachment/file ingress and resumable uploads.
+- `file_tools.py` — MCP surface for file/file operations.
 
 ### HTTP
 
@@ -61,7 +61,7 @@ This is a natural candidate for packaging behind an independent runtime entry po
 
 ### Ghidra integration
 
-- `reverse_workflow.py` — high-level artifact/file ↔ Ghidra adapter workflows.
+- `reverse_workflow.py` — high-level file/file ↔ Ghidra adapter workflows.
 - The actual Ghidra MCP runtime lives in its own repository/service.
 
 ## Tests
