@@ -3,9 +3,8 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError, validate_call
-from pydantic import JsonValue as PydanticJsonValue
+from pydantic import JsonValue as JsonValue
 
-type JsonValue = PydanticJsonValue
 type JsonObject = dict[str, JsonValue]
 type JsonArray = list[JsonValue]
 
