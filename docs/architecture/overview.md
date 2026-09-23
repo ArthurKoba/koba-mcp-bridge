@@ -8,7 +8,7 @@ The current Koba platform scope is intentionally narrow:
 - GitHub;
 - GitLab;
 - Ghidra;
-- Files/artifact storage;
+- Files/file storage;
 - HTTP/curl.
 
 Other future platform ideas are explicitly outside the current stabilization pass.
@@ -23,7 +23,7 @@ flowchart LR
     B --> GH[GitHub]
     B --> GL[GitLab]
     B --> HTTP[HTTP / curl]
-    B --> F[Files / artifact store]
+    B --> F[Files / file store]
     B --> GA[Ghidra adapters]
     B -->|mounted MCP| GM[ghidra-mcp]
 
@@ -79,5 +79,5 @@ The aggregate gateway may remain for compatibility, while dedicated endpoints le
 - Connectors should fail and deploy independently.
 - Provider-side permissions remain authoritative; Koba adds guardrails.
 - Shared libraries are preferred over duplicated provider logic.
-- Files are the user-facing concept; immutable artifact IDs can remain an internal/public compatibility primitive.
+- Files are the user-facing concept; immutable file IDs can remain an internal/public compatibility primitive.
 - Migrations are incremental: old credential env variables remain until each secret reference is accepted in production.
