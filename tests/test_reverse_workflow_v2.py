@@ -166,13 +166,13 @@ class _FakeGhidraClient:
                 "file_count": 0,
                 "program_count": 0,
             }
-        elif name == "file_stage_begin":
+        elif name == "artifact_stage_begin":
             body = {
                 "success": True,
                 "stage_id": "stage-1",
                 "chunk_bytes": 4,
             }
-        elif name == "file_stage_write":
+        elif name == "artifact_stage_write":
             assert payload["offset"] == len(self.received)
             chunk = base64.b64decode(payload["data_base64"])
             self.received.extend(chunk)
@@ -180,10 +180,10 @@ class _FakeGhidraClient:
                 "success": True,
                 "next_offset": len(self.received),
             }
-        elif name == "file_stage_finish":
+        elif name == "artifact_stage_finish":
             body = {
                 "success": True,
-                "path": "/files/.koba-stage/stage-1/Sofia",
+                "path": "/artifacts/.koba-stage/stage-1/Sofia",
                 "sha256": self.file_sha256,
             }
         elif name == "import_file":
@@ -191,7 +191,7 @@ class _FakeGhidraClient:
                 body = {"error": self.import_error}
             else:
                 body = {"success": True, "program": "Sofia"}
-        elif name == "file_stage_cancel":
+        elif name == "artifact_stage_cancel":
             body = {"success": True, "cancelled": True}
         else:
             raise AssertionError(f"unexpected tool call: {name}")
@@ -222,13 +222,13 @@ async def test_ghidra_import_file_streams_through_backend_stage(
     assert bytes(fake.received) == payload
     assert [name for name, _ in fake.calls] == [
         "get_project_info",
-        "file_stage_begin",
-        "file_stage_write",
-        "file_stage_write",
-        "file_stage_write",
-        "file_stage_finish",
+        "artifact_stage_begin",
+        "artifact_stage_write",
+        "artifact_stage_write",
+        "artifact_stage_write",
+        "artifact_stage_finish",
         "import_file",
-        "file_stage_cancel",
+        "artifact_stage_cancel",
     ]
     refs = FileStore().references(
         consumer_type="ghidra-project",
@@ -255,7 +255,7 @@ async def test_ghidra_import_file_does_not_reference_backend_failure(
             auto_analyze=False,
         )
 
-    assert fake.calls[-1][0] == "file_stage_cancel"
+    assert fake.calls[-1][0] == "artifact_stage_cancel"
     refs = FileStore().references(
         consumer_type="ghidra-project",
         consumer_id=PROJECT_ID,
