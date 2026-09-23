@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import base64
-
 import pytest
 from fastmcp import Client, FastMCP
 from mcp.types import ToolAnnotations
@@ -10,7 +8,6 @@ import koba_mcp_bridge.github_reviewer as github_reviewer
 from koba_mcp_bridge.github_agent import GitHubAgentError
 from koba_mcp_bridge.github_collab import GitHubCollabClient
 from koba_mcp_bridge.github_reviewer import (
-    _reviewer_private_key_from_env,
     github_reviewer_client,
     github_reviewer_configured,
 )
@@ -47,27 +44,28 @@ def _unused_client() -> GitHubCollabClient:
     )
 
 
-def test_reviewer_config_requires_only_distinct_app_credentials(
+def test_reviewer_configured_uses_infisical_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     github_reviewer_client.cache_clear()
-    for name in (
-        "GITHUB_REVIEWER_APP_ID",
-        "GITHUB_REVIEWER_PRIVATE_KEY",
-        "GITHUB_REVIEWER_PRIVATE_KEY_B64",
-        "GITHUB_REVIEWER_ALLOWED_REPOSITORIES",
-    ):
-        monkeypatch.delenv(name, raising=False)
 
+    def missing(path: str, name: str) -> str:
+        del path, name
+        raise github_reviewer.SecretError("missing")
+
+    monkeypatch.setattr(github_reviewer, "resolve_config_secret", missing)
     assert github_reviewer_configured() is False
 
-    monkeypatch.setenv("GITHUB_REVIEWER_APP_ID", "456")
-    monkeypatch.setenv("GITHUB_REVIEWER_PRIVATE_KEY", "reviewer-key")
+    values = {
+        ("github/reviewer", "APP_ID"): "456",
+        ("github/reviewer", "PRIVATE_KEY_PEM"): "reviewer-key",
+    }
+    monkeypatch.setattr(
+        github_reviewer,
+        "resolve_config_secret",
+        lambda path, name: values[(path, name)],
+    )
     assert github_reviewer_configured() is True
-    client = github_reviewer_client()
-    assert client.app_id == "456"
-    assert client.private_key == "reviewer-key"
-
 
 
 def test_reviewer_loads_convention_config_from_infisical(
@@ -87,18 +85,6 @@ def test_reviewer_loads_convention_config_from_infisical(
 
     assert client.app_id == "888"
     assert client.private_key == "reviewer-pem"
-
-def test_reviewer_private_key_can_be_loaded_from_base64(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("GITHUB_REVIEWER_PRIVATE_KEY", raising=False)
-    material = "reviewer-key-material\nline-two\n"
-    monkeypatch.setenv(
-        "GITHUB_REVIEWER_PRIVATE_KEY_B64",
-        base64.b64encode(material.encode()).decode(),
-    )
-    assert _reviewer_private_key_from_env() == material
-
 
 def test_required_independent_reviewer_approval_passes(
     monkeypatch: pytest.MonkeyPatch,
@@ -206,14 +192,10 @@ def test_reviewer_infisical_failure_preserves_source(
         raise github_reviewer.SecretError("Infisical API HTTP 403: denied")
 
     monkeypatch.setattr(github_reviewer, "resolve_config_secret", fail_secret)
-    monkeypatch.delenv("GITHUB_REVIEWER_APP_ID", raising=False)
-    monkeypatch.delenv("GITHUB_REVIEWER_PRIVATE_KEY_REF", raising=False)
-    monkeypatch.delenv("GITHUB_REVIEWER_PRIVATE_KEY", raising=False)
-    monkeypatch.delenv("GITHUB_REVIEWER_PRIVATE_KEY_B64", raising=False)
 
     with pytest.raises(GitHubAgentError, match="Infisical API HTTP 403"):
         github_reviewer._reviewer_app_id()
 
     with pytest.raises(GitHubAgentError, match="Infisical API HTTP 403"):
-        github_reviewer._reviewer_private_key_from_env()
+        github_reviewer._reviewer_private_key()
 
