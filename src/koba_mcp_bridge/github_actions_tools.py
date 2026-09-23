@@ -138,31 +138,31 @@ def register_github_actions_tools(
         """Download and return the tail of one GitHub Actions job log."""
         return client_factory().get_workflow_job_log(repository, job_id, max_chars)
 
-    @mcp.tool(title="GitHub agent workflow artifacts", annotations=read_annotations)
-    def github_agent_workflow_artifacts(
+    @mcp.tool(title="GitHub agent workflow files", annotations=read_annotations)
+    def github_agent_workflow_files(
         repository: str,
         run_id: int,
         per_page: int = 100,
         page: int = 1,
     ) -> dict[str, object]:
         """List artifacts produced by one GitHub Actions workflow run."""
-        return client_factory().list_workflow_artifacts(
+        return client_factory().list_workflow_files(
             repository,
             run_id,
             per_page,
             page,
         )
 
-    @mcp.tool(title="GitHub agent download workflow artifact", annotations=read_annotations)
-    def github_agent_download_workflow_artifact(
+    @mcp.tool(title="GitHub agent download workflow file", annotations=read_annotations)
+    def github_agent_download_workflow_file(
         repository: str,
-        artifact_id: int,
+        workflow_file_id: int,
         max_bytes: int = 8 * 1024 * 1024,
     ) -> dict[str, object]:
-        """Download a small workflow artifact ZIP as base64 with SHA-256."""
-        return client_factory().download_workflow_artifact(
+        """Download a small workflow file ZIP as base64 with SHA-256."""
+        return client_factory().download_workflow_file(
             repository,
-            artifact_id,
+            workflow_file_id,
             max_bytes,
         )
 
@@ -236,15 +236,15 @@ def register_github_actions_tools(
                 max_chars,
             )
 
-        @mcp.tool(title="GitHub reviewer workflow artifacts", annotations=read_annotations)
-        def github_reviewer_workflow_artifacts(
+        @mcp.tool(title="GitHub reviewer workflow files", annotations=read_annotations)
+        def github_reviewer_workflow_files(
             repository: str,
             run_id: int,
             per_page: int = 100,
             page: int = 1,
         ) -> dict[str, object]:
-            """List workflow artifacts using reviewer identity."""
-            return github_reviewer_client_from_env().list_workflow_artifacts(
+            """List workflow files using reviewer identity."""
+            return github_reviewer_client_from_env().list_workflow_files(
                 repository,
                 run_id,
                 per_page,
@@ -252,17 +252,17 @@ def register_github_actions_tools(
             )
 
         @mcp.tool(
-            title="GitHub reviewer download workflow artifact",
+            title="GitHub reviewer download workflow file",
             annotations=read_annotations,
         )
-        def github_reviewer_download_workflow_artifact(
+        def github_reviewer_download_workflow_file(
             repository: str,
-            artifact_id: int,
+            workflow_file_id: int,
             max_bytes: int = 8 * 1024 * 1024,
         ) -> dict[str, object]:
-            """Download a small workflow artifact ZIP using reviewer identity."""
-            return github_reviewer_client_from_env().download_workflow_artifact(
+            """Download a small workflow file ZIP using reviewer identity."""
+            return github_reviewer_client_from_env().download_workflow_file(
                 repository,
-                artifact_id,
+                workflow_file_id,
                 max_bytes,
             )
