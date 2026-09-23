@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import Field, field_validator, model_validator
 
 from common.models import JsonObject, JsonValue, StrictModel
+from common.secrets import SecretError, resolve_config_secret
 
 
 class GitLabProfile(StrictModel):
@@ -24,6 +25,31 @@ class GitLabProfile(StrictModel):
     @property
     def api_url(self) -> str:
         return self.base_url + "/api/v4"
+
+    def token(self) -> str:
+        try:
+            return resolve_config_secret(self.convention_path, "TOKEN")
+        except SecretError as exc:
+            raise RuntimeError(
+                f"unable to resolve TOKEN for GitLab profile {self.profile_id!r}: {exc}"
+            ) from exc
+
+    def public(self) -> JsonObject:
+        return GitLabProfilePublic(
+            profile_id=self.profile_id,
+            label=self.label,
+            base_url=self.base_url,
+            api_url=self.api_url,
+            auth_type=self.auth_type,
+            credential_source={
+                "type": "infisical_convention",
+                "path": self.convention_path,
+                "secret": "TOKEN",
+            },
+            credential_configured=True,
+            verify_tls=self.verify_tls,
+            ca_file=self.ca_file or None,
+        ).to_json()
 
 
 class GitLabProfilePublic(StrictModel):
