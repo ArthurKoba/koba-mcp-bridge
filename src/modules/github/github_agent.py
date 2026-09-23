@@ -13,7 +13,18 @@ from datetime import datetime
 
 import jwt
 
-from common.models import JsonValue, json_loads, json_value
+from common.models import (
+    JsonObject,
+    JsonValue,
+    json_bool,
+    json_int,
+    json_loads,
+    json_member_array,
+    json_member_object,
+    json_object,
+    json_str,
+    json_value,
+)
 from common.secrets import SecretError, resolve_config_secret
 
 _GITHUB_API = "https://api.github.com"
@@ -316,9 +327,13 @@ class GitHubAppClient:
                     f"repository {repository!r} is not installed for GitHub App "
                     f"{self.app_id}; add it to the App installation or use the correct App"
                 )
-            if not isinstance(result, dict) or not isinstance(result.get("id"), int):
+            try:
+                payload = json_object(result, context="GitHub installation response")
+                installation_id = json_int(payload.get("id"))
+            except ValueError as exc:
+                raise GitHubAgentError("GitHub did not return an installation id") from exc
+            if installation_id <= 0:
                 raise GitHubAgentError("GitHub did not return an installation id")
-            installation_id = int(result["id"])
             self._installation_ids[key] = installation_id
             return installation_id
 
@@ -337,12 +352,17 @@ class GitHubAppClient:
                 f"{_GITHUB_API}/app/installations/{installation_id}/access_tokens",
                 token=self._app_jwt(),
             )
-            if not isinstance(result, dict):
+            try:
+                token_payload = json_object(
+                    result,
+                    context="GitHub installation token response",
+                )
+                token = json_str(token_payload.get("token"))
+                expires_at = json_str(token_payload.get("expires_at"))
+            except ValueError as exc:
                 raise GitHubAgentError(
                     "GitHub did not return an installation token payload"
-                )
-            token = str(result.get("token", ""))
-            expires_at = str(result.get("expires_at", ""))
+                ) from exc
             if not token or not expires_at:
                 raise GitHubAgentError(
                     "GitHub installation token response is incomplete; check App "
@@ -392,11 +412,22 @@ class GitHubAppClient:
             )
             if not isinstance(result, list):
                 raise GitHubAgentError("unexpected GitHub App installation list response")
-            installation_ids.extend(
-                int(item["id"])
-                for item in result
-                if isinstance(item, dict) and isinstance(item.get("id"), int)
-            )
+            for raw_item in result:
+                try:
+                    item = json_object(
+                        raw_item,
+                        context="GitHub App installation item",
+                    )
+                    installation_id = json_int(item.get("id"))
+                except ValueError as exc:
+                    raise GitHubAgentError(
+                        "unexpected GitHub App installation item"
+                    ) from exc
+                if installation_id <= 0:
+                    raise GitHubAgentError(
+                        "unexpected GitHub App installation item"
+                    )
+                installation_ids.append(installation_id)
             if len(result) < 100:
                 break
             page += 1
@@ -415,45 +446,59 @@ class GitHubAppClient:
                     f"{_GITHUB_API}/installation/repositories?per_page=100&page={page}",
                     token=token,
                 )
-                if not isinstance(result, dict):
-                    raise GitHubAgentError("unexpected installation repository response")
-                items = result.get("repositories")
-                if not isinstance(items, list):
-                    raise GitHubAgentError("installation repository response has no repositories")
-                for item in items:
-                    if not isinstance(item, dict):
-                        continue
-                    full_name = str(item.get("full_name", ""))
+                try:
+                    response = json_object(
+                        result,
+                        context="GitHub installation repository response",
+                    )
+                    items = json_member_array(
+                        response,
+                        "repositories",
+                        required=True,
+                    )
+                except ValueError as exc:
+                    raise GitHubAgentError(
+                        "installation repository response has no repositories"
+                    ) from exc
+
+                for raw_item in items:
+                    try:
+                        item = json_object(
+                            raw_item,
+                            context="GitHub installation repository item",
+                        )
+                        full_name = json_str(item.get("full_name"))
+                    except ValueError as exc:
+                        raise GitHubAgentError(
+                            "unexpected installation repository item"
+                        ) from exc
                     if not full_name or full_name.casefold() in seen:
                         continue
                     seen.add(full_name.casefold())
                     cache_key = full_name.casefold()
                     self._installation_ids[cache_key] = installation_id
+
+                    metadata: dict[str, object] = {
+                        "repository": full_name,
+                        "default_branch": json_str(item.get("default_branch")),
+                        "private": json_bool(item.get("private")),
+                        "archived": json_bool(item.get("archived")),
+                        "fork": json_bool(item.get("fork")),
+                    }
                     if self.repository_cache_ttl_seconds > 0:
-                        metadata = {
-                            "repository": full_name,
-                            "default_branch": str(item.get("default_branch", "")),
-                            "private": bool(item.get("private", False)),
-                            "archived": bool(item.get("archived", False)),
-                            "fork": bool(item.get("fork", False)),
-                        }
                         with self._cache_lock:
                             self._repository_cache[cache_key] = (
                                 time.monotonic() + self.repository_cache_ttl_seconds,
                                 metadata,
                             )
-                    permissions = (
-                        item.get("permissions")
-                        if isinstance(item.get("permissions"), dict)
-                        else {}
-                    )
+                    permissions = json_member_object(item, "permissions")
                     repositories.append(
                         {
                             "full_name": full_name,
-                            "private": bool(item.get("private", False)),
-                            "default_branch": str(item.get("default_branch", "")),
-                            "archived": bool(item.get("archived", False)),
-                            "fork": bool(item.get("fork", False)),
+                            "private": json_bool(item.get("private")),
+                            "default_branch": json_str(item.get("default_branch")),
+                            "archived": json_bool(item.get("archived")),
+                            "fork": json_bool(item.get("fork")),
                             "permissions": permissions,
                             "installation_id": installation_id,
                         }
@@ -484,14 +529,16 @@ class GitHubAppClient:
                     return dict(cached[1])
 
         _, result = self._repo_request(repository, "GET", f"/repos/{repository}")
-        if not isinstance(result, dict):
-            raise GitHubAgentError("unexpected repository response")
+        try:
+            payload = json_object(result, context="GitHub repository response")
+        except ValueError as exc:
+            raise GitHubAgentError("unexpected repository response") from exc
         metadata: dict[str, object] = {
-            "repository": str(result.get("full_name", repository)),
-            "default_branch": str(result.get("default_branch", "")),
-            "private": bool(result.get("private", False)),
-            "archived": bool(result.get("archived", False)),
-            "fork": bool(result.get("fork", False)),
+            "repository": json_str(payload.get("full_name"), default=repository),
+            "default_branch": json_str(payload.get("default_branch")),
+            "private": json_bool(payload.get("private")),
+            "archived": json_bool(payload.get("archived")),
+            "fork": json_bool(payload.get("fork")),
         }
         if self.repository_cache_ttl_seconds > 0:
             with self._cache_lock:
@@ -524,18 +571,24 @@ class GitHubAppClient:
             "GET",
             f"/repos/{repository}/contents/{quoted_path}{query}",
         )
-        if not isinstance(result, dict) or result.get("type") != "file":
-            raise GitHubAgentError("path is not a regular GitHub repository file")
-        encoding = str(result.get("encoding", ""))
-        content = str(result.get("content", ""))
+        try:
+            payload = json_object(result, context="GitHub file response")
+            if json_str(payload.get("type")) != "file":
+                raise ValueError("not a file")
+            encoding = json_str(payload.get("encoding"))
+            content = json_str(payload.get("content"))
+        except ValueError as exc:
+            raise GitHubAgentError(
+                "path is not a regular GitHub repository file"
+            ) from exc
         if encoding != "base64":
             raise GitHubAgentError(f"unsupported GitHub content encoding: {encoding}")
         decoded = base64.b64decode(content).decode("utf-8", "replace")
         return {
             "repository": repository,
-            "path": str(result.get("path", path)),
-            "sha": str(result.get("sha", "")),
-            "size": int(result.get("size", 0)),
+            "path": json_str(payload.get("path"), default=path),
+            "sha": json_str(payload.get("sha")),
+            "size": json_int(payload.get("size")),
             "content": decoded,
         }
 
@@ -548,17 +601,20 @@ class GitHubAppClient:
         )
         if not isinstance(result, list):
             raise GitHubAgentError("unexpected branch list response")
-        branches = []
-        for item in result:
-            if isinstance(item, dict):
-                commit = item.get("commit") if isinstance(item.get("commit"), dict) else {}
+        branches: list[dict[str, object]] = []
+        for raw_item in result:
+            try:
+                item = json_object(raw_item, context="GitHub branch item")
+                commit = json_member_object(item, "commit", required=True)
                 branches.append(
                     {
-                        "name": str(item.get("name", "")),
-                        "sha": str(commit.get("sha", "")),
-                        "protected": bool(item.get("protected", False)),
+                        "name": json_str(item.get("name")),
+                        "sha": json_str(commit.get("sha")),
+                        "protected": json_bool(item.get("protected")),
                     }
                 )
+            except ValueError as exc:
+                raise GitHubAgentError("unexpected branch list response") from exc
         return {"repository": repository, "branches": branches}
 
     def create_branch(self, repository: str, branch: str, from_branch: str) -> dict[str, object]:
@@ -569,9 +625,12 @@ class GitHubAppClient:
             "GET",
             f"/repos/{repository}/git/ref/heads/{source}",
         )
-        if not isinstance(ref, dict) or not isinstance(ref.get("object"), dict):
-            raise GitHubAgentError("unable to resolve source branch")
-        sha = str(ref["object"].get("sha", ""))
+        try:
+            ref_payload = json_object(ref, context="GitHub ref response")
+            ref_object = json_member_object(ref_payload, "object", required=True)
+            sha = json_str(ref_object.get("sha"))
+        except ValueError as exc:
+            raise GitHubAgentError("unable to resolve source branch") from exc
         if not sha:
             raise GitHubAgentError("source branch has no commit sha")
         _, result = self._repo_request(
@@ -606,9 +665,18 @@ class GitHubAppClient:
         }
         operation = "create"
         if status != 404:
-            if not isinstance(current, dict) or current.get("type") != "file":
-                raise GitHubAgentError("existing path is not a regular file")
-            payload["sha"] = str(current.get("sha", ""))
+            try:
+                current_payload = json_object(
+                    current,
+                    context="GitHub existing file response",
+                )
+                if json_str(current_payload.get("type")) != "file":
+                    raise ValueError("not a file")
+                payload["sha"] = json_str(current_payload.get("sha"))
+            except ValueError as exc:
+                raise GitHubAgentError(
+                    "existing path is not a regular file"
+                ) from exc
             operation = "update"
 
         response_status, result = self._repo_request(
@@ -617,18 +685,23 @@ class GitHubAppClient:
             f"/repos/{repository}/contents/{quoted_path}",
             payload=payload,
         )
-        if not isinstance(result, dict):
-            raise GitHubAgentError("unexpected file write response")
-        commit = result.get("commit") if isinstance(result.get("commit"), dict) else {}
-        saved = result.get("content") if isinstance(result.get("content"), dict) else {}
+        try:
+            write_payload = json_object(
+                result,
+                context="GitHub file write response",
+            )
+            commit = json_member_object(write_payload, "commit")
+            saved = json_member_object(write_payload, "content")
+        except ValueError as exc:
+            raise GitHubAgentError("unexpected file write response") from exc
         return {
             "status": response_status,
             "operation": operation,
             "repository": repository,
             "branch": branch,
             "path": path,
-            "commit_sha": str(commit.get("sha", "")),
-            "content_sha": str(saved.get("sha", "")),
+            "commit_sha": json_str(commit.get("sha")),
+            "content_sha": json_str(saved.get("sha")),
         }
 
     def delete_file(
@@ -646,18 +719,30 @@ class GitHubAppClient:
             "GET",
             f"/repos/{repository}/contents/{quoted_path}?ref={ref}",
         )
-        if not isinstance(current, dict) or current.get("type") != "file":
-            raise GitHubAgentError("path is not a regular file")
-        sha = str(current.get("sha", ""))
+        try:
+            current_payload = json_object(
+                current,
+                context="GitHub file delete source",
+            )
+            if json_str(current_payload.get("type")) != "file":
+                raise ValueError("not a file")
+            sha = json_str(current_payload.get("sha"))
+        except ValueError as exc:
+            raise GitHubAgentError("path is not a regular file") from exc
         _, result = self._repo_request(
             repository,
             "DELETE",
             f"/repos/{repository}/contents/{quoted_path}",
             payload={"message": message, "sha": sha, "branch": branch},
         )
-        if not isinstance(result, dict):
-            raise GitHubAgentError("unexpected file delete response")
-        commit = result.get("commit") if isinstance(result.get("commit"), dict) else {}
+        try:
+            delete_payload = json_object(
+                result,
+                context="GitHub file delete response",
+            )
+            commit = json_member_object(delete_payload, "commit")
+        except ValueError as exc:
+            raise GitHubAgentError("unexpected file delete response") from exc
         return {
             "repository": repository,
             "branch": branch,
@@ -674,27 +759,39 @@ class GitHubAppClient:
             "GET",
             f"/repos/{repository}/compare/{base_q}...{head_q}",
         )
-        if not isinstance(result, dict):
-            raise GitHubAgentError("unexpected compare response")
-        files = result.get("files") if isinstance(result.get("files"), list) else []
+        try:
+            compare_payload = json_object(
+                result,
+                context="GitHub compare response",
+            )
+            files = json_member_array(compare_payload, "files")
+        except ValueError as exc:
+            raise GitHubAgentError("unexpected compare response") from exc
+
+        normalized_files: list[dict[str, object]] = []
+        for raw_item in files:
+            try:
+                item = json_object(raw_item, context="GitHub compare file")
+                normalized_files.append(
+                    {
+                        "filename": json_str(item.get("filename")),
+                        "status": json_str(item.get("status")),
+                        "additions": json_int(item.get("additions")),
+                        "deletions": json_int(item.get("deletions")),
+                    }
+                )
+            except ValueError as exc:
+                raise GitHubAgentError("unexpected compare file response") from exc
+
         return {
             "repository": repository,
             "base": base,
             "head": head,
-            "status": str(result.get("status", "")),
-            "ahead_by": int(result.get("ahead_by", 0)),
-            "behind_by": int(result.get("behind_by", 0)),
-            "total_commits": int(result.get("total_commits", 0)),
-            "files": [
-                {
-                    "filename": str(item.get("filename", "")),
-                    "status": str(item.get("status", "")),
-                    "additions": int(item.get("additions", 0)),
-                    "deletions": int(item.get("deletions", 0)),
-                }
-                for item in files
-                if isinstance(item, dict)
-            ],
+            "status": json_str(compare_payload.get("status")),
+            "ahead_by": json_int(compare_payload.get("ahead_by")),
+            "behind_by": json_int(compare_payload.get("behind_by")),
+            "total_commits": json_int(compare_payload.get("total_commits")),
+            "files": normalized_files,
         }
 
     def fast_forward(self, repository: str, branch: str, to_ref: str) -> dict[str, object]:
@@ -705,9 +802,14 @@ class GitHubAppClient:
             "GET",
             f"/repos/{repository}/commits/{to_q}",
         )
-        if not isinstance(commit, dict):
-            raise GitHubAgentError("unable to resolve target ref")
-        sha = str(commit.get("sha", ""))
+        try:
+            commit_payload = json_object(
+                commit,
+                context="GitHub target commit response",
+            )
+            sha = json_str(commit_payload.get("sha"))
+        except ValueError as exc:
+            raise GitHubAgentError("unable to resolve target ref") from exc
         if not sha:
             raise GitHubAgentError("target ref has no commit sha")
         branch_q = urllib.parse.quote(branch, safe="")
