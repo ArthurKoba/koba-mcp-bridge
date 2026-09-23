@@ -78,8 +78,8 @@ def _configured_backends() -> dict[str, str]:
         "files": _backend_url("FILES_URL", "http://files:8000/mcp"),
         "http": _backend_url("CURL_URL", "http://curl:8000/mcp"),
         "analysis": _backend_url(
-            "ANALYSIS_MCP_URL",
-            "http://analysis-mcp:8000/mcp",
+            "ANALYSIS_URL",
+            "http://analysis:8000/mcp",
         ),
     }
 
@@ -118,8 +118,8 @@ mcp = FastMCP(
     "mcp-bridge",
     version=__version__,
     instructions=(
-        "Authenticated edge gateway for isolated MCP runtimes. "
-        "GitHub, GitLab, Files, HTTP and analysis execute in private services. "
+        "Authenticated edge gateway for isolated modules. "
+        "GitHub, GitLab, Files, curl and analysis execute in private services. "
         "Secrets are never returned as plaintext."
     ),
     auth=_auth,
@@ -192,14 +192,13 @@ def bridge_capabilities() -> dict[str, object]:
         "features": [
             "mcp",
             "streamable-http",
-            "opentelemetry",
-            "modular-gateway",
+            "gateway",
             "infisical-secrets",
-            "github-runtime",
-            "gitlab-runtime",
-            "files-runtime",
-            "http-runtime",
-            "analysis-runtime",
+            "github",
+            "gitlab",
+            "files",
+            "curl",
+            "analysis",
         ],
         "status": "active",
     }

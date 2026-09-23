@@ -22,7 +22,7 @@ def private_http_app(mcp: FastMCP) -> Any:
             "PRIVATE_MCP_ALLOWED_HOSTS",
             (
                 "localhost:*,127.0.0.1:*,[::1]:*,"
-                "github-mcp:*,gitlab-mcp:*,files-mcp:*,http-mcp:*,analysis-mcp:*"
+                "github:*,gitlab:*,files:*,curl:*,analysis:*"
             ),
         ),
         allowed_origins=_split_env(

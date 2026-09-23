@@ -9,7 +9,7 @@ from common.runtime_common import build_private_mcp, private_http_app
 
 from .gitlab_tools import register_gitlab_tools
 
-mcp = build_private_mcp("gitlab-mcp")
+mcp = build_private_mcp("gitlab")
 
 register_gitlab_tools(
     mcp,

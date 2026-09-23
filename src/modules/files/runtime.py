@@ -9,7 +9,7 @@ from common.runtime_common import build_private_mcp, private_http_app
 
 from .file_tools import register_file_tools
 
-mcp = build_private_mcp("files-mcp")
+mcp = build_private_mcp("files")
 
 register_file_tools(
     mcp,
