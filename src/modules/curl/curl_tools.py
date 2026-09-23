@@ -21,12 +21,9 @@ from modules.files.models import FileInfo
 from .models import (
     BodyPreview,
     CurlDiagnostic,
-    CurlDownloadResponse,
     CurlPreset,
     CurlPresetDefinition,
     CurlPresetsResponse,
-    CurlRequestResponse,
-    CurlStreamResponse,
     HeaderBlock,
     HeaderField,
 )
