@@ -1,8 +1,8 @@
 import pytest
 from fastmcp import Client
 
-import koba_mcp_bridge.server as server_module
-from koba_mcp_bridge.server import (
+import mcp_bridge.server as server_module
+from mcp_bridge.server import (
     _configured_backends,
     _mount_aggregate_backends,
     app,
@@ -17,7 +17,7 @@ async def test_bridge_ping() -> None:
 
     assert result.data is not None
     assert result.data["status"] == "ok"
-    assert result.data["service"] == "koba-mcp-gateway"
+    assert result.data["service"] == "mcp-bridge"
 
 
 @pytest.mark.asyncio
@@ -26,7 +26,7 @@ async def test_bridge_build_info() -> None:
         result = await client.call_tool("bridge_build_info", {})
 
     assert result.data is not None
-    assert result.data["service"] == "koba-mcp-gateway"
+    assert result.data["service"] == "mcp-bridge"
     assert result.data["version"]
     assert result.data["commit"]
     assert result.data["built_at"]

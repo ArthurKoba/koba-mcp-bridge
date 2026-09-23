@@ -11,14 +11,14 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 from fastmcp import Client
 
-from koba_mcp_bridge.secrets import (
+from mcp_bridge.secrets import (
     InfisicalClient,
     InfisicalConfig,
     SecretError,
     SecretReference,
     SecretResolver,
 )
-from koba_mcp_bridge.server import mcp
+from mcp_bridge.server import mcp
 
 
 class _InfisicalHandler(BaseHTTPRequestHandler):
@@ -169,12 +169,12 @@ def test_resolver_never_returns_value_from_check(infisical_server) -> None:
 
 
 def test_env_and_file_refs(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("KOBA_TEST_SECRET", "env-value")
+    monkeypatch.setenv("BRIDGE_TEST_SECRET", "env-value")
     secret_file = tmp_path / "secret.txt"
     secret_file.write_text("file-value\n", encoding="utf-8")
     resolver = SecretResolver(_client("http://127.0.0.1:1"))
 
-    assert resolver.resolve("env://KOBA_TEST_SECRET") == "env-value"
+    assert resolver.resolve("env://BRIDGE_TEST_SECRET") == "env-value"
     assert resolver.resolve(f"file://{secret_file}") == "file-value"
 
 
@@ -185,15 +185,15 @@ def test_infisical_config_reads_environment_and_base_path(monkeypatch) -> None:
     monkeypatch.setenv("INFISICAL_CLIENT_ID", "client-id")
     monkeypatch.setenv("INFISICAL_CLIENT_SECRET", "client-secret")
     monkeypatch.setenv("INFISICAL_ENVIRONMENT", "production")
-    monkeypatch.setenv("INFISICAL_BASE_PATH", "/koba/platform/")
+    monkeypatch.setenv("INFISICAL_BASE_PATH", "/bridge/platform/")
 
     config = InfisicalConfig.from_env()
 
     assert config.environment == "production"
-    assert config.base_path == "/koba/platform"
+    assert config.base_path == "/bridge/platform"
     public = config.public()
     assert public["environment"] == "production"
-    assert public["base_path"] == "/koba/platform"
+    assert public["base_path"] == "/bridge/platform"
 
 
 def test_convention_resolver_joins_base_path(monkeypatch) -> None:
@@ -204,7 +204,7 @@ def test_convention_resolver_joins_base_path(monkeypatch) -> None:
             client_id="client-id",
             client_secret="client-secret",
             environment="prod",
-            base_path="/koba",
+            base_path="/bridge",
         )
     )
     resolver = SecretResolver(client)
@@ -228,7 +228,7 @@ def test_convention_resolver_joins_base_path(monkeypatch) -> None:
         {
             "secret_name": "APP_ID",
             "environment": "prod",
-            "secret_path": "/koba/github/development",
+            "secret_path": "/bridge/github/development",
             "project_id": "project",
         }
     ]

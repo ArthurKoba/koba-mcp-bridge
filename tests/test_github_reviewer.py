@@ -4,14 +4,14 @@ import pytest
 from fastmcp import Client, FastMCP
 from mcp.types import ToolAnnotations
 
-import koba_mcp_bridge.github_reviewer as github_reviewer
-from koba_mcp_bridge.github_agent import GitHubAgentError
-from koba_mcp_bridge.github_collab import GitHubCollabClient
-from koba_mcp_bridge.github_reviewer import (
+import mcp_bridge.github_reviewer as github_reviewer
+from mcp_bridge.github_agent import GitHubAgentError
+from mcp_bridge.github_collab import GitHubCollabClient
+from mcp_bridge.github_reviewer import (
     github_reviewer_client,
     github_reviewer_configured,
 )
-from koba_mcp_bridge.github_reviewer_tools import register_github_reviewer_tools
+from mcp_bridge.github_reviewer_tools import register_github_reviewer_tools
 
 
 class ReviewGateClient(GitHubCollabClient):

@@ -1,4 +1,4 @@
-from koba_mcp_bridge import server
+from mcp_bridge import server
 
 
 def test_chatgpt_oauth_redirect_is_fixed() -> None:

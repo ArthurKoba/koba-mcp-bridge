@@ -1,8 +1,8 @@
 import pytest
 
-import koba_mcp_bridge.github_workflow as github_workflow
-from koba_mcp_bridge.github_agent import GitHubAgentError
-from koba_mcp_bridge.github_workflow import (
+import mcp_bridge.github_workflow as github_workflow
+from mcp_bridge.github_agent import GitHubAgentError
+from mcp_bridge.github_workflow import (
     GitHubDevClient,
     protected_branches_from_env,
     required_checks_from_env,

@@ -8,14 +8,14 @@ from urllib.parse import urlsplit
 
 import pytest
 
-import koba_mcp_bridge.gitlab_client as gitlab_module
-import koba_mcp_bridge.gitlab_tools as gitlab_tools
-from koba_mcp_bridge.gitlab_client import (
+import mcp_bridge.gitlab_client as gitlab_module
+import mcp_bridge.gitlab_tools as gitlab_tools
+from mcp_bridge.gitlab_client import (
     GitLabClient,
     GitLabError,
     GitLabProfileRegistry,
 )
-from koba_mcp_bridge.server import app
+from mcp_bridge.server import app
 
 
 class _GitLabHandler(BaseHTTPRequestHandler):

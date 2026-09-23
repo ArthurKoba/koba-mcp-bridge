@@ -3,11 +3,11 @@ from __future__ import annotations
 import pytest
 from fastmcp import Client
 
-from koba_mcp_bridge.analysis_runtime import mcp as analysis_mcp
-from koba_mcp_bridge.files_runtime import mcp as files_mcp
-from koba_mcp_bridge.github_runtime import mcp as github_mcp
-from koba_mcp_bridge.gitlab_runtime import mcp as gitlab_mcp
-from koba_mcp_bridge.http_runtime import mcp as http_mcp
+from mcp_bridge.analysis_runtime import mcp as analysis_mcp
+from mcp_bridge.files_runtime import mcp as files_mcp
+from mcp_bridge.github_runtime import mcp as github_mcp
+from mcp_bridge.gitlab_runtime import mcp as gitlab_mcp
+from mcp_bridge.http_runtime import mcp as http_mcp
 
 
 async def _tool_names(mcp) -> set[str]:

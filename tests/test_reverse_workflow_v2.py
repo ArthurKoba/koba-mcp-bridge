@@ -5,9 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 
-import koba_mcp_bridge.reverse_workflow as reverse_workflow
-from koba_mcp_bridge.file_store import FileError, FileStore
-from koba_mcp_bridge.reverse_workflow import (
+import mcp_bridge.reverse_workflow as reverse_workflow
+from mcp_bridge.file_store import FileError, FileStore
+from mcp_bridge.reverse_workflow import (
     _decode_call_result,
     _decode_result,
     ghidra_import_file_impl,
