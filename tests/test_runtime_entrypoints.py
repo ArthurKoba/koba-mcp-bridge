@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from fastmcp import Client
 
+from koba_mcp_bridge.analysis_runtime import mcp as analysis_mcp
 from koba_mcp_bridge.files_runtime import mcp as files_mcp
 from koba_mcp_bridge.github_runtime import mcp as github_mcp
 from koba_mcp_bridge.gitlab_runtime import mcp as gitlab_mcp
@@ -60,5 +61,18 @@ async def test_http_runtime_surface_is_isolated() -> None:
     assert "curl_download" in names
     assert "curl_stream_capture" in names
     assert "file_status" not in names
+    assert "github_agent_status" not in names
+    assert "profiles" not in names
+
+
+@pytest.mark.asyncio
+async def test_analysis_runtime_surface_is_isolated() -> None:
+    names = await _tool_names(analysis_mcp)
+
+    assert "ghidra_import_file" in names
+    assert "ghidra_project_sources" in names
+    assert "ghidra_export_program_file" in names
+    assert "file_status" not in names
+    assert "curl_request" not in names
     assert "github_agent_status" not in names
     assert "profiles" not in names
