@@ -15,7 +15,6 @@ def register_github_pull_tools(
     client_factory: Callable[[], GitHubActionsClient],
     read_annotations: ToolAnnotations,
     write_annotations: ToolAnnotations,
-    destructive_annotations: ToolAnnotations,
 ) -> None:
     @mcp.tool(title="GitHub agent list pull requests", annotations=read_annotations)
     def github_agent_list_pull_requests(

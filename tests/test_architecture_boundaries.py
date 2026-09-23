@@ -35,9 +35,11 @@ def test_common_layer_is_provider_neutral() -> None:
 def test_bridge_does_not_import_provider_implementations() -> None:
     violations: list[str] = []
     for path in _python_files(_SRC / "bridge"):
-        for imported in _imports(path):
-            if imported == "modules" or imported.startswith("modules."):
-                violations.append(f"{path.relative_to(_SRC)} -> {imported}")
+        violations.extend(
+            f"{path.relative_to(_SRC)} -> {imported}"
+            for imported in _imports(path)
+            if imported == "modules" or imported.startswith("modules.")
+        )
     assert violations == []
 
 
@@ -57,10 +59,12 @@ def test_provider_packages_do_not_import_each_other() -> None:
             if other not in {provider, "files"}
         }
         for path in _python_files(root):
-            for imported in _imports(path):
+            violations.extend(
+                f"{path.relative_to(_SRC)} -> {imported}"
+                for imported in _imports(path)
                 if any(
                     imported == prefix or imported.startswith(prefix + ".")
                     for prefix in forbidden
-                ):
-                    violations.append(f"{path.relative_to(_SRC)} -> {imported}")
+                )
+            )
     assert violations == []

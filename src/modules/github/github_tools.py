@@ -24,17 +24,34 @@ def register_github_workflow_tools(
     from .ref_tools import register_github_ref_tools
     from .run_tools import register_github_run_tools
 
-    for register in (
-        register_github_content_tools,
-        register_github_ref_tools,
-        register_github_pull_tools,
-        register_github_issue_tools,
-        register_github_run_tools,
-    ):
-        register(
-            mcp,
-            client_factory,
-            read_annotations,
-            write_annotations,
-            destructive_annotations,
-        )
+    register_github_content_tools(
+        mcp,
+        client_factory,
+        read_annotations,
+        write_annotations,
+        destructive_annotations,
+    )
+    register_github_ref_tools(
+        mcp,
+        client_factory,
+        read_annotations,
+        write_annotations,
+        destructive_annotations,
+    )
+    register_github_pull_tools(
+        mcp,
+        client_factory,
+        read_annotations,
+        write_annotations,
+    )
+    register_github_issue_tools(
+        mcp,
+        client_factory,
+        read_annotations,
+        write_annotations,
+    )
+    register_github_run_tools(
+        mcp,
+        client_factory,
+        read_annotations,
+    )

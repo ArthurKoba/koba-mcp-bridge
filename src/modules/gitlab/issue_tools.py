@@ -15,7 +15,6 @@ def register_gitlab_issue_tools(
     client_factory: Callable[[str], GitLabClient],
     read_annotations: ToolAnnotations,
     write_annotations: ToolAnnotations,
-    destructive_annotations: ToolAnnotations,
 ) -> None:
     @mcp.tool(title="GitLab list issues", annotations=read_annotations)
     def list_issues(

@@ -15,7 +15,6 @@ def register_gitlab_merge_request_tools(
     client_factory: Callable[[str], GitLabClient],
     read_annotations: ToolAnnotations,
     write_annotations: ToolAnnotations,
-    destructive_annotations: ToolAnnotations,
 ) -> None:
     @mcp.tool(title="GitLab list merge requests", annotations=read_annotations)
     def list_merge_requests(

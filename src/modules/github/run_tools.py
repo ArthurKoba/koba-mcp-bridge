@@ -14,8 +14,6 @@ def register_github_run_tools(
     mcp: FastMCP,
     client_factory: Callable[[], GitHubActionsClient],
     read_annotations: ToolAnnotations,
-    write_annotations: ToolAnnotations,
-    destructive_annotations: ToolAnnotations,
 ) -> None:
     @mcp.tool(title="GitHub agent workflow runs", annotations=read_annotations)
     def github_agent_workflow_runs(
