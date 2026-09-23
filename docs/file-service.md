@@ -1,6 +1,6 @@
 # Files service architecture
 
-Koba's files service is the common binary-data plane for every MCP workflow.
+MCP Bridge's files service is the common binary-data plane for every MCP workflow.
 
 ## Identity
 
@@ -19,7 +19,7 @@ For chat/client attachments, `file_ingest` is the primary ingress.
 Its `file` input is explicitly advertised through
 `_meta["openai/fileParams"]`. ChatGPT therefore resolves the attachment into a
 structured file payload with `download_url`, `file_id`, and optional
-`mime_type`/`file_name`. Koba fetches the authorized URL server-side, streams
+`mime_type`/`file_name`. MCP Bridge fetches the authorized URL server-side, streams
 it directly to temporary storage, verifies optional expected size/SHA-256, and
 commits the resulting immutable file. Attachment bytes do not pass through
 model-visible base64.
