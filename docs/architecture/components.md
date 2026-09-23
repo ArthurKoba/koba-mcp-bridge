@@ -30,7 +30,7 @@ Only the machine identity bootstrap credential remains in the deployment system.
 
 ## Files
 
-Files are the canonical Koba storage model.
+Files are the canonical MCP Bridge storage model.
 
 The persistent identifier is:
 
@@ -45,7 +45,7 @@ for existing SQLite data.
 ## Ghidra boundary
 
 The raw Ghidra service is not part of the Files renaming. Its native internal tools and
-terminology remain unchanged. Koba adapters translate between the file-oriented Koba
+terminology remain unchanged. MCP Bridge adapters translate between the file-oriented MCP Bridge
 surface and the native Ghidra API.
 
 The future public-facing analysis/recovery MCP must not expose Ghidra-specific tool names
