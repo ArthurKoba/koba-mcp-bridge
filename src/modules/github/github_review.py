@@ -4,7 +4,13 @@ from collections.abc import Mapping, Sequence
 
 from pydantic import ValidationError
 
-from common.models import json_int, json_member_object, json_str, JsonObject, JsonValue
+from common.models import (
+    JsonObject,
+    JsonValue,
+    json_int,
+    json_member_object,
+    json_str,
+)
 
 from .github_agent import GitHubAgentError
 from .github_workflow import GitHubDevClient

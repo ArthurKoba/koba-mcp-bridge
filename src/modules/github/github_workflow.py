@@ -9,8 +9,8 @@ from pydantic import ValidationError
 
 from common.config import env_list
 from common.models import (
-    JsonValue,
     JsonObject,
+    JsonValue,
     json_bool,
     json_int,
     json_member_array,
