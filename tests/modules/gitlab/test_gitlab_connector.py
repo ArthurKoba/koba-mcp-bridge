@@ -10,12 +10,12 @@ import pytest
 
 import modules.gitlab.gitlab_client as gitlab_module
 import modules.gitlab.gitlab_tools as gitlab_tools
+from bridge.server import app
 from modules.gitlab.gitlab_client import (
     GitLabClient,
     GitLabError,
     GitLabProfileRegistry,
 )
-from bridge.server import app
 
 
 class _GitLabHandler(BaseHTTPRequestHandler):

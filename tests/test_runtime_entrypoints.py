@@ -4,10 +4,10 @@ import pytest
 from fastmcp import Client
 
 from modules.analysis.runtime import mcp as analysis
+from modules.curl.runtime import mcp as curl
 from modules.files.runtime import mcp as files
 from modules.github.runtime import mcp as github
 from modules.gitlab.runtime import mcp as gitlab
-from modules.curl.runtime import mcp as curl
 
 
 async def _tool_names(mcp) -> set[str]:
