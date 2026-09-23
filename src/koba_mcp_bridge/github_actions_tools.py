@@ -145,7 +145,7 @@ def register_github_actions_tools(
         per_page: int = 100,
         page: int = 1,
     ) -> dict[str, object]:
-        """List artifacts produced by one GitHub Actions workflow run."""
+        """List files produced by one GitHub Actions workflow run."""
         return client_factory().list_workflow_files(
             repository,
             run_id,
