@@ -673,20 +673,20 @@ class FileStore:
         if zipfile.is_zipfile(archive_path):
             with zipfile.ZipFile(archive_path) as archive:
                 zip_members = archive.infolist()
-                regular = [member for member in zip_members if not member.is_dir()]
-                if len(regular) > file_limit:
+                zip_regular = [member for member in zip_members if not member.is_dir()]
+                if len(zip_regular) > file_limit:
                     raise FileError("archive exceeds configured file-count limit")
-                for member in regular:
-                    mode = (member.external_attr >> 16) & 0o170000
+                for zip_member in zip_regular:
+                    mode = (zip_member.external_attr >> 16) & 0o170000
                     if mode and not stat.S_ISREG(mode):
                         raise FileError(
-                            f"unsupported archive member type: {member.filename}"
+                            f"unsupported archive member type: {zip_member.filename}"
                         )
-                    path = _safe_collection_path(member.filename)
-                    total_bytes += int(member.file_size)
+                    path = _safe_collection_path(zip_member.filename)
+                    total_bytes += int(zip_member.file_size)
                     if total_bytes > byte_limit:
                         raise FileError("archive exceeds configured extraction size limit")
-                    with archive.open(member, "r") as zip_stream:
+                    with archive.open(zip_member, "r") as zip_stream:
                         stored = self.put_stream(
                             zip_stream,
                             name=path,
@@ -704,21 +704,21 @@ class FileStore:
         elif tarfile.is_tarfile(archive_path):
             with tarfile.open(archive_path, mode="r:*") as archive:
                 tar_members = archive.getmembers()
-                regular = [member for member in tar_members if member.isfile()]
-                for member in tar_members:
-                    if member.isdir() or member.isfile():
+                tar_regular = [member for member in tar_members if member.isfile()]
+                for tar_member in tar_members:
+                    if tar_member.isdir() or tar_member.isfile():
                         continue
-                    raise FileError(f"unsupported archive member type: {member.name}")
-                if len(regular) > file_limit:
+                    raise FileError(f"unsupported archive member type: {tar_member.name}")
+                if len(tar_regular) > file_limit:
                     raise FileError("archive exceeds configured file-count limit")
-                for member in regular:
-                    path = _safe_collection_path(member.name)
-                    total_bytes += int(member.size)
+                for tar_member in tar_regular:
+                    path = _safe_collection_path(tar_member.name)
+                    total_bytes += int(tar_member.size)
                     if total_bytes > byte_limit:
                         raise FileError("archive exceeds configured extraction size limit")
-                    tar_stream = archive.extractfile(member)
+                    tar_stream = archive.extractfile(tar_member)
                     if tar_stream is None:
-                        raise FileError(f"unable to read archive member: {member.name}")
+                        raise FileError(f"unable to read archive member: {tar_member.name}")
                     with tar_stream:
                         stored = self.put_stream(
                             tar_stream,
