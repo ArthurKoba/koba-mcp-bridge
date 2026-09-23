@@ -114,10 +114,10 @@ _auth, _auth_middleware = _build_auth()
 _BACKENDS = _configured_backends()
 
 mcp = FastMCP(
-    "koba-mcp-gateway",
+    "mcp-bridge",
     version=__version__,
     instructions=(
-        "Authenticated edge gateway for isolated Koba MCP runtimes. "
+        "Authenticated edge gateway for isolated MCP runtimes. "
         "GitHub, GitLab, Files, HTTP and analysis execute in private services. "
         "Secrets are never returned as plaintext."
     ),
@@ -126,27 +126,27 @@ mcp = FastMCP(
 )
 
 github_mcp = _public_facade(
-    "koba-github-gateway",
+    "github-mcp",
     "github",
     _BACKENDS["github"],
 )
 gitlab_mcp = _public_facade(
-    "koba-gitlab-gateway",
+    "gitlab-mcp",
     "gitlab",
     _BACKENDS["gitlab"],
 )
 files_mcp = _public_facade(
-    "koba-files-gateway",
+    "files-mcp",
     "files",
     _BACKENDS["files"],
 )
 http_mcp = _public_facade(
-    "koba-http-gateway",
+    "http-mcp",
     "http",
     _BACKENDS["http"],
 )
 analysis_mcp = _public_facade(
-    "koba-analysis-gateway",
+    "analysis-mcp",
     "analysis",
     _BACKENDS["analysis"],
 )
@@ -158,7 +158,7 @@ _mount_aggregate_backends(mcp, _BACKENDS)
 def bridge_ping() -> dict[str, str]:
     return {
         "status": "ok",
-        "service": "koba-mcp-gateway",
+        "service": "mcp-bridge",
         "version": __version__,
         "time": datetime.now(UTC).isoformat(),
     }
@@ -167,7 +167,7 @@ def bridge_ping() -> dict[str, str]:
 @mcp.tool(title="Bridge build info", annotations=READ_ONLY_LOCAL)
 def bridge_build_info() -> dict[str, str]:
     return {
-        "service": "koba-mcp-gateway",
+        "service": "mcp-bridge",
         "version": __version__,
         "commit": os.getenv("BUILD_SHA", "unknown"),
         "built_at": os.getenv("BUILD_TIME", "unknown"),
