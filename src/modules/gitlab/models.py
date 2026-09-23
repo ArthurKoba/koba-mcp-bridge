@@ -8,7 +8,7 @@ from pydantic import Field, PrivateAttr, field_validator, model_validator
 from common.models import JsonObject, JsonValue, StrictModel
 
 
-def _unbound_token_resolver(path: str, name: str) -> str:
+def _unbound_token_resolver(_path: str, _name: str) -> str:
     raise RuntimeError("GitLab token resolver is not bound")
 
 

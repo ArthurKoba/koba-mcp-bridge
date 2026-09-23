@@ -5,9 +5,9 @@ import os
 import urllib.parse
 from collections.abc import Mapping, Sequence
 
-from common.config import env_list
 from pydantic import ValidationError
 
+from common.config import env_list
 from common.models import (
     JsonObject,
     json_bool,
