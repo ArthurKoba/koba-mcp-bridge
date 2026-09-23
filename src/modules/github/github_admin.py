@@ -3,7 +3,6 @@ from __future__ import annotations
 import urllib.parse
 
 from common.models import (
-    JsonObject,
     json_bool,
     json_member_object,
     json_object,

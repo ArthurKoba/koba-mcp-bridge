@@ -2,15 +2,6 @@ from __future__ import annotations
 
 import os
 
-from common.models import (
-    json_bool,
-    json_int,
-    json_member_array,
-    json_member_object,
-    json_object,
-    json_str,
-)
-
 from common.models import json_int, json_member_object, json_str
 
 from .github_agent import GitHubAgentError
