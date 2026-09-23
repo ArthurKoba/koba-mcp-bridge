@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from common.config import env_list
 from common.models import (
+    JsonValue,
     JsonObject,
     json_bool,
     json_int,
@@ -73,7 +74,7 @@ class GitHubDevClient(GitHubAppClient):
         repository: str,
         path: str = "",
         ref: str | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         suffix = self._path(path)
         endpoint = f"/repos/{repository}/contents"
@@ -102,7 +103,7 @@ class GitHubDevClient(GitHubAppClient):
         repository: str,
         path: str,
         ref: str | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         endpoint = f"/repos/{repository}/contents/{self._path(path)}"
         if ref:
@@ -127,7 +128,7 @@ class GitHubDevClient(GitHubAppClient):
         content: str,
         message: str,
         branch: str,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         self._assert_mutable_branch(branch)
         return super().put_file(repository, path, content, message, branch)
 
@@ -138,7 +139,7 @@ class GitHubDevClient(GitHubAppClient):
         content_base64: str,
         message: str,
         branch: str,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         branch = self._assert_mutable_branch(branch)
         try:
@@ -153,7 +154,7 @@ class GitHubDevClient(GitHubAppClient):
             f"/repos/{repository}/contents/{quoted_path}?ref={ref}",
             allowed_errors={404},
         )
-        payload: dict[str, object] = {
+        payload: JsonObject = {
             "message": message,
             "content": content_base64,
             "branch": branch,
@@ -233,11 +234,11 @@ class GitHubDevClient(GitHubAppClient):
         source_ref: str,
         branch: str,
         message: str,
-        copies: Sequence[CopySpec | Mapping[str, object]],
+        copies: Sequence[CopySpec | Mapping[str, JsonValue]],
         expected_head_sha: str | None = None,
         operation: str = "copy",
         overwrite: bool = False,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Copy or move existing Git blobs without transferring file contents."""
         repository = self._assert_allowed(repository)
         branch = self._assert_mutable_branch(branch)
@@ -320,10 +321,10 @@ class GitHubDevClient(GitHubAppClient):
             if not source_tree:
                 raise GitHubAgentError("source commit has no tree sha")
 
-        tree_entries: list[dict[str, object]] = []
+        tree_entries: list[JsonObject] = []
         seen_destinations: set[str] = set()
         seen_move_sources: set[str] = set()
-        processed: list[dict[str, object]] = []
+        processed: list[JsonObject] = []
 
         for item in normalized_copies:
             source_path = "/".join(
@@ -479,7 +480,7 @@ class GitHubDevClient(GitHubAppClient):
         path: str,
         message: str,
         branch: str,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         self._assert_mutable_branch(branch)
         return super().delete_file(repository, path, message, branch)
 
@@ -488,9 +489,9 @@ class GitHubDevClient(GitHubAppClient):
         repository: str,
         branch: str,
         message: str,
-        changes: Sequence[AtomicChange | Mapping[str, object]],
+        changes: Sequence[AtomicChange | Mapping[str, JsonValue]],
         expected_head_sha: str | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         branch = self._assert_mutable_branch(branch)
         if not changes:
@@ -536,7 +537,7 @@ class GitHubDevClient(GitHubAppClient):
         if not base_tree:
             raise GitHubAgentError("parent commit has no tree sha")
 
-        tree_entries: list[dict[str, object]] = []
+        tree_entries: list[JsonObject] = []
         copy_ref_cache: dict[str, str] = {}
         for change in normalized_changes:
             path = change.path.strip("/")
@@ -668,7 +669,7 @@ class GitHubDevClient(GitHubAppClient):
         path: str | None = None,
         per_page: int = 50,
         page: int = 1,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         params: dict[str, str | int] = {
             "per_page": max(1, min(per_page, 100)),
@@ -702,7 +703,7 @@ class GitHubDevClient(GitHubAppClient):
             )
         return {"repository": repository, "commits": commits, "page": page}
 
-    def get_commit(self, repository: str, ref: str) -> dict[str, object]:
+    def get_commit(self, repository: str, ref: str) -> JsonObject:
         repository = self._assert_allowed(repository)
         _, result = self._repo_request(
             repository,
@@ -735,7 +736,7 @@ class GitHubDevClient(GitHubAppClient):
             ],
         }
 
-    def delete_branch(self, repository: str, branch: str) -> dict[str, object]:
+    def delete_branch(self, repository: str, branch: str) -> JsonObject:
         repository = self._assert_allowed(repository)
         branch = self._assert_mutable_branch(branch)
         self._repo_request(
@@ -750,7 +751,7 @@ class GitHubDevClient(GitHubAppClient):
         repository: str,
         branch: str,
         new_name: str,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         branch = self._assert_mutable_branch(branch)
         new_name = self._assert_mutable_branch(new_name)
@@ -767,7 +768,7 @@ class GitHubDevClient(GitHubAppClient):
             "result": result,
         }
 
-    def fast_forward(self, repository: str, branch: str, to_ref: str) -> dict[str, object]:
+    def fast_forward(self, repository: str, branch: str, to_ref: str) -> JsonObject:
         self._assert_mutable_branch(branch)
         return super().fast_forward(repository, branch, to_ref)
 
@@ -779,7 +780,7 @@ class GitHubDevClient(GitHubAppClient):
         expected_head_sha: str,
         allow_protected_branch: bool = False,
         dry_run: bool = True,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Force-reset a branch to an existing ancestor commit with CAS safeguards."""
         repository = self._assert_allowed(repository)
         branch = branch.strip()
@@ -889,7 +890,7 @@ class GitHubDevClient(GitHubAppClient):
         repository: str,
         per_page: int = 100,
         page: int = 1,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         params = urllib.parse.urlencode(
             {"per_page": max(1, min(per_page, 100)), "page": max(1, page)}
@@ -914,7 +915,7 @@ class GitHubDevClient(GitHubAppClient):
         tag: str,
         target_ref: str,
         message: str | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         _, target = self._repo_request(
             repository,
@@ -958,7 +959,7 @@ class GitHubDevClient(GitHubAppClient):
             "annotated": annotated,
         }
 
-    def delete_tag(self, repository: str, tag: str) -> dict[str, object]:
+    def delete_tag(self, repository: str, tag: str) -> JsonObject:
         repository = self._assert_allowed(repository)
         self._repo_request(
             repository,
@@ -973,7 +974,7 @@ class GitHubDevClient(GitHubAppClient):
         query: str,
         per_page: int = 30,
         page: int = 1,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         q = f"{query} repo:{repository}"
         params = urllib.parse.urlencode(
@@ -1008,7 +1009,7 @@ class GitHubDevClient(GitHubAppClient):
         state: str = "open",
         per_page: int = 50,
         page: int = 1,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         if state not in {"open", "closed", "all"}:
             raise GitHubAgentError("state must be open, closed, or all")
@@ -1033,7 +1034,7 @@ class GitHubDevClient(GitHubAppClient):
         }
 
     @staticmethod
-    def _compact_pull(item: JsonObject) -> dict[str, object]:
+    def _compact_pull(item: JsonObject) -> JsonObject:
         head = json_member_object(item, "head")
         base = json_member_object(item, "base")
         return {
@@ -1048,7 +1049,7 @@ class GitHubDevClient(GitHubAppClient):
             "html_url": json_str(item.get("html_url")),
         }
 
-    def get_pull_request(self, repository: str, number: int) -> dict[str, object]:
+    def get_pull_request(self, repository: str, number: int) -> JsonObject:
         repository = self._assert_allowed(repository)
         _, result = self._repo_request(
             repository,
@@ -1071,7 +1072,7 @@ class GitHubDevClient(GitHubAppClient):
         base: str,
         body: str = "",
         draft: bool = False,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         if ":" in head or ":" in base:
             raise GitHubAgentError("cross-repository pull requests are disabled")
@@ -1101,9 +1102,9 @@ class GitHubDevClient(GitHubAppClient):
         body: str | None = None,
         state: str | None = None,
         base: str | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
-        payload: dict[str, object] = {}
+        payload: JsonObject = {}
         if title is not None:
             payload["title"] = title
         if body is not None:
@@ -1128,7 +1129,7 @@ class GitHubDevClient(GitHubAppClient):
             raise GitHubAgentError("unexpected pull request update response")
         return {"repository": repository, "pull_request": self._compact_pull(result)}
 
-    def list_pull_files(self, repository: str, number: int) -> dict[str, object]:
+    def list_pull_files(self, repository: str, number: int) -> JsonObject:
         repository = self._assert_allowed(repository)
         _, result = self._repo_request(
             repository,
@@ -1155,7 +1156,7 @@ class GitHubDevClient(GitHubAppClient):
         repository: str,
         number: int,
         body: str,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         _, result = self._repo_request(
             repository,
@@ -1172,7 +1173,7 @@ class GitHubDevClient(GitHubAppClient):
             "html_url": json_str(result.get("html_url")),
         }
 
-    def list_reviews(self, repository: str, number: int) -> dict[str, object]:
+    def list_reviews(self, repository: str, number: int) -> JsonObject:
         repository = self._assert_allowed(repository)
         _, result = self._repo_request(
             repository,
@@ -1203,7 +1204,7 @@ class GitHubDevClient(GitHubAppClient):
         number: int,
         event: str,
         body: str,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         event = event.upper()
         if event not in {"APPROVE", "REQUEST_CHANGES", "COMMENT"}:
@@ -1228,9 +1229,9 @@ class GitHubDevClient(GitHubAppClient):
         repository: str,
         number: int,
         expected_head_sha: str | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
-        payload: dict[str, object] = {}
+        payload: JsonObject = {}
         if expected_head_sha:
             payload["expected_head_sha"] = expected_head_sha
         _, result = self._repo_request(
@@ -1241,7 +1242,7 @@ class GitHubDevClient(GitHubAppClient):
         )
         return {"repository": repository, "number": number, "result": result}
 
-    def check_runs(self, repository: str, ref: str) -> dict[str, object]:
+    def check_runs(self, repository: str, ref: str) -> JsonObject:
         repository = self._assert_allowed(repository)
         _, result = self._repo_request(
             repository,
@@ -1266,7 +1267,7 @@ class GitHubDevClient(GitHubAppClient):
                 )
         return {"repository": repository, "ref": ref, "check_runs": checks}
 
-    def assert_required_checks(self, repository: str, ref: str) -> dict[str, object]:
+    def assert_required_checks(self, repository: str, ref: str) -> JsonObject:
         result = self.check_runs(repository, ref)
         checks = result["check_runs"]
         assert isinstance(checks, list)
@@ -1332,7 +1333,7 @@ class GitHubDevClient(GitHubAppClient):
         merge_method: str = "squash",
         commit_title: str | None = None,
         commit_message: str | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         if merge_method not in {"merge", "squash", "rebase"}:
             raise GitHubAgentError("merge_method must be merge, squash, or rebase")
@@ -1356,7 +1357,7 @@ class GitHubDevClient(GitHubAppClient):
             raise GitHubAgentError("pull request head has no sha")
         self.assert_required_checks(repository, head_sha)
 
-        payload: dict[str, object] = {"merge_method": merge_method}
+        payload: JsonObject = {"merge_method": merge_method}
         if commit_title:
             payload["commit_title"] = commit_title
         if commit_message:
@@ -1384,7 +1385,7 @@ class GitHubDevClient(GitHubAppClient):
         state: str = "open",
         per_page: int = 50,
         page: int = 1,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         if state not in {"open", "closed", "all"}:
             raise GitHubAgentError("state must be open, closed, or all")
@@ -1410,7 +1411,7 @@ class GitHubDevClient(GitHubAppClient):
         return {"repository": repository, "issues": issues, "page": page}
 
     @staticmethod
-    def _compact_issue(item: JsonObject) -> dict[str, object]:
+    def _compact_issue(item: JsonObject) -> JsonObject:
         return {
             "number": json_int(item.get("number")),
             "title": json_str(item.get("title")),
@@ -1419,7 +1420,7 @@ class GitHubDevClient(GitHubAppClient):
             "html_url": json_str(item.get("html_url")),
         }
 
-    def get_issue(self, repository: str, number: int) -> dict[str, object]:
+    def get_issue(self, repository: str, number: int) -> JsonObject:
         repository = self._assert_allowed(repository)
         _, result = self._repo_request(
             repository,
@@ -1436,9 +1437,9 @@ class GitHubDevClient(GitHubAppClient):
         title: str,
         body: str = "",
         labels: list[str] | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
-        payload: dict[str, object] = {"title": title, "body": body}
+        payload: JsonObject = {"title": title, "body": body}
         if labels is not None:
             payload["labels"] = labels
         _, result = self._repo_request(
@@ -1459,9 +1460,9 @@ class GitHubDevClient(GitHubAppClient):
         body: str | None = None,
         state: str | None = None,
         labels: list[str] | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
-        payload: dict[str, object] = {}
+        payload: JsonObject = {}
         if title is not None:
             payload["title"] = title
         if body is not None:
@@ -1489,7 +1490,7 @@ class GitHubDevClient(GitHubAppClient):
         repository: str,
         number: int,
         body: str,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         _, result = self._repo_request(
             repository,
@@ -1513,7 +1514,7 @@ class GitHubDevClient(GitHubAppClient):
         status: str | None = None,
         per_page: int = 30,
         page: int = 1,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         params: dict[str, str | int] = {
             "per_page": max(1, min(per_page, 100)),
@@ -1548,7 +1549,7 @@ class GitHubDevClient(GitHubAppClient):
         ]
         return {"repository": repository, "workflow_runs": runs, "page": page}
 
-    def list_workflow_jobs(self, repository: str, run_id: int) -> dict[str, object]:
+    def list_workflow_jobs(self, repository: str, run_id: int) -> JsonObject:
         repository = self._assert_allowed(repository)
         _, result = self._repo_request(
             repository,

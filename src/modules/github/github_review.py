@@ -4,7 +4,7 @@ from collections.abc import Mapping, Sequence
 
 from pydantic import ValidationError
 
-from common.models import JsonObject, json_int, json_member_object, json_str
+from common.models import json_int, json_member_object, json_str, JsonObject, JsonValue
 
 from .github_agent import GitHubAgentError
 from .github_workflow import GitHubDevClient
@@ -18,7 +18,7 @@ class GitHubReviewClient(GitHubDevClient):
         self,
         repository: str,
         query: str,
-        variables: dict[str, object],
+        variables: JsonObject,
     ) -> JsonObject:
         repository = self._assert_allowed(repository)
         token = self._installation_token(repository)
@@ -44,7 +44,7 @@ class GitHubReviewClient(GitHubDevClient):
         number: int,
         method: str = "MERGE",
         expected_head_sha: str | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         method = method.upper()
         if method not in {"MERGE", "REBASE"}:
@@ -84,7 +84,7 @@ class GitHubReviewClient(GitHubDevClient):
           }
         }
         """
-        input_data: dict[str, object] = {
+        input_data: JsonObject = {
             "pullRequestId": node_id,
             "updateMethod": method,
         }
@@ -114,14 +114,14 @@ class GitHubReviewClient(GitHubDevClient):
         number: int,
         event: str,
         body: str,
-        comments: Sequence[ReviewComment | Mapping[str, object]] | None = None,
+        comments: Sequence[ReviewComment | Mapping[str, JsonValue]] | None = None,
         commit_id: str | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         event = event.upper()
         if event not in {"APPROVE", "REQUEST_CHANGES", "COMMENT"}:
             raise GitHubAgentError("event must be APPROVE, REQUEST_CHANGES, or COMMENT")
-        payload: dict[str, object] = {"event": event, "body": body}
+        payload: JsonObject = {"event": event, "body": body}
         if commit_id:
             payload["commit_id"] = commit_id
         if comments:
@@ -160,7 +160,7 @@ class GitHubReviewClient(GitHubDevClient):
         self,
         repository: str,
         number: int,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         _, result = self._repo_request(
             repository,
@@ -190,7 +190,7 @@ class GitHubReviewClient(GitHubDevClient):
         self,
         repository: str,
         number: int,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         _, result = self._repo_request(
             repository,

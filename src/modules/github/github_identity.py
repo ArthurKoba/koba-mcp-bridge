@@ -27,7 +27,7 @@ class GitHubPrettyIdentityClient(GitHubActionsClient):
     retaining the GitHub-generated bot noreply email for stable attribution.
     """
 
-    def _app_identity(self) -> dict[str, object]:
+    def _app_identity(self) -> JsonObject:
         cached = getattr(self, "_app_identity_cache", None)
         if isinstance(cached, dict):
             return dict(cached)
@@ -60,7 +60,7 @@ class GitHubPrettyIdentityClient(GitHubActionsClient):
             raise GitHubAgentError("unable to resolve GitHub App bot identity") from exc
         if bot_id <= 0:
             raise GitHubAgentError("unable to resolve GitHub App bot identity")
-        identity: dict[str, object] = {
+        identity: JsonObject = {
             "source": "current_agent_app",
             "app_id": self.app_id,
             "slug": slug,
@@ -74,7 +74,7 @@ class GitHubPrettyIdentityClient(GitHubActionsClient):
         self._app_identity_cache = dict(identity)
         return identity
 
-    def _agent_app_identity(self) -> dict[str, object]:
+    def _agent_app_identity(self) -> JsonObject:
         """Compatibility hook used by history/admin policy code."""
         return self._app_identity()
 
@@ -136,7 +136,7 @@ class GitHubPrettyIdentityClient(GitHubActionsClient):
             allowed_errors=allowed_errors,
         )
 
-    def list_repositories(self) -> dict[str, object]:
+    def list_repositories(self) -> JsonObject:
         base_list = super().list_repositories
         with ThreadPoolExecutor(
             max_workers=2,
@@ -148,7 +148,7 @@ class GitHubPrettyIdentityClient(GitHubActionsClient):
             result["app_identity"] = identity_future.result()
             return result
 
-    def status(self, repository: str) -> dict[str, object]:
+    def status(self, repository: str) -> JsonObject:
         base_status = super().status
         with ThreadPoolExecutor(
             max_workers=2,

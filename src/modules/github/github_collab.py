@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 
 from common.models import (
+    JsonObject,
     json_bool,
     json_int,
     json_member_array,
@@ -26,7 +27,7 @@ class GitHubCollabClient(GitHubReviewClient):
         self,
         repository: str,
         number: int,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         required = required_reviewer_logins_from_env()
         if not required:
@@ -75,7 +76,7 @@ class GitHubCollabClient(GitHubReviewClient):
         merge_method: str = "squash",
         commit_title: str | None = None,
         commit_message: str | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         self.assert_required_reviews(repository, number)
         return super().merge_pull_request(
             repository,
@@ -91,10 +92,10 @@ class GitHubCollabClient(GitHubReviewClient):
         base: str,
         head: str,
         commit_message: str | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         base = self._assert_mutable_branch(base)
-        payload: dict[str, object] = {"base": base, "head": head}
+        payload: JsonObject = {"base": base, "head": head}
         if commit_message:
             payload["commit_message"] = commit_message
         status, result = self._repo_request(
@@ -132,11 +133,11 @@ class GitHubCollabClient(GitHubReviewClient):
         number: int,
         reviewers: list[str] | None = None,
         team_reviewers: list[str] | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         if not reviewers and not team_reviewers:
             raise GitHubAgentError("at least one reviewer or team reviewer is required")
-        payload: dict[str, object] = {}
+        payload: JsonObject = {}
         if reviewers:
             payload["reviewers"] = reviewers
         if team_reviewers:
@@ -176,11 +177,11 @@ class GitHubCollabClient(GitHubReviewClient):
         number: int,
         reviewers: list[str] | None = None,
         team_reviewers: list[str] | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         if not reviewers and not team_reviewers:
             raise GitHubAgentError("at least one reviewer or team reviewer is required")
-        payload: dict[str, object] = {}
+        payload: JsonObject = {}
         if reviewers:
             payload["reviewers"] = reviewers
         if team_reviewers:
@@ -198,7 +199,7 @@ class GitHubCollabClient(GitHubReviewClient):
         repository: str,
         comment_id: int,
         body: str,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         _, result = self._repo_request(
             repository,
@@ -221,7 +222,7 @@ class GitHubCollabClient(GitHubReviewClient):
         number: int,
         comment_id: int,
         body: str,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         _, result = self._repo_request(
             repository,
@@ -243,7 +244,7 @@ class GitHubCollabClient(GitHubReviewClient):
         self,
         repository: str,
         number: int,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         owner, name = repository.split("/", 1)
         query = """
@@ -293,14 +294,14 @@ class GitHubCollabClient(GitHubReviewClient):
                 "pull request review threads response is invalid"
             ) from exc
 
-        threads: list[dict[str, object]] = []
+        threads: list[JsonObject] = []
         for raw_thread in nodes:
             if not isinstance(raw_thread, dict):
                 continue
             thread = raw_thread
             comments_data = json_member_object(thread, "comments")
             comment_nodes = json_member_array(comments_data, "nodes")
-            comments: list[dict[str, object]] = []
+            comments: list[JsonObject] = []
             for raw_comment in comment_nodes:
                 if not isinstance(raw_comment, dict):
                     continue
@@ -334,7 +335,7 @@ class GitHubCollabClient(GitHubReviewClient):
         repository: str,
         thread_id: str,
         resolved: bool,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         if resolved:
             field = "resolveReviewThread"
@@ -371,7 +372,7 @@ class GitHubCollabClient(GitHubReviewClient):
         self,
         repository: str,
         number: int,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         _, pull = self._repo_request(
             repository,

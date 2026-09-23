@@ -15,6 +15,7 @@ from typing import Self
 import jwt
 
 from common.models import (
+    JsonObject,
     JsonContainer,
     json_bool,
     json_container,
@@ -106,7 +107,7 @@ class GitHubAppClient:
         init=False,
         repr=False,
     )
-    _repository_cache: dict[str, tuple[float, dict[str, object]]] = field(
+    _repository_cache: dict[str, tuple[float, JsonObject]] = field(
         default_factory=dict,
         init=False,
         repr=False,
@@ -437,9 +438,9 @@ class GitHubAppClient:
             page += 1
         return installation_ids
 
-    def list_repositories(self) -> dict[str, object]:
+    def list_repositories(self) -> JsonObject:
         """List every repository currently granted to this GitHub App installation."""
-        repositories: list[dict[str, object]] = []
+        repositories: list[JsonObject] = []
         seen: set[str] = set()
         for installation_id in self._installation_ids_from_github():
             token = self._installation_token_for_id(installation_id)
@@ -482,7 +483,7 @@ class GitHubAppClient:
                     cache_key = full_name.casefold()
                     self._installation_ids[cache_key] = installation_id
 
-                    metadata: dict[str, object] = {
+                    metadata: JsonObject = {
                         "repository": full_name,
                         "default_branch": json_str(item.get("default_branch")),
                         "private": json_bool(item.get("private")),
@@ -522,7 +523,7 @@ class GitHubAppClient:
         repository: str,
         *,
         refresh: bool = False,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         key = repository.casefold()
         now = time.monotonic()
@@ -537,7 +538,7 @@ class GitHubAppClient:
             payload = json_object(result, context="GitHub repository response")
         except ValueError as exc:
             raise GitHubAgentError("unexpected repository response") from exc
-        metadata: dict[str, object] = {
+        metadata: JsonObject = {
             "repository": json_str(payload.get("full_name"), default=repository),
             "default_branch": json_str(payload.get("default_branch")),
             "private": json_bool(payload.get("private")),
@@ -552,7 +553,7 @@ class GitHubAppClient:
                 )
         return metadata
 
-    def status(self, repository: str) -> dict[str, object]:
+    def status(self, repository: str) -> JsonObject:
         repository = self._assert_allowed(repository)
         result = self._repository_metadata(repository)
         return {
@@ -564,7 +565,7 @@ class GitHubAppClient:
             "status": "ok",
         }
 
-    def get_file(self, repository: str, path: str, ref: str | None = None) -> dict[str, object]:
+    def get_file(self, repository: str, path: str, ref: str | None = None) -> JsonObject:
         repository = self._assert_allowed(repository)
         quoted_path = urllib.parse.quote(path.strip("/"), safe="/")
         query = ""
@@ -596,7 +597,7 @@ class GitHubAppClient:
             "content": decoded,
         }
 
-    def list_branches(self, repository: str) -> dict[str, object]:
+    def list_branches(self, repository: str) -> JsonObject:
         repository = self._assert_allowed(repository)
         _, result = self._repo_request(
             repository,
@@ -605,7 +606,7 @@ class GitHubAppClient:
         )
         if not isinstance(result, list):
             raise GitHubAgentError("unexpected branch list response")
-        branches: list[dict[str, object]] = []
+        branches: list[JsonObject] = []
         for raw_item in result:
             try:
                 item = json_object(raw_item, context="GitHub branch item")
@@ -621,7 +622,7 @@ class GitHubAppClient:
                 raise GitHubAgentError("unexpected branch list response") from exc
         return {"repository": repository, "branches": branches}
 
-    def create_branch(self, repository: str, branch: str, from_branch: str) -> dict[str, object]:
+    def create_branch(self, repository: str, branch: str, from_branch: str) -> JsonObject:
         repository = self._assert_allowed(repository)
         source = urllib.parse.quote(from_branch, safe="")
         _, ref = self._repo_request(
@@ -652,7 +653,7 @@ class GitHubAppClient:
         content: str,
         message: str,
         branch: str,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         quoted_path = urllib.parse.quote(path.strip("/"), safe="/")
         ref = urllib.parse.quote(branch, safe="")
@@ -662,7 +663,7 @@ class GitHubAppClient:
             f"/repos/{repository}/contents/{quoted_path}?ref={ref}",
             allowed_errors={404},
         )
-        payload: dict[str, object] = {
+        payload: JsonObject = {
             "message": message,
             "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
             "branch": branch,
@@ -714,7 +715,7 @@ class GitHubAppClient:
         path: str,
         message: str,
         branch: str,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         quoted_path = urllib.parse.quote(path.strip("/"), safe="/")
         ref = urllib.parse.quote(branch, safe="")
@@ -754,7 +755,7 @@ class GitHubAppClient:
             "commit_sha": str(commit.get("sha", "")),
         }
 
-    def compare(self, repository: str, base: str, head: str) -> dict[str, object]:
+    def compare(self, repository: str, base: str, head: str) -> JsonObject:
         repository = self._assert_allowed(repository)
         base_q = urllib.parse.quote(base, safe="")
         head_q = urllib.parse.quote(head, safe="")
@@ -772,7 +773,7 @@ class GitHubAppClient:
         except ValueError as exc:
             raise GitHubAgentError("unexpected compare response") from exc
 
-        normalized_files: list[dict[str, object]] = []
+        normalized_files: list[JsonObject] = []
         for raw_item in files:
             try:
                 item = json_object(raw_item, context="GitHub compare file")
@@ -798,7 +799,7 @@ class GitHubAppClient:
             "files": normalized_files,
         }
 
-    def fast_forward(self, repository: str, branch: str, to_ref: str) -> dict[str, object]:
+    def fast_forward(self, repository: str, branch: str, to_ref: str) -> JsonObject:
         repository = self._assert_allowed(repository)
         to_q = urllib.parse.quote(to_ref, safe="")
         _, commit = self._repo_request(

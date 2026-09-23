@@ -7,6 +7,7 @@ import urllib.parse
 import urllib.request
 
 from common.models import (
+    JsonObject,
     json_bool,
     json_int,
     json_member_array,
@@ -45,7 +46,7 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
         self,
         repository: str,
         number: int,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         required = required_reviewer_logins_from_env()
         if not required:
@@ -120,7 +121,7 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
         merge_method: str = "squash",
         commit_title: str | None = None,
         commit_message: str | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         _, pull = self._repo_request(
             repository,
@@ -206,7 +207,7 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
         repository: str,
         job_id: int,
         max_chars: int = 100_000,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         max_chars = max(1, min(max_chars, 500_000))
         data = self._download_redirect_bytes(
@@ -233,7 +234,7 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
         run_id: int,
         per_page: int = 100,
         page: int = 1,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         query = urllib.parse.urlencode(
             {
@@ -276,7 +277,7 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
         repository: str,
         workflow_file_id: int,
         max_bytes: int = _MAX_WORKFLOW_FILE_BYTES,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         data = self._download_redirect_bytes(
             repository,
@@ -295,7 +296,7 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
         self,
         repository: str,
         workflow_id: str,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Enable one GitHub Actions workflow in an installed repository."""
         repository = self._assert_allowed(repository)
         workflow = workflow_id.strip()
@@ -320,8 +321,8 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
         repository: str,
         workflow_id: str,
         ref: str,
-        inputs: dict[str, object] | None = None,
-    ) -> dict[str, object]:
+        inputs: JsonObject | None = None,
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         workflow = workflow_id.strip()
         target_ref = ref.strip()
@@ -331,7 +332,7 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
             raise GitHubAgentError("ref must not be empty")
 
         workflow_q = urllib.parse.quote(workflow, safe="")
-        payload: dict[str, object] = {"ref": target_ref}
+        payload: JsonObject = {"ref": target_ref}
         if inputs:
             payload["inputs"] = dict(inputs)
 
@@ -350,7 +351,7 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
             "dispatched": status in {201, 204},
         }
 
-    def rerun_workflow_job(self, repository: str, job_id: int) -> dict[str, object]:
+    def rerun_workflow_job(self, repository: str, job_id: int) -> JsonObject:
         repository = self._assert_allowed(repository)
         status, _ = self._repo_request(
             repository,
@@ -363,7 +364,7 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
         self,
         repository: str,
         run_id: int,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._assert_allowed(repository)
         status, _ = self._repo_request(
             repository,
@@ -372,7 +373,7 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
         )
         return {"repository": repository, "run_id": run_id, "status": status}
 
-    def rerun_workflow_run(self, repository: str, run_id: int) -> dict[str, object]:
+    def rerun_workflow_run(self, repository: str, run_id: int) -> JsonObject:
         repository = self._assert_allowed(repository)
         status, _ = self._repo_request(
             repository,
@@ -381,7 +382,7 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
         )
         return {"repository": repository, "run_id": run_id, "status": status}
 
-    def cancel_workflow_run(self, repository: str, run_id: int) -> dict[str, object]:
+    def cancel_workflow_run(self, repository: str, run_id: int) -> JsonObject:
         repository = self._assert_allowed(repository)
         status, _ = self._repo_request(
             repository,
