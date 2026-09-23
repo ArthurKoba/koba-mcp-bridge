@@ -71,7 +71,7 @@ class InfisicalConfig(StrictModel):
     client_secret_source: str = ""
 
     @classmethod
-    def from_env(cls) -> InfisicalConfig:
+    def from_env(cls) -> "InfisicalConfig":
         host = os.getenv("INFISICAL_HOST", "").strip().rstrip("/")
         project_id = os.getenv("INFISICAL_PROJECT_ID", "").strip()
         environment = os.getenv("INFISICAL_ENVIRONMENT", "prod").strip() or "prod"
