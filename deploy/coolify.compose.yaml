@@ -22,7 +22,7 @@ x-mcp-service: &mcp-service
 services:
   gateway:
     <<: *mcp-service
-    ports:
+    expose:
       - "8000"
     command:
       - /app/.venv/bin/opentelemetry-instrument
