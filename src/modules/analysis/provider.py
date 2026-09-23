@@ -128,9 +128,12 @@ class AnalysisToolProvider(Provider):
 
     def __init__(self, url: str | None = None) -> None:
         super().__init__()
-        self.url = (url or _analysis_backend_url()).strip()
+        self.url = url.strip() if url is not None else None
         self._cache: tuple[float, list[Tool]] | None = None
         self._cache_lock = asyncio.Lock()
+
+    def _backend_url(self) -> str:
+        return self.url or _analysis_backend_url()
 
     async def _list_tools(self) -> Sequence[Tool]:
         ttl = _schema_cache_ttl_seconds()
@@ -145,7 +148,7 @@ class AnalysisToolProvider(Provider):
             if ttl > 0 and cached is not None and cached[0] > now:
                 return list(cached[1])
 
-            async with Client(self.url) as client:
+            async with Client(self._backend_url()) as client:
                 backend_tools = cast(Sequence[_BackendTool], await client.list_tools())
 
             tools = self._adapt_catalog(backend_tools)
@@ -178,7 +181,7 @@ class AnalysisToolProvider(Provider):
                 ghidra_schema,
                 json_object(arguments, context=f"{analysis_name} arguments"),
             )
-            async with Client(self.url) as client:
+            async with Client(self._backend_url()) as client:
                 result = await client.call_tool(ghidra_name, canonical)
             return decode_call_result(result)
 
