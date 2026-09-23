@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import os
 
+from common.config import env_list
 from common.git import ProtectedBranchError, ProtectedBranchPolicy
 from common.secrets import SecretError, resolve_config_secret
 
 from .github_agent import GitHubAgentError
 
 _DEFAULT_PROTECTED_BRANCHES = "main,master"
+_DEFAULT_REQUIRED_CHECKS = "test,docker"
 
 
 def protected_branches_from_env() -> set[str]:
@@ -35,3 +37,7 @@ def require_mutable_branch(branch: str) -> str:
         ) from exc
     except ValueError as exc:
         raise GitHubAgentError(str(exc)) from exc
+
+
+def required_checks_from_env() -> list[str]:
+    return env_list("GITHUB_AGENT_REQUIRED_CHECKS", _DEFAULT_REQUIRED_CHECKS)

@@ -7,7 +7,7 @@ import urllib.parse
 
 import pytest
 
-from modules.files.file_ingress import FileUploadManager
+from modules.files.upload_manager import FileUploadManager
 from modules.files.file_store import FileError, FileStore
 
 

@@ -1,6 +1,6 @@
 import pytest
 
-import modules.github.github_workflow as github_workflow
+import modules.github.policy as github_policy
 from modules.github.github_agent import GitHubAgentError
 from modules.github.github_workflow import (
     GitHubDevClient,
@@ -31,7 +31,7 @@ def test_protected_branches_prefer_infisical_convention(
 ) -> None:
     monkeypatch.setenv("GITHUB_AGENT_PROTECTED_BRANCHES", "legacy")
     monkeypatch.setattr(
-        github_workflow,
+        github_policy,
         "resolve_config_secret",
         lambda path, name: "main,production"
         if (path, name)
