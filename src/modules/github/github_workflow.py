@@ -3,8 +3,11 @@ from __future__ import annotations
 import base64
 import os
 import urllib.parse
+from collections.abc import Mapping, Sequence
 
 from common.config import env_list
+from pydantic import ValidationError
+
 from common.models import (
     JsonObject,
     json_bool,
@@ -230,7 +233,7 @@ class GitHubDevClient(GitHubAppClient):
         source_ref: str,
         branch: str,
         message: str,
-        copies: list[CopySpec],
+        copies: Sequence[CopySpec | Mapping[str, object]],
         expected_head_sha: str | None = None,
         operation: str = "copy",
         overwrite: bool = False,
@@ -244,6 +247,15 @@ class GitHubDevClient(GitHubAppClient):
             raise GitHubAgentError("source_ref must not be empty")
         if not copies:
             raise GitHubAgentError("copies must not be empty")
+        try:
+            normalized_copies = [
+                item
+                if isinstance(item, CopySpec)
+                else CopySpec.model_validate(item)
+                for item in copies
+            ]
+        except ValidationError as exc:
+            raise GitHubAgentError("invalid copy specification") from exc
         if operation not in {"copy", "move"}:
             raise GitHubAgentError("operation must be 'copy' or 'move'")
 
@@ -313,7 +325,7 @@ class GitHubDevClient(GitHubAppClient):
         seen_move_sources: set[str] = set()
         processed: list[dict[str, object]] = []
 
-        for item in copies:
+        for item in normalized_copies:
             source_path = "/".join(
                 part
                 for part in item.source_path.strip("/").split("/")
@@ -476,13 +488,22 @@ class GitHubDevClient(GitHubAppClient):
         repository: str,
         branch: str,
         message: str,
-        changes: list[AtomicChange],
+        changes: Sequence[AtomicChange | Mapping[str, object]],
         expected_head_sha: str | None = None,
     ) -> dict[str, object]:
         repository = self._assert_allowed(repository)
         branch = self._assert_mutable_branch(branch)
         if not changes:
             raise GitHubAgentError("changes must not be empty")
+        try:
+            normalized_changes = [
+                item
+                if isinstance(item, AtomicChange)
+                else AtomicChange.model_validate(item)
+                for item in changes
+            ]
+        except ValidationError as exc:
+            raise GitHubAgentError("invalid atomic change") from exc
 
         branch_q = self._quote(branch)
         _, ref = self._repo_request(
@@ -517,7 +538,7 @@ class GitHubDevClient(GitHubAppClient):
 
         tree_entries: list[dict[str, object]] = []
         copy_ref_cache: dict[str, str] = {}
-        for change in changes:
+        for change in normalized_changes:
             path = change.path.strip("/")
             operation = change.operation
             mode = change.mode
@@ -637,7 +658,7 @@ class GitHubDevClient(GitHubAppClient):
             "previous_head_sha": head_sha,
             "commit_sha": commit_sha,
             "tree_sha": tree_sha,
-            "changed_paths": [change.path for change in changes],
+            "changed_paths": [change.path for change in normalized_changes],
         }
 
     def list_commits(

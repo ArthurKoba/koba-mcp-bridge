@@ -1,14 +1,22 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, PrivateAttr, field_validator, model_validator
 
 from common.models import JsonObject, JsonValue, StrictModel
-from common.secrets import SecretError, resolve_config_secret
+
+
+def _unbound_token_resolver(path: str, name: str) -> str:
+    raise RuntimeError("GitLab token resolver is not bound")
 
 
 class GitLabProfile(StrictModel):
+    _token_resolver: Callable[[str, str], str] = PrivateAttr(
+        default=_unbound_token_resolver
+    )
+
     profile_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
     base_url: str = Field(min_length=1)
     auth_type: Literal["private_token", "bearer", "job_token"]
@@ -26,13 +34,14 @@ class GitLabProfile(StrictModel):
     def api_url(self) -> str:
         return self.base_url + "/api/v4"
 
+    def bind_token_resolver(
+        self,
+        resolver: Callable[[str, str], str],
+    ) -> None:
+        self._token_resolver = resolver
+
     def token(self) -> str:
-        try:
-            return resolve_config_secret(self.convention_path, "TOKEN")
-        except SecretError as exc:
-            raise RuntimeError(
-                f"unable to resolve TOKEN for GitLab profile {self.profile_id!r}: {exc}"
-            ) from exc
+        return self._token_resolver(self.convention_path, "TOKEN")
 
     def public(self) -> JsonObject:
         return GitLabProfilePublic(

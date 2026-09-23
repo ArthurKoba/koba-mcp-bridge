@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import Field, StringConstraints, field_validator
+from pydantic import Field, StringConstraints
 
 from common.models import JsonObject, StrictModel
 
@@ -22,13 +22,6 @@ class ClientFile(StrictModel):
     file_id: str | None = None
     mime_type: str | None = None
     file_name: str | None = None
-
-    @field_validator("download_url")
-    @classmethod
-    def require_https(cls, value: str) -> str:
-        if not value.startswith("https://"):
-            raise ValueError("download_url must use HTTPS")
-        return value
 
 
 class FileAlias(StrictModel):

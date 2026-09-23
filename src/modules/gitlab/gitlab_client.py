@@ -95,8 +95,7 @@ class GitLabProfileRegistry:
 
             verify_raw = cls._optional_secret(path, "VERIFY_TLS", "true")
             verify_tls = verify_raw.casefold() not in {"0", "false", "no", "off"}
-            profiles.append(
-                GitLabProfile.model_validate(
+            profile = GitLabProfile.model_validate(
                     {
                         "profile_id": profile_id,
                         "base_url": base_url,
@@ -107,7 +106,8 @@ class GitLabProfileRegistry:
                         "label": cls._optional_secret(path, "LABEL", profile_id),
                     }
                 )
-            )
+            profile.bind_token_resolver(resolve_config_secret)
+            profiles.append(profile)
         return profiles
 
     @classmethod
@@ -141,6 +141,7 @@ class GitLabProfileRegistry:
 
 class GitLabClient:
     def __init__(self, profile: GitLabProfile, *, max_connections: int = 4) -> None:
+        profile.bind_token_resolver(resolve_config_secret)
         self.profile = profile
         self.max_connections = max(1, int(max_connections))
         parsed = urllib.parse.urlsplit(profile.base_url)

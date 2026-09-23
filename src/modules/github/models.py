@@ -2,12 +2,18 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import ConfigDict, Field, model_validator
 
 from common.models import StrictModel
 
 
 class ReviewComment(StrictModel):
+    model_config = ConfigDict(
+        extra="ignore",
+        strict=True,
+        validate_assignment=True,
+    )
+
     path: str = Field(min_length=1)
     body: str = Field(min_length=1)
     line: int | None = Field(default=None, gt=0)

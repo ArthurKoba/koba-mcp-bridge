@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
+
+from pydantic import ValidationError
+
 from common.models import JsonObject, json_int, json_member_object, json_str
 
 from .github_agent import GitHubAgentError
@@ -110,7 +114,7 @@ class GitHubReviewClient(GitHubDevClient):
         number: int,
         event: str,
         body: str,
-        comments: list[ReviewComment] | None = None,
+        comments: Sequence[ReviewComment | Mapping[str, object]] | None = None,
         commit_id: str | None = None,
     ) -> dict[str, object]:
         repository = self._assert_allowed(repository)
@@ -121,9 +125,20 @@ class GitHubReviewClient(GitHubDevClient):
         if commit_id:
             payload["commit_id"] = commit_id
         if comments:
+            try:
+                normalized_comments = [
+                    comment
+                    if isinstance(comment, ReviewComment)
+                    else ReviewComment.model_validate(comment)
+                    for comment in comments
+                ]
+            except ValidationError as exc:
+                raise GitHubAgentError(
+                    "each review comment requires path and body"
+                ) from exc
             payload["comments"] = [
                 comment.model_dump(exclude_none=True)
-                for comment in comments
+                for comment in normalized_comments
             ]
         _, result = self._repo_request(
             repository,
