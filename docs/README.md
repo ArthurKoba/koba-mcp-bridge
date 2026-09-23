@@ -1,6 +1,6 @@
 # Documentation index
 
-This directory is the documentation entry point for Koba MCP Bridge and the wider Koba integration layer.
+This directory is the documentation entry point for MCP Bridge and the wider MCP Bridge integration layer.
 
 The repository is currently evolving from a single authenticated MCP gateway into a modular platform with reusable connector runtimes, shared services, and an optional aggregate gateway. The documents below intentionally distinguish the current implementation from the target architecture.
 
