@@ -23,13 +23,13 @@ Infisical is the selected implementation for this phase.
 - reuse existing GitHub modules;
 - move GitHub into an independently deployable runtime;
 - preserve development/reviewer identities and PR policy;
-- keep aggregate gateway compatibility.
+- expose the GitHub runtime through the aggregate gateway and its dedicated public surface.
 
 ## Phase 3 — GitLab runtime boundary
 
 - preserve explicit `profile_id` routing;
 - move GitLab to an independent runtime;
-- keep gateway compatibility.
+- expose the GitLab runtime through the aggregate gateway and its dedicated public surface.
 
 ## Phase 4 — Files runtime and data migration
 
