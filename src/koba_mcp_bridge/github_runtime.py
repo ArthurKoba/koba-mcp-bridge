@@ -8,7 +8,7 @@ from .github_core_tools import register_github_core_tools
 from .github_identity import GitHubPrettyIdentityClient
 from .github_review_tools import register_github_review_tools
 from .github_reviewer import (
-    github_reviewer_client_from_env,
+    github_reviewer_client,
     github_reviewer_configured,
 )
 from .github_reviewer_tools import register_github_reviewer_tools
@@ -65,7 +65,7 @@ register_github_actions_tools(
 if github_reviewer_configured():
     register_github_reviewer_tools(
         mcp,
-        github_reviewer_client_from_env,
+        github_reviewer_client,
         READ_EXTERNAL,
         WRITE_EXTERNAL,
     )
