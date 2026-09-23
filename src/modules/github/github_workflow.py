@@ -5,7 +5,14 @@ import os
 import urllib.parse
 
 from common.config import env_list
-from common.models import JsonObject
+from common.models import (
+    JsonObject,
+    json_int,
+    json_member_array,
+    json_member_object,
+    json_object,
+    json_str,
+)
 from common.secrets import SecretError, resolve_config_secret
 
 from .github_agent import GitHubAgentError, GitHubAppClient
@@ -76,11 +83,11 @@ class GitHubDevClient(GitHubAppClient):
             raise GitHubAgentError("path is not a directory")
         entries = [
             {
-                "name": str(item.get("name", "")),
-                "path": str(item.get("path", "")),
-                "type": str(item.get("type", "")),
-                "size": int(item.get("size", 0)),
-                "sha": str(item.get("sha", "")),
+                "name": json_str(item.get("name")),
+                "path": json_str(item.get("path")),
+                "type": json_str(item.get("type")),
+                "size": json_int(item.get("size")),
+                "sha": json_str(item.get("sha")),
             }
             for item in result
             if isinstance(item, dict)
@@ -100,14 +107,14 @@ class GitHubDevClient(GitHubAppClient):
         _, result = self._repo_request(repository, "GET", endpoint)
         if not isinstance(result, dict) or result.get("type") != "file":
             raise GitHubAgentError("path is not a regular file")
-        if str(result.get("encoding", "")) != "base64":
+        if json_str(result.get("encoding")) != "base64":
             raise GitHubAgentError("GitHub did not return base64 file content")
         return {
             "repository": repository,
             "path": str(result.get("path", path)),
-            "sha": str(result.get("sha", "")),
-            "size": int(result.get("size", 0)),
-            "content_base64": str(result.get("content", "")).replace("\n", ""),
+            "sha": json_str(result.get("sha")),
+            "size": json_int(result.get("size")),
+            "content_base64": json_str(result.get("content")).replace("\n", ""),
         }
 
     def put_file(
@@ -152,7 +159,7 @@ class GitHubDevClient(GitHubAppClient):
         if status != 404:
             if not isinstance(current, dict) or current.get("type") != "file":
                 raise GitHubAgentError("existing path is not a regular file")
-            payload["sha"] = str(current.get("sha", ""))
+            payload["sha"] = json_str(current.get("sha"))
             operation = "update"
         response_status, result = self._repo_request(
             repository,
@@ -162,16 +169,16 @@ class GitHubDevClient(GitHubAppClient):
         )
         if not isinstance(result, dict):
             raise GitHubAgentError("unexpected binary file write response")
-        commit = result.get("commit") if isinstance(result.get("commit"), dict) else {}
-        saved = result.get("content") if isinstance(result.get("content"), dict) else {}
+        commit = json_member_object(result, "commit")
+        saved = json_member_object(result, "content")
         return {
             "status": response_status,
             "operation": operation,
             "repository": repository,
             "branch": branch,
             "path": path,
-            "commit_sha": str(commit.get("sha", "")),
-            "content_sha": str(saved.get("sha", "")),
+            "commit_sha": json_str(commit.get("sha")),
+            "content_sha": json_str(saved.get("sha")),
         }
 
     def _tree_entry_at_path(
@@ -198,7 +205,7 @@ class GitHubDevClient(GitHubAppClient):
                 (
                     item
                     for item in tree["tree"]
-                    if isinstance(item, dict) and str(item.get("path", "")) == part
+                    if isinstance(item, dict) and json_str(item.get("path")) == part
                 ),
                 None,
             )
@@ -206,9 +213,9 @@ class GitHubDevClient(GitHubAppClient):
                 return None
             if index == len(parts) - 1:
                 return dict(entry)
-            if str(entry.get("type", "")) != "tree":
+            if json_str(entry.get("type")) != "tree":
                 return None
-            tree_sha = str(entry.get("sha", ""))
+            tree_sha = json_str(entry.get("sha"))
             if not tree_sha:
                 raise GitHubAgentError("Git tree entry has no sha")
         return None
@@ -253,7 +260,7 @@ class GitHubDevClient(GitHubAppClient):
         )
         if not isinstance(ref, dict) or not isinstance(ref.get("object"), dict):
             raise GitHubAgentError("unable to resolve branch head")
-        head_sha = str(ref["object"].get("sha", ""))
+        head_sha = json_str(json_member_object(ref, "object", required=True).get("sha"))
         if not head_sha:
             raise GitHubAgentError("branch head has no sha")
         if expected_head_sha and head_sha != expected_head_sha:
@@ -272,7 +279,7 @@ class GitHubDevClient(GitHubAppClient):
         )
         if not isinstance(parent, dict) or not isinstance(parent.get("tree"), dict):
             raise GitHubAgentError("unable to resolve parent tree")
-        base_tree = str(parent["tree"].get("sha", ""))
+        base_tree = json_str(json_member_object(parent, "tree", required=True).get("sha"))
         if not base_tree:
             raise GitHubAgentError("parent commit has no tree sha")
 
@@ -288,7 +295,7 @@ class GitHubDevClient(GitHubAppClient):
                 or not isinstance(source_git_commit.get("tree"), dict)
             ):
                 raise GitHubAgentError("unable to resolve source commit tree")
-            source_tree = str(source_git_commit["tree"].get("sha", ""))
+            source_tree = json_str(json_member_object(source_git_commit, "tree", required=True).get("sha"))
             if not source_tree:
                 raise GitHubAgentError("source commit has no tree sha")
 
@@ -331,12 +338,12 @@ class GitHubDevClient(GitHubAppClient):
                 source_tree,
                 source_path,
             )
-            if source is None or str(source.get("type", "")) != "blob":
+            if source is None or json_str(source.get("type")) != "blob":
                 raise GitHubAgentError(
                     f"source path is not a Git blob: {source_path}"
                 )
-            blob_sha = str(source.get("sha", ""))
-            source_mode = str(source.get("mode", ""))
+            blob_sha = json_str(source.get("sha"))
+            source_mode = json_str(source.get("mode"))
             if not blob_sha or not source_mode:
                 raise GitHubAgentError(
                     f"source blob is missing sha or mode: {source_path}"
@@ -353,7 +360,7 @@ class GitHubDevClient(GitHubAppClient):
                     raise GitHubAgentError(
                         f"destination_path already exists: {destination_path}"
                     )
-                if str(destination.get("type", "")) != "blob":
+                if json_str(destination.get("type")) != "blob":
                     raise GitHubAgentError(
                         f"destination_path is not a blob: {destination_path}"
                     )
@@ -381,7 +388,7 @@ class GitHubDevClient(GitHubAppClient):
                     "destination_path": destination_path,
                     "sha": blob_sha,
                     "mode": mode,
-                    "size": int(source.get("size", 0)),
+                    "size": json_int(source.get("size")),
                 }
             )
 
@@ -416,7 +423,7 @@ class GitHubDevClient(GitHubAppClient):
             and isinstance(current_ref.get("object"), dict)
             else {}
         )
-        current_head_sha = str(current_object.get("sha", ""))
+        current_head_sha = json_str(current_object.get("sha"))
         if current_head_sha != head_sha:
             raise GitHubAgentError(
                 f"branch head changed before update: expected {head_sha}, "
@@ -536,7 +543,7 @@ class GitHubDevClient(GitHubAppClient):
                     raise GitHubAgentError(
                         f"copy source is not a regular file: {source_path}"
                     )
-                blob_sha = str(source.get("sha", ""))
+                blob_sha = json_str(source.get("sha"))
                 if not blob_sha:
                     raise GitHubAgentError(
                         f"copy source has no blob sha: {source_path}"
@@ -640,14 +647,14 @@ class GitHubDevClient(GitHubAppClient):
         for item in result:
             if not isinstance(item, dict):
                 continue
-            details = item.get("commit") if isinstance(item.get("commit"), dict) else {}
-            author = details.get("author") if isinstance(details.get("author"), dict) else {}
+            details = json_member_object(item, "commit")
+            author = json_member_object(details, "author")
             commits.append(
                 {
-                    "sha": str(item.get("sha", "")),
-                    "message": str(details.get("message", "")),
-                    "author": str(author.get("name", "")),
-                    "date": str(author.get("date", "")),
+                    "sha": json_str(item.get("sha")),
+                    "message": json_str(details.get("message")),
+                    "author": json_str(author.get("name")),
+                    "date": json_str(author.get("date")),
                 }
             )
         return {"repository": repository, "commits": commits, "page": page}
@@ -661,23 +668,23 @@ class GitHubDevClient(GitHubAppClient):
         )
         if not isinstance(result, dict):
             raise GitHubAgentError("unexpected commit response")
-        details = result.get("commit") if isinstance(result.get("commit"), dict) else {}
-        files = result.get("files") if isinstance(result.get("files"), list) else []
+        details = json_member_object(result, "commit")
+        files = json_member_array(result, "files")
         return {
             "repository": repository,
-            "sha": str(result.get("sha", "")),
-            "message": str(details.get("message", "")),
+            "sha": json_str(result.get("sha")),
+            "message": json_str(details.get("message")),
             "parents": [
-                str(item.get("sha", ""))
+                json_str(item.get("sha"))
                 for item in result.get("parents", [])
                 if isinstance(item, dict)
             ],
             "files": [
                 {
-                    "filename": str(item.get("filename", "")),
-                    "status": str(item.get("status", "")),
-                    "additions": int(item.get("additions", 0)),
-                    "deletions": int(item.get("deletions", 0)),
+                    "filename": json_str(item.get("filename")),
+                    "status": json_str(item.get("status")),
+                    "additions": json_int(item.get("additions")),
+                    "deletions": json_int(item.get("deletions")),
                     "patch": item.get("patch"),
                 }
                 for item in files
@@ -786,8 +793,8 @@ class GitHubDevClient(GitHubAppClient):
             if not isinstance(comparison, dict):
                 raise GitHubAgentError("unexpected compare response")
             if (
-                str(comparison.get("status", "")) != "ahead"
-                or int(comparison.get("behind_by", 0)) != 0
+                json_str(comparison.get("status")) != "ahead"
+                or json_int(comparison.get("behind_by")) != 0
             ):
                 raise GitHubAgentError(
                     "target_ref must resolve to an ancestor of the current branch head"
@@ -816,7 +823,7 @@ class GitHubDevClient(GitHubAppClient):
             and isinstance(current_ref.get("object"), dict)
             else {}
         )
-        current_head_sha = str(current_object.get("sha", ""))
+        current_head_sha = json_str(current_object.get("sha"))
         if current_head_sha != head_sha:
             raise GitHubAgentError(
                 f"branch head changed before reset: expected {head_sha}, "
@@ -851,8 +858,8 @@ class GitHubDevClient(GitHubAppClient):
         tags = []
         for item in result:
             if isinstance(item, dict):
-                commit = item.get("commit") if isinstance(item.get("commit"), dict) else {}
-                tags.append({"name": str(item.get("name", "")), "sha": str(commit.get("sha", ""))})
+                commit = json_member_object(item, "commit")
+                tags.append({"name": json_str(item.get("name")), "sha": json_str(commit.get("sha"))})
         return {"repository": repository, "tags": tags, "page": page}
 
     def create_tag(
@@ -929,15 +936,15 @@ class GitHubDevClient(GitHubAppClient):
         _, result = self._repo_request(repository, "GET", f"/search/code?{params}")
         if not isinstance(result, dict):
             raise GitHubAgentError("unexpected code search response")
-        items = result.get("items") if isinstance(result.get("items"), list) else []
+        items = json_member_array(result, "items")
         return {
             "repository": repository,
-            "total_count": int(result.get("total_count", 0)),
+            "total_count": json_int(result.get("total_count")),
             "items": [
                 {
-                    "name": str(item.get("name", "")),
-                    "path": str(item.get("path", "")),
-                    "sha": str(item.get("sha", "")),
+                    "name": json_str(item.get("name")),
+                    "path": json_str(item.get("path")),
+                    "sha": json_str(item.get("sha")),
                 }
                 for item in items
                 if isinstance(item, dict)
@@ -977,18 +984,18 @@ class GitHubDevClient(GitHubAppClient):
 
     @staticmethod
     def _compact_pull(item: JsonObject) -> dict[str, object]:
-        head = item.get("head") if isinstance(item.get("head"), dict) else {}
-        base = item.get("base") if isinstance(item.get("base"), dict) else {}
+        head = json_member_object(item, "head")
+        base = json_member_object(item, "base")
         return {
-            "number": int(item.get("number", 0)),
-            "title": str(item.get("title", "")),
-            "state": str(item.get("state", "")),
+            "number": json_int(item.get("number")),
+            "title": json_str(item.get("title")),
+            "state": json_str(item.get("state")),
             "draft": bool(item.get("draft", False)),
-            "head": str(head.get("ref", "")),
-            "head_sha": str(head.get("sha", "")),
-            "base": str(base.get("ref", "")),
+            "head": json_str(head.get("ref")),
+            "head_sha": json_str(head.get("sha")),
+            "base": json_str(base.get("ref")),
             "merged": bool(item.get("merged", False)),
-            "html_url": str(item.get("html_url", "")),
+            "html_url": json_str(item.get("html_url")),
         }
 
     def get_pull_request(self, repository: str, number: int) -> dict[str, object]:
@@ -1001,9 +1008,9 @@ class GitHubDevClient(GitHubAppClient):
         if not isinstance(result, dict):
             raise GitHubAgentError("unexpected pull request response")
         compact = self._compact_pull(result)
-        compact["body"] = str(result.get("body", "") or "")
+        compact["body"] = json_str(result.get("body"))
         compact["mergeable"] = result.get("mergeable")
-        compact["mergeable_state"] = str(result.get("mergeable_state", ""))
+        compact["mergeable_state"] = json_str(result.get("mergeable_state"))
         return {"repository": repository, "pull_request": compact}
 
     def create_pull_request(
@@ -1082,10 +1089,10 @@ class GitHubDevClient(GitHubAppClient):
             raise GitHubAgentError("unexpected pull request file response")
         files = [
             {
-                "filename": str(item.get("filename", "")),
-                "status": str(item.get("status", "")),
-                "additions": int(item.get("additions", 0)),
-                "deletions": int(item.get("deletions", 0)),
+                "filename": json_str(item.get("filename")),
+                "status": json_str(item.get("status")),
+                "additions": json_int(item.get("additions")),
+                "deletions": json_int(item.get("deletions")),
                 "patch": item.get("patch"),
             }
             for item in result
@@ -1111,8 +1118,8 @@ class GitHubDevClient(GitHubAppClient):
         return {
             "repository": repository,
             "number": number,
-            "comment_id": int(result.get("id", 0)),
-            "html_url": str(result.get("html_url", "")),
+            "comment_id": json_int(result.get("id")),
+            "html_url": json_str(result.get("html_url")),
         }
 
     def list_reviews(self, repository: str, number: int) -> dict[str, object]:
@@ -1128,14 +1135,14 @@ class GitHubDevClient(GitHubAppClient):
         for item in result:
             if not isinstance(item, dict):
                 continue
-            user = item.get("user") if isinstance(item.get("user"), dict) else {}
+            user = json_member_object(item, "user")
             reviews.append(
                 {
-                    "id": int(item.get("id", 0)),
-                    "user": str(user.get("login", "")),
-                    "state": str(item.get("state", "")),
-                    "body": str(item.get("body", "") or ""),
-                    "submitted_at": str(item.get("submitted_at", "")),
+                    "id": json_int(item.get("id")),
+                    "user": json_str(user.get("login")),
+                    "state": json_str(item.get("state")),
+                    "body": json_str(item.get("body")),
+                    "submitted_at": json_str(item.get("submitted_at")),
                 }
             )
         return {"repository": repository, "number": number, "reviews": reviews}
@@ -1162,8 +1169,8 @@ class GitHubDevClient(GitHubAppClient):
         return {
             "repository": repository,
             "number": number,
-            "review_id": int(result.get("id", 0)),
-            "state": str(result.get("state", "")),
+            "review_id": json_int(result.get("id")),
+            "state": json_str(result.get("state")),
         }
 
     def update_pull_branch(
@@ -1193,18 +1200,18 @@ class GitHubDevClient(GitHubAppClient):
         )
         if not isinstance(result, dict):
             raise GitHubAgentError("unexpected check-run response")
-        raw = result.get("check_runs") if isinstance(result.get("check_runs"), list) else []
+        raw = json_member_array(result, "check_runs")
         checks = []
         for item in raw:
             if isinstance(item, dict):
-                app = item.get("app") if isinstance(item.get("app"), dict) else {}
+                app = json_member_object(item, "app")
                 checks.append(
                     {
-                        "name": str(item.get("name", "")),
-                        "status": str(item.get("status", "")),
+                        "name": json_str(item.get("name")),
+                        "status": json_str(item.get("status")),
                         "conclusion": item.get("conclusion"),
-                        "app": str(app.get("slug", "")),
-                        "details_url": str(item.get("details_url", "")),
+                        "app": json_str(app.get("slug")),
+                        "details_url": json_str(item.get("details_url")),
                     }
                 )
         return {"repository": repository, "ref": ref, "check_runs": checks}
@@ -1214,7 +1221,7 @@ class GitHubDevClient(GitHubAppClient):
         checks = result["check_runs"]
         assert isinstance(checks, list)
         by_name = {
-            str(item.get("name", "")): item
+            json_str(item.get("name")): item
             for item in checks
             if isinstance(item, dict)
         }
@@ -1233,14 +1240,14 @@ class GitHubDevClient(GitHubAppClient):
         configured_names = set(required)
         if configured_names and not configured_names.intersection(by_name):
             repository_info = self._repository_metadata(repository)
-            default_branch = str(repository_info.get("default_branch", ""))
+            default_branch = json_str(repository_info.get("default_branch"))
             baseline_names: set[str] = set()
             if default_branch:
                 baseline = self.check_runs(repository, default_branch)
                 baseline_checks = baseline["check_runs"]
                 assert isinstance(baseline_checks, list)
                 baseline_names = {
-                    str(item.get("name", ""))
+                    json_str(item.get("name"))
                     for item in baseline_checks
                     if isinstance(item, dict)
                 }
@@ -1286,15 +1293,15 @@ class GitHubDevClient(GitHubAppClient):
         )
         if not isinstance(pull, dict):
             raise GitHubAgentError("unexpected pull request response")
-        head = pull.get("head") if isinstance(pull.get("head"), dict) else {}
-        base = pull.get("base") if isinstance(pull.get("base"), dict) else {}
-        head_repo = head.get("repo") if isinstance(head.get("repo"), dict) else {}
-        base_repo = base.get("repo") if isinstance(base.get("repo"), dict) else {}
-        if str(head_repo.get("full_name", "")).casefold() != repository.casefold():
+        head = json_member_object(pull, "head")
+        base = json_member_object(pull, "base")
+        head_repo = json_member_object(head, "repo")
+        base_repo = json_member_object(base, "repo")
+        if json_str(head_repo.get("full_name")).casefold() != repository.casefold():
             raise GitHubAgentError("cross-repository pull request merge is disabled")
-        if str(base_repo.get("full_name", "")).casefold() != repository.casefold():
+        if json_str(base_repo.get("full_name")).casefold() != repository.casefold():
             raise GitHubAgentError("cross-repository pull request merge is disabled")
-        head_sha = str(head.get("sha", ""))
+        head_sha = json_str(head.get("sha"))
         if not head_sha:
             raise GitHubAgentError("pull request head has no sha")
         self.assert_required_checks(repository, head_sha)
@@ -1316,8 +1323,8 @@ class GitHubDevClient(GitHubAppClient):
             "repository": repository,
             "number": number,
             "merged": bool(result.get("merged", False)),
-            "sha": str(result.get("sha", "")),
-            "message": str(result.get("message", "")),
+            "sha": json_str(result.get("sha")),
+            "message": json_str(result.get("message")),
             "merge_method": merge_method,
         }
 
@@ -1355,11 +1362,11 @@ class GitHubDevClient(GitHubAppClient):
     @staticmethod
     def _compact_issue(item: JsonObject) -> dict[str, object]:
         return {
-            "number": int(item.get("number", 0)),
-            "title": str(item.get("title", "")),
-            "state": str(item.get("state", "")),
-            "body": str(item.get("body", "") or ""),
-            "html_url": str(item.get("html_url", "")),
+            "number": json_int(item.get("number")),
+            "title": json_str(item.get("title")),
+            "state": json_str(item.get("state")),
+            "body": json_str(item.get("body")),
+            "html_url": json_str(item.get("html_url")),
         }
 
     def get_issue(self, repository: str, number: int) -> dict[str, object]:
@@ -1445,8 +1452,8 @@ class GitHubDevClient(GitHubAppClient):
         return {
             "repository": repository,
             "number": number,
-            "comment_id": int(result.get("id", 0)),
-            "html_url": str(result.get("html_url", "")),
+            "comment_id": json_int(result.get("id")),
+            "html_url": json_str(result.get("html_url")),
         }
 
     def list_workflow_runs(
@@ -1474,17 +1481,17 @@ class GitHubDevClient(GitHubAppClient):
         )
         if not isinstance(result, dict):
             raise GitHubAgentError("unexpected workflow-run response")
-        raw = result.get("workflow_runs") if isinstance(result.get("workflow_runs"), list) else []
+        raw = json_member_array(result, "workflow_runs")
         runs = [
             {
-                "id": int(item.get("id", 0)),
-                "name": str(item.get("name", "")),
-                "head_branch": str(item.get("head_branch", "")),
-                "head_sha": str(item.get("head_sha", "")),
-                "status": str(item.get("status", "")),
+                "id": json_int(item.get("id")),
+                "name": json_str(item.get("name")),
+                "head_branch": json_str(item.get("head_branch")),
+                "head_sha": json_str(item.get("head_sha")),
+                "status": json_str(item.get("status")),
                 "conclusion": item.get("conclusion"),
-                "event": str(item.get("event", "")),
-                "html_url": str(item.get("html_url", "")),
+                "event": json_str(item.get("event")),
+                "html_url": json_str(item.get("html_url")),
             }
             for item in raw
             if isinstance(item, dict)
@@ -1500,14 +1507,14 @@ class GitHubDevClient(GitHubAppClient):
         )
         if not isinstance(result, dict):
             raise GitHubAgentError("unexpected workflow-job response")
-        raw = result.get("jobs") if isinstance(result.get("jobs"), list) else []
+        raw = json_member_array(result, "jobs")
         jobs = [
             {
-                "id": int(item.get("id", 0)),
-                "name": str(item.get("name", "")),
-                "status": str(item.get("status", "")),
+                "id": json_int(item.get("id")),
+                "name": json_str(item.get("name")),
+                "status": json_str(item.get("status")),
                 "conclusion": item.get("conclusion"),
-                "html_url": str(item.get("html_url", "")),
+                "html_url": json_str(item.get("html_url")),
             }
             for item in raw
             if isinstance(item, dict)
