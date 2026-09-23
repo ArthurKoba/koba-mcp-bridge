@@ -76,8 +76,14 @@ def _parameter_type(property_schema: JsonObject) -> object:
     nullable = False
     if isinstance(raw_type, list):
         nullable = "null" in raw_type
-        non_null = [value for value in raw_type if value != "null"]
+        non_null = [
+            value
+            for value in raw_type
+            if isinstance(value, str) and value != "null"
+        ]
         raw_type = non_null[0] if len(non_null) == 1 else None
+    if not isinstance(raw_type, str):
+        return JsonValue
     base: object = {
         "string": str,
         "integer": int,

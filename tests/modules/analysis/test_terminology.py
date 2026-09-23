@@ -129,3 +129,43 @@ def test_analysis_schema_rejects_alias_collisions() -> None:
     }
     with pytest.raises(ValueError, match="alias collision"):
         analysis_schema(schema)
+
+def test_backend_schema_alias_metadata_overrides_fallback_mapping() -> None:
+    schema = _function_schema()
+    schema["properties"]["function_name"]["x-analysis-alias"] = "behavior_node"
+
+    exposed = analysis_schema(schema)
+    assert "behavior_node" in exposed["properties"]
+    assert "action_name" not in exposed["properties"]
+    assert exposed["required"] == ["behavior_node", "program"]
+
+    normalized = normalize_arguments(
+        schema,
+        {"behavior_node": "FUN_1000", "program": "fw"},
+    )
+    assert normalized["function_name"] == "FUN_1000"
+
+    analysis = arguments_for_surface(
+        schema,
+        {"function_name": "FUN_1000", "program": "fw"},
+        "analysis",
+    )
+    assert analysis["behavior_node"] == "FUN_1000"
+
+
+def test_backend_schema_alias_metadata_participates_in_collision_detection() -> None:
+    schema = {
+        "type": "object",
+        "properties": {
+            "function_name": {
+                "type": "string",
+                "x-analysis-alias": "node",
+            },
+            "address": {
+                "type": "string",
+                "x-analysis-alias": "node",
+            },
+        },
+    }
+    with pytest.raises(ValueError, match="alias collision"):
+        analysis_schema(schema)
