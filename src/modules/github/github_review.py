@@ -188,17 +188,17 @@ class GitHubReviewClient(GitHubDevClient):
         for item in result:
             if not isinstance(item, dict):
                 continue
-            user = item.get("user") if isinstance(item.get("user"), dict) else {}
+            user = json_member_object(item, "user")
             comments.append(
                 {
-                    "id": int(item.get("id", 0)),
-                    "user": str(user.get("login", "")),
+                    "id": json_int(item.get("id")),
+                    "user": json_str(user.get("login")),
                     "path": json_str(item.get("path")),
                     "line": item.get("line"),
                     "side": item.get("side"),
-                    "body": str(item.get("body", "") or ""),
+                    "body": json_str(item.get("body")),
                     "commit_id": json_str(item.get("commit_id")),
-                    "html_url": str(item.get("html_url", "")),
+                    "html_url": json_str(item.get("html_url")),
                 }
             )
         return {"repository": repository, "number": number, "comments": comments}
