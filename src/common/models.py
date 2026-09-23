@@ -127,3 +127,53 @@ def json_array_or_empty(value: JsonValue | None) -> JsonArray:
     if value is None:
         return []
     return json_array(value)
+
+
+def json_bool(value: JsonValue | None, *, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().casefold()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off", ""}:
+            return False
+    raise ValueError(f"expected boolean-compatible JSON value, got {type(value).__name__}")
+
+
+def json_member_object(
+    value: JsonObject,
+    key: str,
+    *,
+    required: bool = False,
+) -> JsonObject:
+    member = value.get(key)
+    if member is None and not required:
+        return {}
+    try:
+        return json_object(member, context=key)
+    except ValueError as exc:
+        if required:
+            raise ValueError(f"{key} must be a JSON object") from exc
+        return {}
+
+
+def json_member_array(
+    value: JsonObject,
+    key: str,
+    *,
+    required: bool = False,
+) -> JsonArray:
+    member = value.get(key)
+    if member is None and not required:
+        return []
+    try:
+        return json_array(member, context=key)
+    except ValueError as exc:
+        if required:
+            raise ValueError(f"{key} must be a JSON array") from exc
+        return []
