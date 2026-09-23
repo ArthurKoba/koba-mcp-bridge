@@ -237,5 +237,11 @@ class UploadCleanupResponse(StrictModel):
     count: int = Field(ge=0)
 
 
+class AttachmentIngestResponse(StrictModel):
+    file: FileInfo
+    completed: Literal[True]
+    transport: Literal["client-file"]
+
+
 class FileToolResult(StrictModel):
     payload: JsonObject
