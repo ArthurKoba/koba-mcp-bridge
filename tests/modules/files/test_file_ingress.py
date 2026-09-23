@@ -285,7 +285,7 @@ def test_attachment_ingress_streams_directly_to_file_store(
     monkeypatch.setattr(
         file_ingress,
         "_validate_remote_file_url",
-        lambda value: urllib.parse.urlsplit(value),
+        urllib.parse.urlsplit,
     )
     monkeypatch.setattr(
         file_ingress,
@@ -328,7 +328,7 @@ def test_attachment_ingress_rejects_checksum_mismatch_without_committing(
     monkeypatch.setattr(
         file_ingress,
         "_validate_remote_file_url",
-        lambda value: urllib.parse.urlsplit(value),
+        urllib.parse.urlsplit,
     )
     monkeypatch.setattr(
         file_ingress,

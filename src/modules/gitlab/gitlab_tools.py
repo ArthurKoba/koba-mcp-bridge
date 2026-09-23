@@ -13,7 +13,14 @@ from .gitlab_client import GitLabClient, GitLabProfileRegistry
 from .models import GitLabCommitAction
 
 _registry_lock = threading.Lock()
-_registry_cache: tuple[float, tuple[str, ...], GitLabProfileRegistry] | None = None
+
+
+class _RegistryCacheState:
+    def __init__(self) -> None:
+        self.value: tuple[float, tuple[str, ...], GitLabProfileRegistry] | None = None
+
+
+_registry_cache = _RegistryCacheState()
 _client_cache: dict[str, GitLabClient] = {}
 
 
@@ -45,14 +52,12 @@ def _registry_fingerprint() -> tuple[str, ...]:
 
 
 def _registry() -> GitLabProfileRegistry:
-    global _registry_cache
-
     ttl = _cache_ttl_seconds()
     fingerprint = _registry_fingerprint()
     now = time.monotonic()
 
     with _registry_lock:
-        cached = _registry_cache
+        cached = _registry_cache.value
         if (
             ttl > 0
             and cached is not None
@@ -62,7 +67,7 @@ def _registry() -> GitLabProfileRegistry:
             return cached[2]
 
         registry = GitLabProfileRegistry.from_infisical()
-        _registry_cache = (now + ttl, fingerprint, registry)
+        _registry_cache.value = (now + ttl, fingerprint, registry)
         return registry
 
 
@@ -80,9 +85,8 @@ def _client(profile_id: str) -> GitLabClient:
 
 
 def _clear_runtime_cache() -> None:
-    global _registry_cache
     with _registry_lock:
-        _registry_cache = None
+        _registry_cache.value = None
         _client_cache.clear()
 
 
