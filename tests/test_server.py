@@ -141,21 +141,70 @@ def test_github_oauth_values_prefer_infisical_convention(
     }
 
 def test_configured_backends_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KOBA_GATEWAY_MODE", "embedded")
     monkeypatch.delenv("GHIDRA_MCP_URL", raising=False)
     assert _configured_backends() == {}
 
 
 def test_configured_backends_ghidra(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KOBA_GATEWAY_MODE", "embedded")
     monkeypatch.setenv("GHIDRA_MCP_URL", "http://ghidra-mcp:8081/mcp")
-    assert _configured_backends() == {"ghidra": "http://ghidra-mcp:8081/mcp"}
+    assert _configured_backends() == {
+        "ghidra": {
+            "url": "http://ghidra-mcp:8081/mcp",
+            "namespace": "ghidra",
+        }
+    }
+
+
+def test_configured_backends_proxy_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("KOBA_GATEWAY_MODE", "proxy")
+    monkeypatch.setenv("GHIDRA_MCP_URL", "http://ghidra-mcp:8081/mcp")
+    monkeypatch.setenv("GITHUB_MCP_URL", "http://github-mcp:8000/mcp")
+    monkeypatch.setenv("GITLAB_MCP_URL", "http://gitlab-mcp:8000/mcp")
+    monkeypatch.setenv("FILES_MCP_URL", "http://files-mcp:8000/mcp")
+    monkeypatch.setenv("HTTP_MCP_URL", "http://http-mcp:8000/mcp")
+
+    assert _configured_backends() == {
+        "ghidra": {
+            "url": "http://ghidra-mcp:8081/mcp",
+            "namespace": "ghidra",
+        },
+        "github": {
+            "url": "http://github-mcp:8000/mcp",
+            "namespace": "",
+        },
+        "gitlab": {
+            "url": "http://gitlab-mcp:8000/mcp",
+            "namespace": "gitlab",
+        },
+        "files": {
+            "url": "http://files-mcp:8000/mcp",
+            "namespace": "",
+        },
+        "http": {
+            "url": "http://http-mcp:8000/mcp",
+            "namespace": "",
+        },
+    }
+
+
+def test_proxy_mode_requires_all_runtime_urls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("KOBA_GATEWAY_MODE", "proxy")
+    for name in ("GITHUB_MCP_URL", "GITLAB_MCP_URL", "FILES_MCP_URL", "HTTP_MCP_URL"):
+        monkeypatch.delenv(name, raising=False)
+
+    with pytest.raises(RuntimeError, match="GITHUB_MCP_URL"):
+        _configured_backends()
 
 
 def test_mounted_backend_negotiates_protocol_independently(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    url = "http://ghidra-mcp:8081/mcp"
     calls: list[tuple[str, dict[str, str]]] = []
-    mounted: list[tuple[object, str]] = []
+    mounted: list[tuple[object, str | None]] = []
     proxy = object()
 
     def fake_create_proxy(target: str, **settings: str) -> object:
@@ -163,15 +212,54 @@ def test_mounted_backend_negotiates_protocol_independently(
         return proxy
 
     class DummyServer:
-        def mount(self, *, server: object, namespace: str) -> None:
+        def mount(
+            self,
+            *,
+            server: object,
+            namespace: str | None = None,
+        ) -> None:
             mounted.append((server, namespace))
 
-    monkeypatch.setenv("GHIDRA_MCP_URL", url)
+    monkeypatch.setenv("KOBA_GATEWAY_MODE", "proxy")
+    monkeypatch.setenv("GITHUB_MCP_URL", "http://github-mcp:8000/mcp")
+    monkeypatch.setenv("GITLAB_MCP_URL", "http://gitlab-mcp:8000/mcp")
+    monkeypatch.setenv("FILES_MCP_URL", "http://files-mcp:8000/mcp")
+    monkeypatch.setenv("HTTP_MCP_URL", "http://http-mcp:8000/mcp")
+    monkeypatch.setenv("GHIDRA_MCP_URL", "http://ghidra-mcp:8081/mcp")
     monkeypatch.setattr(server_module, "create_proxy", fake_create_proxy)
 
-    assert _mount_backends(DummyServer()) == {"ghidra": url}  # type: ignore[arg-type]
-    assert calls == [(url, {"name": "ghidra-backend", "mode": "auto"})]
-    assert mounted == [(proxy, "ghidra")]
+    result = _mount_backends(DummyServer())  # type: ignore[arg-type]
+
+    assert sorted(result) == ["files", "ghidra", "github", "gitlab", "http"]
+    assert calls == [
+        (
+            "http://ghidra-mcp:8081/mcp",
+            {"name": "ghidra-backend", "mode": "auto"},
+        ),
+        (
+            "http://github-mcp:8000/mcp",
+            {"name": "github-backend", "mode": "auto"},
+        ),
+        (
+            "http://gitlab-mcp:8000/mcp",
+            {"name": "gitlab-backend", "mode": "auto"},
+        ),
+        (
+            "http://files-mcp:8000/mcp",
+            {"name": "files-backend", "mode": "auto"},
+        ),
+        (
+            "http://http-mcp:8000/mcp",
+            {"name": "http-backend", "mode": "auto"},
+        ),
+    ]
+    assert mounted == [
+        (proxy, "ghidra"),
+        (proxy, None),
+        (proxy, "gitlab"),
+        (proxy, None),
+        (proxy, None),
+    ]
 
 def test_github_oauth_failure_preserves_infisical_error(
     monkeypatch: pytest.MonkeyPatch,
