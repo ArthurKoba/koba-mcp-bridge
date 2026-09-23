@@ -8,7 +8,7 @@ from typing import Any
 
 from fastmcp import Client, FastMCP
 
-from files_mcp.file_store import FileError, FileStore
+from modules.files.file_store import FileError, FileStore
 
 
 def _ghidra_url() -> str:

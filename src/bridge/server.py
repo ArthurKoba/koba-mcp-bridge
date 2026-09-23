@@ -10,9 +10,9 @@ from fastmcp.server.auth import AuthContext
 from fastmcp.server.auth.providers.github import GitHubProvider
 from fastmcp.server.middleware import AuthMiddleware
 
-from mcp_common.runtime_annotations import READ_EXTERNAL, READ_ONLY_LOCAL
-from mcp_common.secrets import SecretError, resolve_config_secret
-from mcp_common.secrets_tools import register_secrets_tools
+from common.runtime_annotations import READ_EXTERNAL, READ_ONLY_LOCAL
+from common.secrets import SecretError, resolve_config_secret
+from common.secrets_tools import register_secrets_tools
 
 from . import __version__
 

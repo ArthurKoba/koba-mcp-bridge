@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from mcp_common.secrets import SecretError, resolve_config_secret
+from common.secrets import SecretError, resolve_config_secret
 
 from .github_agent import GitHubAgentError
 from .github_identity import GitHubPrettyIdentityClient

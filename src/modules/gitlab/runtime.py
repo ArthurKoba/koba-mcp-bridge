@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from mcp_common.runtime_annotations import (
+from common.runtime_annotations import (
     DESTRUCTIVE_EXTERNAL,
     READ_EXTERNAL,
     WRITE_EXTERNAL,
 )
-from mcp_common.runtime_common import build_private_mcp, private_http_app
+from common.runtime_common import build_private_mcp, private_http_app
 
 from .gitlab_tools import register_gitlab_tools
 

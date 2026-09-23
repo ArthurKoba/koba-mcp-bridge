@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from mcp_common.runtime_annotations import (
+from common.runtime_annotations import (
     DESTRUCTIVE_EXTERNAL,
     READ_EXTERNAL,
     WRITE_EXTERNAL,
 )
-from mcp_common.runtime_common import build_private_mcp, private_http_app
+from common.runtime_common import build_private_mcp, private_http_app
 
 from .github_actions_tools import register_github_actions_tools
 from .github_collab_tools import register_github_collab_tools

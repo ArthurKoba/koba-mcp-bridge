@@ -12,7 +12,7 @@ import urllib.parse
 from dataclasses import dataclass
 from typing import Any
 
-from mcp_common.secrets import SecretError, list_config_folders, resolve_config_secret
+from common.secrets import SecretError, list_config_folders, resolve_config_secret
 
 _PROFILE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _ALLOWED_AUTH = {"private_token", "bearer", "job_token"}

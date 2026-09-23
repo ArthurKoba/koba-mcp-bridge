@@ -13,7 +13,7 @@ from datetime import datetime
 
 import jwt
 
-from mcp_common.secrets import SecretError, resolve_config_secret
+from common.secrets import SecretError, resolve_config_secret
 
 _GITHUB_API = "https://api.github.com"
 _GITHUB_API_VERSION = "2026-03-10"
