@@ -292,6 +292,10 @@ def test_invalid_secret_reference_is_rejected() -> None:
 
 @pytest.mark.asyncio
 async def test_secrets_diagnostics_are_registered() -> None:
+    from fastmcp import Client
+
+    from bridge.server import mcp
+
     async with Client(mcp) as client:
         tools = await client.list_tools()
     names = {tool.name for tool in tools}
