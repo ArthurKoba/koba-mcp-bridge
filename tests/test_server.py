@@ -2,7 +2,12 @@ import pytest
 from fastmcp import Client
 
 import koba_mcp_bridge.server as server_module
-from koba_mcp_bridge.server import _configured_backends, _mount_backends, app, mcp
+from koba_mcp_bridge.server import (
+    _configured_backends,
+    _mount_aggregate_backends,
+    app,
+    mcp,
+)
 
 
 @pytest.mark.asyncio
@@ -69,6 +74,7 @@ def test_configured_backends_use_canonical_private_services(
 ) -> None:
     for name in (
         "GITHUB_MCP_URL",
+        "GITLAB_MCP_URL",
         "FILES_MCP_URL",
         "HTTP_MCP_URL",
         "ANALYSIS_MCP_URL",
@@ -77,6 +83,7 @@ def test_configured_backends_use_canonical_private_services(
 
     assert _configured_backends() == {
         "github": "http://github-mcp:8000/mcp",
+        "gitlab": "http://gitlab-mcp:8000/mcp",
         "files": "http://files-mcp:8000/mcp",
         "http": "http://http-mcp:8000/mcp",
         "analysis": "http://analysis-mcp:8000/mcp",
@@ -87,19 +94,21 @@ def test_configured_backends_allow_explicit_overrides(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("GITHUB_MCP_URL", "http://github-alt:9000/mcp")
+    monkeypatch.setenv("GITLAB_MCP_URL", "http://gitlab-alt:9000/mcp")
     monkeypatch.setenv("FILES_MCP_URL", "http://files-alt:9000/mcp")
     monkeypatch.setenv("HTTP_MCP_URL", "http://http-alt:9000/mcp")
     monkeypatch.setenv("ANALYSIS_MCP_URL", "http://analysis-alt:9000/mcp")
 
     assert _configured_backends() == {
         "github": "http://github-alt:9000/mcp",
+        "gitlab": "http://gitlab-alt:9000/mcp",
         "files": "http://files-alt:9000/mcp",
         "http": "http://http-alt:9000/mcp",
         "analysis": "http://analysis-alt:9000/mcp",
     }
 
 
-def test_mounted_backends_are_unprefixed_private_proxies(
+def test_aggregate_mounts_expected_proxy_namespaces(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[tuple[str, dict[str, str]]] = []
@@ -121,30 +130,52 @@ def test_mounted_backends_are_unprefixed_private_proxies(
 
     monkeypatch.setattr(server_module, "create_proxy", fake_create_proxy)
 
-    result = _mount_backends(DummyServer())  # type: ignore[arg-type]
+    backends = {
+        "github": "http://github:8000/mcp",
+        "gitlab": "http://gitlab:8000/mcp",
+        "files": "http://files:8000/mcp",
+        "http": "http://http:8000/mcp",
+        "analysis": "http://analysis:8000/mcp",
+    }
+    _mount_aggregate_backends(DummyServer(), backends)  # type: ignore[arg-type]
 
-    assert sorted(result) == ["analysis", "files", "github", "http"]
     assert calls == [
         (
-            "http://github-mcp:8000/mcp",
+            "http://github:8000/mcp",
             {"name": "github-backend", "mode": "auto"},
         ),
         (
-            "http://files-mcp:8000/mcp",
+            "http://files:8000/mcp",
             {"name": "files-backend", "mode": "auto"},
         ),
         (
-            "http://http-mcp:8000/mcp",
+            "http://http:8000/mcp",
             {"name": "http-backend", "mode": "auto"},
         ),
         (
-            "http://analysis-mcp:8000/mcp",
+            "http://analysis:8000/mcp",
             {"name": "analysis-backend", "mode": "auto"},
         ),
+        (
+            "http://gitlab:8000/mcp",
+            {"name": "gitlab-backend", "mode": "auto"},
+        ),
     ]
-    assert mounted == [(proxy, None)] * 4
+    assert mounted == [
+        (proxy, None),
+        (proxy, None),
+        (proxy, None),
+        (proxy, None),
+        (proxy, "gitlab"),
+    ]
 
 
-def test_http_app_mounts_dedicated_gitlab_endpoint() -> None:
+def test_http_app_mounts_all_public_surfaces() -> None:
     paths = {getattr(route, "path", "") for route in app.routes}
-    assert "/gitlab" in paths
+    assert {
+        "/github",
+        "/gitlab",
+        "/files",
+        "/http",
+        "/analysis",
+    } <= paths
