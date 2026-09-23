@@ -32,7 +32,7 @@ def repoint_reserved_branch(
     target_sha: str,
     *,
     dry_run: bool = True,
-) -> dict[str, object]:
+) -> JsonObject:
     """Repoint a Bridge-reserved branch without changing repository content.
 
     This is intentionally narrower than a general force-ref primitive. The target
@@ -114,7 +114,7 @@ def repoint_reserved_branch(
             f"target_sha={target_sha}"
         )
 
-    result: dict[str, object] = {
+    result: JsonObject = {
         "repository": repository,
         "branch": branch,
         "old_head_sha": old_head,

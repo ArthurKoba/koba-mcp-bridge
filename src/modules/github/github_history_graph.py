@@ -45,7 +45,7 @@ def rewrite_branch_identity_graph(
     preserve_author_dates: bool = True,
     max_commits: int = 500,
     dry_run: bool = True,
-) -> dict[str, object]:
+) -> JsonObject:
     """Rewrite an entire reachable commit DAG to the current Agent App identity."""
     repository = client._assert_allowed(repository)
     branch = client._assert_branch_mutation_allowed(repository, branch)
@@ -108,7 +108,7 @@ def rewrite_branch_identity_graph(
         raise GitHubAgentError("current Agent App identity is incomplete")
 
     mapping: dict[str, str] = {}
-    plan: list[dict[str, object]] = []
+    plan: list[JsonObject] = []
     merge_commit_count = 0
     reused_commit_count = 0
 
@@ -139,8 +139,8 @@ def rewrite_branch_identity_graph(
             )
             continue
 
-        author_payload: dict[str, object] = {"name": git_name, "email": git_email}
-        committer_payload: dict[str, object] = {"name": git_name, "email": git_email}
+        author_payload: JsonObject = {"name": git_name, "email": git_email}
+        committer_payload: JsonObject = {"name": git_name, "email": git_email}
         if preserve_author_dates:
             author_date = json_str(author.get("date"))
             committer_date = json_str(committer.get("date"))
@@ -149,7 +149,7 @@ def rewrite_branch_identity_graph(
             if committer_date:
                 committer_payload["date"] = committer_date
 
-        payload: dict[str, object] = {
+        payload: JsonObject = {
             "message": message,
             "tree": tree_sha,
             "parents": new_parents,
@@ -202,7 +202,7 @@ def rewrite_branch_identity_graph(
             f"final tree mismatch: expected {old_head_tree}, found {new_head_tree}"
         )
 
-    result: dict[str, object] = {
+    result: JsonObject = {
         "repository": repository,
         "branch": branch,
         "dry_run": dry_run,

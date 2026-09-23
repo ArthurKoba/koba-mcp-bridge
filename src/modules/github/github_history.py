@@ -27,7 +27,7 @@ def _as_object(item: object) -> JsonObject:
         return {}
 
 
-def _actor(item: object) -> dict[str, object]:
+def _actor(item: object) -> JsonObject:
     data = _as_object(item)
     raw_id = data.get("id")
     return {
@@ -37,9 +37,9 @@ def _actor(item: object) -> dict[str, object]:
     }
 
 
-def _git_identity(item: object, actor: object) -> dict[str, object]:
+def _git_identity(item: object, actor: object) -> JsonObject:
     data = _as_object(item)
-    result: dict[str, object] = {
+    result: JsonObject = {
         "name": json_str(data.get("name")),
         "email": json_str(data.get("email")),
         "date": json_str(data.get("date")),
@@ -48,9 +48,9 @@ def _git_identity(item: object, actor: object) -> dict[str, object]:
     return result
 
 
-def _verification(item: object, *, include_material: bool) -> dict[str, object]:
+def _verification(item: object, *, include_material: bool) -> JsonObject:
     data = _as_object(item)
-    result: dict[str, object] = {
+    result: JsonObject = {
         "verified": json_bool(data.get("verified")),
         "reason": json_str(data.get("reason")),
         "verified_at": data.get("verified_at"),
@@ -101,7 +101,7 @@ class GitHubHistoryMixin:
     def _history_host(self) -> _GitHubHistoryHost:
         return cast(_GitHubHistoryHost, self)
 
-    def _branch_policy(self, repository: str, branch: str) -> dict[str, object]:
+    def _branch_policy(self, repository: str, branch: str) -> JsonObject:
         repository = self._history_host()._assert_allowed(repository)
         branch = branch.strip()
         if not branch:
@@ -144,7 +144,7 @@ class GitHubHistoryMixin:
             raise GitHubAgentError(f"{reason}: {branch}")
         return branch.strip()
 
-    def list_branches(self, repository: str) -> dict[str, object]:
+    def list_branches(self, repository: str) -> JsonObject:
         repository = self._history_host()._assert_allowed(repository)
         _, result = self._history_host()._repo_request(
             repository,
@@ -188,7 +188,7 @@ class GitHubHistoryMixin:
         path: str | None = None,
         per_page: int = 50,
         page: int = 1,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._history_host()._assert_allowed(repository)
         params: dict[str, str | int] = {
             "per_page": max(1, min(per_page, 100)),
@@ -234,7 +234,7 @@ class GitHubHistoryMixin:
             )
         return {"repository": repository, "commits": commits, "page": page}
 
-    def get_commit(self, repository: str, ref: str) -> dict[str, object]:
+    def get_commit(self, repository: str, ref: str) -> JsonObject:
         repository = self._history_host()._assert_allowed(repository)
         _, result = self._history_host()._repo_request(
             repository,
@@ -279,7 +279,7 @@ class GitHubHistoryMixin:
             ],
         }
 
-    def delete_branch(self, repository: str, branch: str) -> dict[str, object]:
+    def delete_branch(self, repository: str, branch: str) -> JsonObject:
         repository = self._history_host()._assert_allowed(repository)
         branch = self._assert_branch_mutation_allowed(repository, branch)
         self._history_host()._repo_request(
@@ -289,7 +289,7 @@ class GitHubHistoryMixin:
         )
         return {"repository": repository, "branch": branch, "deleted": True}
 
-    def _agent_app_identity(self) -> dict[str, object]:
+    def _agent_app_identity(self) -> JsonObject:
         _, app = self._history_host()._request(
             "GET",
             f"{_GITHUB_API}/app",
@@ -339,7 +339,7 @@ class GitHubHistoryMixin:
         repository: str,
         *,
         reviewer_available: bool = False,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._history_host()._assert_allowed(repository)
         _, repo = self._history_host()._repo_request(
             repository,
@@ -416,7 +416,7 @@ class GitHubHistoryMixin:
         base_sha: str | None = None,
         max_commits: int = 100,
         dry_run: bool = True,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         repository = self._history_host()._assert_allowed(repository)
         branch = self._assert_branch_mutation_allowed(repository, branch)
         if identity_source != "current_agent_app":
@@ -484,7 +484,7 @@ class GitHubHistoryMixin:
         git_email = str(identity["email"])
         parent_sha = base_sha
         mapping: dict[str, str] = {}
-        plan: list[dict[str, object]] = []
+        plan: list[JsonObject] = []
 
         for original in chain:
             old_sha = json_str(original.get("sha"))
@@ -494,11 +494,11 @@ class GitHubHistoryMixin:
             author = json_member_object(original, "author")
             committer = json_member_object(original, "committer")
 
-            author_payload: dict[str, object] = {
+            author_payload: JsonObject = {
                 "name": git_name,
                 "email": git_email,
             }
-            committer_payload: dict[str, object] = {
+            committer_payload: JsonObject = {
                 "name": git_name,
                 "email": git_email,
             }
@@ -510,7 +510,7 @@ class GitHubHistoryMixin:
                 if committer_date:
                     committer_payload["date"] = committer_date
 
-            payload: dict[str, object] = {
+            payload: JsonObject = {
                 "message": message,
                 "tree": tree_sha,
                 "parents": [parent_sha] if parent_sha else [],
@@ -578,7 +578,7 @@ class GitHubHistoryMixin:
                 f"final tree mismatch: expected {old_head_tree}, found {new_head_tree}"
             )
 
-        result: dict[str, object] = {
+        result: JsonObject = {
             "repository": repository,
             "branch": branch,
             "dry_run": dry_run,
