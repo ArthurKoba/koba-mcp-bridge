@@ -1,10 +1,10 @@
-# koba-mcp-bridge
+# mcp-bridge
 
 Extensible MCP gateway for AI agents, local tools, isolated compute workers, development automation, and reverse-engineering workflows.
 
 ## Purpose
 
-`koba-mcp-bridge` is a modular MCP platform with one authenticated edge gateway and isolated provider/runtime processes.
+`mcp-bridge` is a modular MCP platform with one authenticated edge gateway and isolated provider/runtime processes.
 
 The project is designed around a few core ideas:
 
@@ -32,7 +32,7 @@ ChatGPT / MCP clients
         |
         | OAuth + MCP
         v
-koba-mcp-gateway
+mcp-gateway
         |
         +-- github-mcp   (private)
         +-- gitlab-mcp   (private)
@@ -60,7 +60,7 @@ The raw Ghidra MCP remains native and is consumed only behind the analysis bound
 
 ## Files service
 
-Koba provides one universal persistent file service for every backend and worker.
+MCP Bridge provides one universal persistent file service for every backend and worker.
 Files are immutable and content-addressed. The public identifier is:
 
 ```text
@@ -73,12 +73,12 @@ cross-service identifiers.
 For client/chat attachments, agents should call `file_ingest` with the
 attachment/file argument itself. The tool marks `file` in
 `_meta["openai/fileParams"]`, so ChatGPT supplies a structured file payload
-containing `download_url`, `file_id`, and optional MIME/name metadata. Koba
+containing `download_url`, `file_id`, and optional MIME/name metadata. MCP Bridge
 streams the authorized temporary URL directly into canonical storage and returns
 `file_id`. Attachment bytes never need to be serialized through
 model-visible base64.
 
-For generic MCP clients that cannot provide a file-capable argument, Koba also
+For generic MCP clients that cannot provide a file-capable argument, MCP Bridge also
 provides a resumable fallback protocol:
 
 - `file_upload_begin` creates an upload session from file metadata;
@@ -90,7 +90,7 @@ provides a resumable fallback protocol:
 - `file_upload_cleanup` previews or removes stale upload-session state by age without deleting committed files;
 - `file_upload_cancel` discards a specific unfinished transfer.
 
-The protocol is transport-only. The agent does not choose a Koba filesystem path
+The protocol is transport-only. The agent does not choose a MCP Bridge filesystem path
 and no backend-specific directory participates in upload. After commit, every
 consumer receives only the immutable `file_id`.
 
@@ -129,11 +129,11 @@ TLS fingerprints, or browser HTTP/2 settings.
 
 ## Analysis and Ghidra boundary
 
-The public Koba data model is Files. The analysis runtime consumes `file_id` values and
+The public MCP Bridge data model is Files. The analysis runtime consumes `file_id` values and
 uses the native `ghidra-mcp` service internally.
 
 Raw Ghidra stays on the private Docker network and keeps its own native tool vocabulary.
-Koba does not rename or modify the Ghidra backend merely to match platform terminology.
+MCP Bridge does not rename or modify the Ghidra backend merely to match platform terminology.
 
 The current analysis surface includes the existing high-level import/export workflows.
 Further analysis/recovery vocabulary can evolve in `analysis-mcp` without changing the
@@ -141,7 +141,7 @@ native Ghidra service.
 
 ## Secrets / Infisical
 
-Koba uses self-hosted Infisical as the central provider for provider-specific
+MCP Bridge uses self-hosted Infisical as the central provider for provider-specific
 credentials and configuration. Runtime workloads authenticate with an Infisical
 Machine Identity using Universal Auth and receive a short-lived access token.
 
