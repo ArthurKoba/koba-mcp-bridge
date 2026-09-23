@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import http.client
-import json
 import queue
 import ssl
 import threading
@@ -13,6 +12,7 @@ from datetime import datetime
 
 import jwt
 
+from common.models import JsonValue, json_loads, json_value
 from common.secrets import SecretError, resolve_config_secret
 
 _GITHUB_API = "https://api.github.com"
@@ -142,10 +142,13 @@ class GitHubAppClient:
         return str(token)
 
     @staticmethod
-    def _decode_json(data: bytes) -> object:
+    def _decode_json(data: bytes) -> JsonValue:
         if not data:
             return {}
-        return json.loads(data.decode("utf-8"))
+        try:
+            return json_loads(data, context="GitHub response")
+        except ValueError as exc:
+            raise GitHubAgentError("GitHub returned invalid JSON") from exc
 
     @staticmethod
     def _request_target(url: str) -> str:
@@ -238,8 +241,15 @@ class GitHubAppClient:
         token: str | None = None,
         payload: object | None = None,
         allowed_errors: set[int] | None = None,
-    ) -> tuple[int, object]:
-        body = None if payload is None else json.dumps(payload).encode("utf-8")
+    ) -> tuple[int, JsonValue]:
+        body = (
+            None
+            if payload is None
+            else json.dumps(
+                json_value(payload, context="GitHub request payload"),
+                ensure_ascii=False,
+            ).encode("utf-8")
+        )
         headers = {
             "Accept": "application/vnd.github+json",
             "User-Agent": "mcp-bridge",

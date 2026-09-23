@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import cast
 
 from pydantic import (
     BaseModel,
     ConfigDict,
-    JsonValue,
+    JsonValue as PydanticJsonValue,
     TypeAdapter,
     ValidationError,
     validate_call,
 )
 
+type JsonValue = PydanticJsonValue
 type JsonObject = dict[str, JsonValue]
 type JsonArray = list[JsonValue]
 
@@ -37,9 +37,9 @@ class ProviderModel(BaseModel):
         return json_object(self.model_dump(mode="json"), context=type(self).__name__)
 
 
-_JSON_VALUE = TypeAdapter(JsonValue)
-_JSON_OBJECT = TypeAdapter(JsonObject)
-_JSON_ARRAY = TypeAdapter(JsonArray)
+_JSON_VALUE: TypeAdapter[JsonValue] = TypeAdapter(JsonValue)
+_JSON_OBJECT: TypeAdapter[JsonObject] = TypeAdapter(JsonObject)
+_JSON_ARRAY: TypeAdapter[JsonArray] = TypeAdapter(JsonArray)
 _STRICT_CALL_CONFIG = ConfigDict(strict=True, arbitrary_types_allowed=True)
 
 
@@ -48,7 +48,7 @@ def validated_call[**P, R](function: Callable[P, R]) -> Callable[P, R]:
         config=_STRICT_CALL_CONFIG,
         validate_return=True,
     )(function)
-    return cast(Callable[P, R], wrapped)
+    return wrapped
 
 
 def json_loads(data: str | bytes, *, context: str = "value") -> JsonValue:
