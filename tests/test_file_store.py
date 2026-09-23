@@ -196,6 +196,10 @@ def test_existing_database_is_migrated_to_files_schema(tmp_path, monkeypatch) ->
     db.commit()
     db.close()
 
+    object_path = tmp_path / "objects" / "sha256" / "aa" / ("a" * 64)
+    object_path.parent.mkdir(parents=True, exist_ok=True)
+    object_path.write_bytes(b"data")
+
     store = FileStore()
     store.ensure()
 
