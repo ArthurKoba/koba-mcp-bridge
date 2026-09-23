@@ -63,7 +63,6 @@ def _verification(item: object, *, include_material: bool) -> dict[str, object]:
     return result
 
 
-
 class _GitHubHistoryHost(Protocol):
     app_id: str
 
