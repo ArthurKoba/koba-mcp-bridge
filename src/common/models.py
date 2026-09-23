@@ -33,6 +33,7 @@ class ProviderModel(BaseModel):
 _JSON_VALUE: TypeAdapter[JsonValue] = TypeAdapter(JsonValue)
 _JSON_OBJECT: TypeAdapter[JsonObject] = TypeAdapter(JsonObject)
 _JSON_ARRAY: TypeAdapter[JsonArray] = TypeAdapter(JsonArray)
+_JSON_OBJECT_LIST: TypeAdapter[list[JsonObject]] = TypeAdapter(list[JsonObject])
 _STRICT_CALL_CONFIG = ConfigDict(strict=True, arbitrary_types_allowed=True)
 
 
@@ -177,3 +178,78 @@ def json_member_array(
         if required:
             raise ValueError(f"{key} must be a JSON array") from exc
         return []
+
+
+
+def json_str(value: JsonValue | object, *, default: str = "", field: str = "value") -> str:
+    if value is None:
+        return default
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (bool, int, float)):
+        return str(value)
+    raise ValueError(f"{field} must be a JSON scalar")
+
+
+def json_int(value: JsonValue | object, *, default: int = 0, field: str = "value") -> int:
+    if value is None or value == "":
+        return default
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if not value.is_integer():
+            raise ValueError(f"{field} must be an integer")
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError as exc:
+            raise ValueError(f"{field} must be an integer") from exc
+    raise ValueError(f"{field} must be an integer")
+
+
+def json_bool(value: JsonValue | object, *, default: bool = False, field: str = "value") -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    raise ValueError(f"{field} must be a boolean")
+
+
+def json_object_field(
+    payload: JsonObject,
+    key: str,
+    *,
+    required: bool = False,
+) -> JsonObject:
+    value = payload.get(key)
+    if value is None and not required:
+        return {}
+    try:
+        return _JSON_OBJECT.validate_python(value, strict=True)
+    except ValidationError as exc:
+        raise ValueError(f"{key} must be a JSON object") from exc
+
+
+def json_array_field(
+    payload: JsonObject,
+    key: str,
+    *,
+    required: bool = False,
+) -> JsonArray:
+    value = payload.get(key)
+    if value is None and not required:
+        return []
+    try:
+        return _JSON_ARRAY.validate_python(value, strict=True)
+    except ValidationError as exc:
+        raise ValueError(f"{key} must be a JSON array") from exc
+
+
+def json_object_list(value: JsonValue | object, *, context: str = "value") -> list[JsonObject]:
+    try:
+        return _JSON_OBJECT_LIST.validate_python(value, strict=True)
+    except ValidationError as exc:
+        raise ValueError(f"{context} must be a list of JSON objects") from exc
