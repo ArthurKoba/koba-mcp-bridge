@@ -8,8 +8,8 @@ Current ADR candidates:
 
 - Infisical deployment and machine identity model;
 - modular runtime/service boundaries;
-- aggregate gateway compatibility policy;
-- public Files naming versus internal artifact terminology;
+- aggregate gateway and dedicated public surface policy;
+- Files data-plane ownership and cross-runtime access model;
 - connector profile identity model.
 
 Suggested filename convention:

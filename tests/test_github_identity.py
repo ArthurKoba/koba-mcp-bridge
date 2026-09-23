@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from koba_mcp_bridge.github_identity import GitHubPrettyIdentityClient
+from mcp_bridge.github_identity import GitHubPrettyIdentityClient
 
 
 class RecordingPrettyClient(GitHubPrettyIdentityClient):

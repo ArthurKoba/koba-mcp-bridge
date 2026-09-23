@@ -5,28 +5,28 @@ from types import SimpleNamespace
 
 import pytest
 
-import koba_mcp_bridge.reverse_workflow as reverse_workflow
-from koba_mcp_bridge.artifact_store import ArtifactError, ArtifactStore
-from koba_mcp_bridge.reverse_workflow import (
+import mcp_bridge.reverse_workflow as reverse_workflow
+from mcp_bridge.file_store import FileError, FileStore
+from mcp_bridge.reverse_workflow import (
     _decode_call_result,
     _decode_result,
-    ghidra_import_artifact_impl,
+    ghidra_import_file_impl,
 )
 
 PROJECT_ID = "ghp_camera"
 
 
 @pytest.mark.asyncio
-async def test_ghidra_import_artifact_dry_run_uses_artifact_id(
+async def test_ghidra_import_file_dry_run_uses_file_id(
     tmp_path,
     monkeypatch,
 ) -> None:
-    monkeypatch.setenv("ARTIFACT_ROOT", str(tmp_path))
-    saved = ArtifactStore().put_bytes(b"ELF", "Sofia")
+    monkeypatch.setenv("FILE_ROOT", str(tmp_path))
+    saved = FileStore().put_bytes(b"ELF", "Sofia")
 
-    result = await ghidra_import_artifact_impl(
+    result = await ghidra_import_file_impl(
         PROJECT_ID,
-        saved["artifact_id"],
+        saved["file_id"],
         project_folder="/firmware",
         auto_analyze=True,
         dry_run=True,
@@ -36,7 +36,7 @@ async def test_ghidra_import_artifact_dry_run_uses_artifact_id(
         "success": True,
         "dry_run": True,
         "project_id": PROJECT_ID,
-        "artifact_id": saved["artifact_id"],
+        "file_id": saved["file_id"],
         "name": "Sofia",
         "project_folder": "/firmware",
         "language": None,
@@ -144,8 +144,8 @@ def test_decode_call_result_prefers_structured_content_over_lossy_data() -> None
 
 
 class _FakeGhidraClient:
-    def __init__(self, artifact_sha256: str, *, import_error: str = "") -> None:
-        self.artifact_sha256 = artifact_sha256
+    def __init__(self, file_sha256: str, *, import_error: str = "") -> None:
+        self.file_sha256 = file_sha256
         self.import_error = import_error
         self.calls: list[tuple[str, dict]] = []
         self.received = bytearray()
@@ -184,7 +184,7 @@ class _FakeGhidraClient:
             body = {
                 "success": True,
                 "path": "/artifacts/.koba-stage/stage-1/Sofia",
-                "sha256": self.artifact_sha256,
+                "sha256": self.file_sha256,
             }
         elif name == "import_file":
             if self.import_error:
@@ -199,20 +199,20 @@ class _FakeGhidraClient:
 
 
 @pytest.mark.asyncio
-async def test_ghidra_import_artifact_streams_through_backend_stage(
+async def test_ghidra_import_file_streams_through_backend_stage(
     tmp_path,
     monkeypatch,
 ) -> None:
-    monkeypatch.setenv("ARTIFACT_ROOT", str(tmp_path))
+    monkeypatch.setenv("FILE_ROOT", str(tmp_path))
     monkeypatch.setenv("GHIDRA_MCP_URL", "http://ghidra-mcp:8081/mcp")
     payload = b"ELF-STAGED"
-    saved = ArtifactStore().put_bytes(payload, "Sofia")
+    saved = FileStore().put_bytes(payload, "Sofia")
     fake = _FakeGhidraClient(saved["sha256"])
     monkeypatch.setattr(reverse_workflow, "Client", lambda url: fake)
 
-    result = await ghidra_import_artifact_impl(
+    result = await ghidra_import_file_impl(
         PROJECT_ID,
-        saved["artifact_id"],
+        saved["file_id"],
         auto_analyze=False,
     )
 
@@ -230,33 +230,33 @@ async def test_ghidra_import_artifact_streams_through_backend_stage(
         "import_file",
         "artifact_stage_cancel",
     ]
-    refs = ArtifactStore().references(
+    refs = FileStore().references(
         consumer_type="ghidra-project",
         consumer_id=PROJECT_ID,
     )
-    assert [ref["artifact_id"] for ref in refs] == [saved["artifact_id"]]
+    assert [ref["file_id"] for ref in refs] == [saved["file_id"]]
 
 
 @pytest.mark.asyncio
-async def test_ghidra_import_artifact_does_not_reference_backend_failure(
+async def test_ghidra_import_file_does_not_reference_backend_failure(
     tmp_path,
     monkeypatch,
 ) -> None:
-    monkeypatch.setenv("ARTIFACT_ROOT", str(tmp_path))
+    monkeypatch.setenv("FILE_ROOT", str(tmp_path))
     monkeypatch.setenv("GHIDRA_MCP_URL", "http://ghidra-mcp:8081/mcp")
-    saved = ArtifactStore().put_bytes(b"ELF", "Sofia")
+    saved = FileStore().put_bytes(b"ELF", "Sofia")
     fake = _FakeGhidraClient(saved["sha256"], import_error="import exploded")
     monkeypatch.setattr(reverse_workflow, "Client", lambda url: fake)
 
-    with pytest.raises(ArtifactError, match="import exploded"):
-        await ghidra_import_artifact_impl(
+    with pytest.raises(FileError, match="import exploded"):
+        await ghidra_import_file_impl(
             PROJECT_ID,
-            saved["artifact_id"],
+            saved["file_id"],
             auto_analyze=False,
         )
 
     assert fake.calls[-1][0] == "artifact_stage_cancel"
-    refs = ArtifactStore().references(
+    refs = FileStore().references(
         consumer_type="ghidra-project",
         consumer_id=PROJECT_ID,
     )

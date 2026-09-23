@@ -1,6 +1,6 @@
 # Documentation index
 
-This directory is the documentation entry point for Koba MCP Bridge and the wider Koba integration layer.
+This directory is the documentation entry point for MCP Bridge and the wider MCP Bridge integration layer.
 
 The repository is currently evolving from a single authenticated MCP gateway into a modular platform with reusable connector runtimes, shared services, and an optional aggregate gateway. The documents below intentionally distinguish the current implementation from the target architecture.
 
@@ -14,7 +14,8 @@ The repository is currently evolving from a single authenticated MCP gateway int
 
 ## Existing technical notes
 
-- [Artifact service architecture](artifact-service.md)
+- [Files service architecture](file-service.md)
+- [Files production migration](files-migration.md)
 - [GitHub Actions diagnostics](github-actions.md)
 - [GitHub history and policy surface](github-history-surface.md)
 - [ChatGPT OAuth flow](oauth-chatgpt.md)

@@ -5,64 +5,64 @@ import tarfile
 
 import pytest
 
-from koba_mcp_bridge.artifact_store import ArtifactError, ArtifactStore
+from mcp_bridge.file_store import FileError, FileStore
 
 
 @pytest.fixture
-def store(tmp_path, monkeypatch) -> ArtifactStore:
-    monkeypatch.setenv("ARTIFACT_ROOT", str(tmp_path))
-    monkeypatch.setenv("ARTIFACT_UPLOAD_MAX_BYTES", str(16 * 1024 * 1024))
-    monkeypatch.setenv("ARTIFACT_MAX_EXTRACT_FILES", "100")
-    monkeypatch.setenv("ARTIFACT_MAX_EXTRACT_BYTES", str(16 * 1024 * 1024))
-    value = ArtifactStore()
+def store(tmp_path, monkeypatch) -> FileStore:
+    monkeypatch.setenv("FILE_ROOT", str(tmp_path))
+    monkeypatch.setenv("FILE_UPLOAD_MAX_BYTES", str(16 * 1024 * 1024))
+    monkeypatch.setenv("FILE_MAX_EXTRACT_FILES", "100")
+    monkeypatch.setenv("FILE_MAX_EXTRACT_BYTES", str(16 * 1024 * 1024))
+    value = FileStore()
     value.ensure()
     return value
 
 
-def test_content_addressed_deduplication(store: ArtifactStore) -> None:
+def test_content_addressed_deduplication(store: FileStore) -> None:
     first = store.put_bytes(b"same-bytes", "one.bin")
     second = store.put_bytes(b"same-bytes", "two.bin")
 
-    assert first["artifact_id"] == second["artifact_id"]
-    info = store.info(first["artifact_id"])
+    assert first["file_id"] == second["file_id"]
+    info = store.info(first["file_id"])
     assert {alias["name"] for alias in info["aliases"]} == {"one.bin", "two.bin"}
-    assert store.path_for(first["artifact_id"]).read_bytes() == b"same-bytes"
+    assert store.path_for(first["file_id"]).read_bytes() == b"same-bytes"
 
 
-def test_artifact_read_uses_id_not_path(store: ArtifactStore) -> None:
+def test_file_read_uses_id_not_path(store: FileStore) -> None:
     saved = store.put_bytes(b"abcdef", "sample.bin")
-    chunk = store.read(saved["artifact_id"], offset=2, length=3)
+    chunk = store.read(saved["file_id"], offset=2, length=3)
 
     assert chunk["bytes_read"] == 3
     assert chunk["next_offset"] == 5
     assert chunk["eof"] is False
 
 
-def test_reference_blocks_delete_until_released(store: ArtifactStore) -> None:
+def test_reference_blocks_delete_until_released(store: FileStore) -> None:
     saved = store.put_bytes(b"firmware", "firmware.bin")
-    artifact_id = saved["artifact_id"]
+    file_id = saved["file_id"]
 
     store.add_reference(
-        artifact_id,
+        file_id,
         consumer_type="ghidra-project",
         consumer_id="camera",
         role="source",
     )
 
-    with pytest.raises(ArtifactError, match="referenced"):
-        store.delete(artifact_id)
+    with pytest.raises(FileError, match="referenced"):
+        store.delete(file_id)
 
     released = store.release_reference(
-        artifact_id,
+        file_id,
         consumer_type="ghidra-project",
         consumer_id="camera",
         role="source",
     )
     assert released["released"] is True
-    assert store.delete(artifact_id)["deleted"] is True
+    assert store.delete(file_id)["deleted"] is True
 
 
-def test_extract_archive_creates_collection(store: ArtifactStore, tmp_path) -> None:
+def test_extract_archive_creates_collection(store: FileStore, tmp_path) -> None:
     archive_path = tmp_path / "workspace.tgz"
     with tarfile.open(archive_path, "w:gz") as archive:
         payload = b"ELF-SOFIA"
@@ -70,18 +70,18 @@ def test_extract_archive_creates_collection(store: ArtifactStore, tmp_path) -> N
         info.size = len(payload)
         archive.addfile(info, io.BytesIO(payload))
 
-    archive_artifact = store.put_file(archive_path, name="workspace.tgz")
-    extracted = store.extract(archive_artifact["artifact_id"])
+    archive_file = store.put_file(archive_path, name="workspace.tgz")
+    extracted = store.extract(archive_file["file_id"])
 
     assert extracted["files"] == 1
     resolved = store.collection_resolve(
         extracted["collection_id"],
         "rootfs/usr/bin/Sofia",
     )
-    assert store.path_for(resolved["artifact_id"]).read_bytes() == b"ELF-SOFIA"
+    assert store.path_for(resolved["file_id"]).read_bytes() == b"ELF-SOFIA"
 
 
-def test_extract_archive_rejects_traversal(store: ArtifactStore, tmp_path) -> None:
+def test_extract_archive_rejects_traversal(store: FileStore, tmp_path) -> None:
     archive_path = tmp_path / "bad.tgz"
     with tarfile.open(archive_path, "w:gz") as archive:
         payload = b"x"
@@ -89,17 +89,17 @@ def test_extract_archive_rejects_traversal(store: ArtifactStore, tmp_path) -> No
         info.size = len(payload)
         archive.addfile(info, io.BytesIO(payload))
 
-    archive_artifact = store.put_file(archive_path, name="bad.tgz")
+    archive_file = store.put_file(archive_path, name="bad.tgz")
 
-    with pytest.raises(ArtifactError, match="unsafe archive path"):
-        store.extract(archive_artifact["artifact_id"])
+    with pytest.raises(FileError, match="unsafe archive path"):
+        store.extract(archive_file["file_id"])
 
 
-def test_gc_only_selects_unreferenced_artifacts(store: ArtifactStore) -> None:
+def test_gc_only_selects_unreferenced_files(store: FileStore) -> None:
     unused = store.put_bytes(b"unused", "unused.bin")
     used = store.put_bytes(b"used", "used.bin")
     store.add_reference(
-        used["artifact_id"],
+        used["file_id"],
         consumer_type="worker",
         consumer_id="job-1",
         role="input",
@@ -107,11 +107,11 @@ def test_gc_only_selects_unreferenced_artifacts(store: ArtifactStore) -> None:
 
     preview = store.gc(dry_run=True)
 
-    assert unused["artifact_id"] in preview["candidates"]
-    assert used["artifact_id"] not in preview["candidates"]
+    assert unused["file_id"] in preview["candidates"]
+    assert used["file_id"] not in preview["candidates"]
 
 
-def test_collection_delete_releases_members_for_gc(store: ArtifactStore, tmp_path) -> None:
+def test_collection_delete_releases_members_for_gc(store: FileStore, tmp_path) -> None:
     archive_path = tmp_path / "workspace-delete.tgz"
     with tarfile.open(archive_path, "w:gz") as archive:
         payload = b"member-bytes"
@@ -120,19 +120,19 @@ def test_collection_delete_releases_members_for_gc(store: ArtifactStore, tmp_pat
         archive.addfile(info, io.BytesIO(payload))
 
     source = store.put_file(archive_path, name="workspace-delete.tgz")
-    extracted = store.extract(source["artifact_id"])
+    extracted = store.extract(source["file_id"])
     member = store.collection_resolve(
         extracted["collection_id"],
         "lib/libcamera.so",
     )
 
     before = store.gc(dry_run=True)
-    assert member["artifact_id"] not in before["candidates"]
-    assert source["artifact_id"] not in before["candidates"]
+    assert member["file_id"] not in before["candidates"]
+    assert source["file_id"] not in before["candidates"]
 
     deleted = store.collection_delete(extracted["collection_id"])
     assert deleted["deleted"] is True
 
     after = store.gc(dry_run=True)
-    assert member["artifact_id"] in after["candidates"]
-    assert source["artifact_id"] in after["candidates"]
+    assert member["file_id"] in after["candidates"]
+    assert source["file_id"] in after["candidates"]

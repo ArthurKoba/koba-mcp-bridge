@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, NotRequired, TypedDict
 
-from .artifact_store import ArtifactError, ArtifactStore, upload_max_bytes
+from .file_store import FileError, FileStore, upload_max_bytes
 
 _DEFAULT_CHUNK_BYTES = 1024 * 1024
 
@@ -33,14 +33,14 @@ def _now() -> str:
 
 
 def upload_chunk_bytes() -> int:
-    raw = os.getenv("ARTIFACT_UPLOAD_CHUNK_BYTES", str(_DEFAULT_CHUNK_BYTES)).strip()
+    raw = os.getenv("FILE_UPLOAD_CHUNK_BYTES", str(_DEFAULT_CHUNK_BYTES)).strip()
     try:
         value = int(raw)
     except ValueError as exc:
-        raise ArtifactError("ARTIFACT_UPLOAD_CHUNK_BYTES must be an integer") from exc
+        raise FileError("FILE_UPLOAD_CHUNK_BYTES must be an integer") from exc
     if value < 64 * 1024 or value > 8 * 1024 * 1024:
-        raise ArtifactError(
-            "ARTIFACT_UPLOAD_CHUNK_BYTES must be between 65536 and 8388608"
+        raise FileError(
+            "FILE_UPLOAD_CHUNK_BYTES must be between 65536 and 8388608"
         )
     return value
 
@@ -48,23 +48,23 @@ def upload_chunk_bytes() -> int:
 def _normalize_upload_id(upload_id: str) -> str:
     value = upload_id.strip().casefold()
     if not value.startswith("upload:"):
-        raise ArtifactError("upload_id must use the upload:<uuid> form")
+        raise FileError("upload_id must use the upload:<uuid> form")
     raw = value.removeprefix("upload:")
     try:
         parsed = uuid.UUID(raw)
     except ValueError as exc:
-        raise ArtifactError("upload_id contains an invalid UUID") from exc
+        raise FileError("upload_id contains an invalid UUID") from exc
     return f"upload:{parsed}"
 
 
 def _validate_name(name: str) -> str:
     value = name.strip()
     if not value:
-        raise ArtifactError("name must not be empty")
+        raise FileError("name must not be empty")
     if len(value) > 255:
-        raise ArtifactError("name must not exceed 255 characters")
+        raise FileError("name must not exceed 255 characters")
     if "/" in value or "\\" in value or any(ord(ch) < 32 for ch in value):
-        raise ArtifactError("name must be a plain file name without path separators")
+        raise FileError("name must be a plain file name without path separators")
     return value
 
 
@@ -73,21 +73,21 @@ def _validate_sha256(value: str) -> str:
     if not digest:
         return ""
     if len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
-        raise ArtifactError("expected_sha256 must be a 64-character hexadecimal digest")
+        raise FileError("expected_sha256 must be a 64-character hexadecimal digest")
     return digest
 
 
 def _validate_remote_file_url(file: str) -> urllib.parse.SplitResult:
     parsed = urllib.parse.urlsplit(file.strip())
     if parsed.scheme.casefold() != "https":
-        raise ArtifactError(
+        raise FileError(
             "file must resolve to an HTTPS attachment URL; pass the client attachment/file "
             "argument directly instead of base64 or a server filesystem path"
         )
     if not parsed.hostname:
-        raise ArtifactError("attachment URL has no hostname")
+        raise FileError("attachment URL has no hostname")
     if parsed.username or parsed.password:
-        raise ArtifactError("attachment URL must not contain userinfo")
+        raise FileError("attachment URL must not contain userinfo")
 
     try:
         addresses = socket.getaddrinfo(
@@ -96,18 +96,18 @@ def _validate_remote_file_url(file: str) -> urllib.parse.SplitResult:
             type=socket.SOCK_STREAM,
         )
     except OSError as exc:
-        raise ArtifactError("attachment hostname cannot be resolved") from exc
+        raise FileError("attachment hostname cannot be resolved") from exc
     if not addresses:
-        raise ArtifactError("attachment hostname cannot be resolved")
+        raise FileError("attachment hostname cannot be resolved")
 
     for item in addresses:
         raw_ip = str(item[4][0]).split("%", 1)[0]
         try:
             address = ipaddress.ip_address(raw_ip)
         except ValueError as exc:
-            raise ArtifactError("attachment hostname resolved to an invalid address") from exc
+            raise FileError("attachment hostname resolved to an invalid address") from exc
         if not address.is_global:
-            raise ArtifactError("attachment URL resolves to a non-public address")
+            raise FileError("attachment URL resolves to a non-public address")
     return parsed
 
 
@@ -144,13 +144,13 @@ def ingest_file(
     expected_size: int | None = None,
     expected_sha256: str = "",
 ) -> dict[str, Any]:
-    """Stream one client-authorized attachment directly into canonical artifact storage."""
-    store = ArtifactStore()
+    """Stream one client-authorized attachment directly into canonical file storage."""
+    store = FileStore()
     store.ensure()
 
     download_url = str(file.get("download_url", "")).strip()
     if not download_url:
-        raise ArtifactError("file.download_url is required")
+        raise FileError("file.download_url is required")
     parsed = _validate_remote_file_url(download_url)
 
     file_name = str(file.get("file_name", "")).strip()
@@ -161,13 +161,13 @@ def ingest_file(
         expected_size is not None
         and (expected_size < 0 or expected_size > upload_max_bytes())
     ):
-        raise ArtifactError(
+        raise FileError(
             f"expected_size must be between 0 and {upload_max_bytes()}"
         )
 
     request = urllib.request.Request(
         download_url,
-        headers={"User-Agent": "koba-mcp-bridge/0.1 artifact-ingress"},
+        headers={"User-Agent": "mcp-bridge/0.1 file-ingress"},
     )
     temporary = store.tmp / f"attachment-{uuid.uuid4().hex}.part"
     digest = hashlib.sha256()
@@ -178,9 +178,9 @@ def ingest_file(
         try:
             response = _open_remote_file(request)
         except Exception as exc:
-            if isinstance(exc, ArtifactError):
+            if isinstance(exc, FileError):
                 raise
-            raise ArtifactError(
+            raise FileError(
                 f"attachment download failed: {type(exc).__name__}"
             ) from exc
 
@@ -193,13 +193,13 @@ def ingest_file(
                 try:
                     declared_size = int(declared)
                 except ValueError as exc:
-                    raise ArtifactError("attachment returned invalid Content-Length") from exc
+                    raise FileError("attachment returned invalid Content-Length") from exc
                 if declared_size < 0:
-                    raise ArtifactError("attachment returned invalid Content-Length")
+                    raise FileError("attachment returned invalid Content-Length")
                 if declared_size > upload_max_bytes():
-                    raise ArtifactError("attachment exceeds ARTIFACT_UPLOAD_MAX_BYTES")
+                    raise FileError("attachment exceeds FILE_UPLOAD_MAX_BYTES")
                 if expected_size is not None and declared_size != expected_size:
-                    raise ArtifactError(
+                    raise FileError(
                         "attachment Content-Length does not match expected_size"
                     )
 
@@ -217,7 +217,7 @@ def ingest_file(
                         break
                     total += len(chunk)
                     if total > upload_max_bytes():
-                        raise ArtifactError("attachment exceeds ARTIFACT_UPLOAD_MAX_BYTES")
+                        raise FileError("attachment exceeds FILE_UPLOAD_MAX_BYTES")
                     digest.update(chunk)
                     handle.write(chunk)
                 handle.flush()
@@ -225,26 +225,26 @@ def ingest_file(
 
         actual_digest = digest.hexdigest()
         if expected_size is not None and total != expected_size:
-            raise ArtifactError(
+            raise FileError(
                 f"attachment size mismatch: expected {expected_size}, received {total}"
             )
         if expected_digest and actual_digest != expected_digest:
-            raise ArtifactError(
+            raise FileError(
                 "attachment SHA-256 mismatch: "
                 f"expected {expected_digest}, found {actual_digest}"
             )
 
-        artifact = store.put_file(
+        file = store.put_file(
             temporary,
             name=clean_name,
             mime_type=detected_mime,
             source="attachment-ingress",
             consume=True,
         )
-        if str(artifact["sha256"]) != actual_digest:
-            raise ArtifactError("artifact store returned an unexpected SHA-256")
+        if str(file["sha256"]) != actual_digest:
+            raise FileError("file store returned an unexpected SHA-256")
         return {
-            "artifact": artifact,
+            "file": file,
             "completed": True,
             "transport": "client-file",
         }
@@ -253,11 +253,11 @@ def ingest_file(
             temporary.unlink()
 
 
-class ArtifactUploadManager:
+class FileUploadManager:
     """Durable resumable binary ingress for autonomous MCP agents."""
 
-    def __init__(self, store: ArtifactStore | None = None) -> None:
-        self.store = store or ArtifactStore()
+    def __init__(self, store: FileStore | None = None) -> None:
+        self.store = store or FileStore()
         self.directory = self.store.root / "uploads"
         self.database = self.store.root / "uploads.sqlite3"
 
@@ -275,7 +275,7 @@ class ArtifactUploadManager:
                     expected_sha256 TEXT NOT NULL,
                     bytes_received INTEGER NOT NULL,
                     state TEXT NOT NULL CHECK (state IN ('open', 'completed')),
-                    artifact_id TEXT NOT NULL,
+                    file_id TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     completed_at TEXT NOT NULL
@@ -317,14 +317,14 @@ class ArtifactUploadManager:
                 (normalized,),
             ).fetchone()
         if row is None:
-            raise ArtifactError("upload session does not exist")
+            raise FileError("upload session does not exist")
         return row
 
     def _public_status(self, row: sqlite3.Row) -> dict[str, Any]:
         expected = int(row["expected_size"])
         received = int(row["bytes_received"])
         state = str(row["state"])
-        artifact_id = str(row["artifact_id"])
+        file_id = str(row["file_id"])
         return {
             "upload_id": str(row["upload_id"]),
             "name": str(row["name"]),
@@ -336,7 +336,7 @@ class ArtifactUploadManager:
             "remaining_bytes": max(0, expected - received),
             "complete": received == expected,
             "committed": state == "completed",
-            "artifact_id": artifact_id or None,
+            "file_id": file_id or None,
             "chunk_bytes": upload_chunk_bytes(),
             "created_at": str(row["created_at"]),
             "updated_at": str(row["updated_at"]),
@@ -353,15 +353,15 @@ class ArtifactUploadManager:
         upload_id = str(row["upload_id"])
         part = self._part_path(upload_id)
         if not part.is_file():
-            raise ArtifactError("upload staged bytes are missing")
+            raise FileError("upload staged bytes are missing")
 
         recorded = int(row["bytes_received"])
         actual = part.stat().st_size
         expected = int(row["expected_size"])
         if actual < recorded:
-            raise ArtifactError("upload staged bytes are shorter than committed metadata")
+            raise FileError("upload staged bytes are shorter than committed metadata")
         if actual > expected:
-            raise ArtifactError("upload staged bytes exceed declared upload size")
+            raise FileError("upload staged bytes exceed declared upload size")
         if actual > recorded:
             db.execute(
                 """
@@ -388,7 +388,7 @@ class ArtifactUploadManager:
         self.ensure()
         clean_name = _validate_name(name)
         if size_bytes < 0 or size_bytes > upload_max_bytes():
-            raise ArtifactError(
+            raise FileError(
                 f"size_bytes must be between 0 and {upload_max_bytes()}"
             )
         expected = _validate_sha256(expected_sha256)
@@ -408,7 +408,7 @@ class ArtifactUploadManager:
                         expected_sha256,
                         bytes_received,
                         state,
-                        artifact_id,
+                        file_id,
                         created_at,
                         updated_at,
                         completed_at
@@ -441,7 +441,7 @@ class ArtifactUploadManager:
                 (normalized,),
             ).fetchone()
             if row is None:
-                raise ArtifactError("upload session does not exist")
+                raise FileError("upload session does not exist")
             row = self._reconcile_open_row(db, row)
             return self._public_status(row)
 
@@ -452,12 +452,12 @@ class ArtifactUploadManager:
         limit: int = 100,
     ) -> dict[str, Any]:
         if offset < 0:
-            raise ArtifactError("offset must be non-negative")
+            raise FileError("offset must be non-negative")
         if limit <= 0 or limit > 1000:
-            raise ArtifactError("limit must be between 1 and 1000")
+            raise FileError("limit must be between 1 and 1000")
         clean_state = state.strip().casefold()
         if clean_state not in {"", "open", "completed"}:
-            raise ArtifactError("state must be empty, open, or completed")
+            raise FileError("state must be empty, open, or completed")
 
         self.ensure()
         where = ""
@@ -500,16 +500,16 @@ class ArtifactUploadManager:
     ) -> dict[str, Any]:
         normalized = _normalize_upload_id(upload_id)
         if offset < 0:
-            raise ArtifactError("offset must be non-negative")
+            raise FileError("offset must be non-negative")
         try:
             payload = base64.b64decode(data_base64, validate=True)
         except Exception as exc:
-            raise ArtifactError("data_base64 is not valid base64") from exc
+            raise FileError("data_base64 is not valid base64") from exc
         if not payload:
-            raise ArtifactError("upload chunk must not be empty")
+            raise FileError("upload chunk must not be empty")
         chunk_limit = upload_chunk_bytes()
         if len(payload) > chunk_limit:
-            raise ArtifactError(f"decoded chunk exceeds {chunk_limit} bytes")
+            raise FileError(f"decoded chunk exceeds {chunk_limit} bytes")
 
         self.ensure()
         with self._connect() as db:
@@ -519,19 +519,19 @@ class ArtifactUploadManager:
                 (normalized,),
             ).fetchone()
             if row is None:
-                raise ArtifactError("upload session does not exist")
+                raise FileError("upload session does not exist")
             if str(row["state"]) != "open":
-                raise ArtifactError("upload session is already committed")
+                raise FileError("upload session is already committed")
             row = self._reconcile_open_row(db, row)
 
             current = int(row["bytes_received"])
             expected = int(row["expected_size"])
             if offset != current:
-                raise ArtifactError(
+                raise FileError(
                     f"offset mismatch: expected {current}, received {offset}"
                 )
             if current + len(payload) > expected:
-                raise ArtifactError("chunk exceeds declared upload size")
+                raise FileError("chunk exceeds declared upload size")
 
             part = self._part_path(normalized)
             with part.open("ab") as handle:
@@ -559,17 +559,17 @@ class ArtifactUploadManager:
         normalized = _normalize_upload_id(upload_id)
         current = self.status(normalized)
         if current["committed"]:
-            artifact_id = str(current["artifact_id"])
+            file_id = str(current["file_id"])
             with suppress(FileNotFoundError):
                 self._part_path(normalized).unlink()
             return {
                 "upload_id": normalized,
-                "artifact": self.store.info(artifact_id),
+                "file": self.store.info(file_id),
                 "completed": True,
                 "already_committed": True,
             }
         if not current["complete"]:
-            raise ArtifactError(
+            raise FileError(
                 "upload is incomplete: "
                 f"received {current['bytes_received']} of {current['expected_size']} bytes"
             )
@@ -577,7 +577,7 @@ class ArtifactUploadManager:
         row = self._row(normalized)
         part = self._part_path(normalized)
         if not part.is_file():
-            raise ArtifactError("upload staged bytes are missing")
+            raise FileError("upload staged bytes are missing")
 
         digest = hashlib.sha256()
         with part.open("rb") as handle:
@@ -586,22 +586,22 @@ class ArtifactUploadManager:
         actual_sha256 = digest.hexdigest()
         expected_sha256 = str(row["expected_sha256"])
         if expected_sha256 and actual_sha256 != expected_sha256:
-            raise ArtifactError(
+            raise FileError(
                 "upload SHA-256 mismatch: "
                 f"expected {expected_sha256}, found {actual_sha256}"
             )
 
         # Copy, rather than move, before committing session metadata. If the
         # process dies between these operations, finish() can safely retry.
-        artifact = self.store.put_file(
+        file = self.store.put_file(
             part,
             name=str(row["name"]),
             mime_type=str(row["mime_type"]),
             source="agent-upload",
             consume=False,
         )
-        if str(artifact["sha256"]) != actual_sha256:
-            raise ArtifactError("artifact store returned an unexpected SHA-256")
+        if str(file["sha256"]) != actual_sha256:
+            raise FileError("file store returned an unexpected SHA-256")
 
         completed_at = _now()
         with self._connect() as db:
@@ -611,26 +611,26 @@ class ArtifactUploadManager:
                 (normalized,),
             ).fetchone()
             if latest is None:
-                raise ArtifactError("upload session disappeared during commit")
+                raise FileError("upload session disappeared during commit")
             if str(latest["state"]) == "completed":
-                committed_id = str(latest["artifact_id"])
-                if committed_id != str(artifact["artifact_id"]):
-                    raise ArtifactError("upload session committed to a different artifact")
+                committed_id = str(latest["file_id"])
+                if committed_id != str(file["file_id"]):
+                    raise FileError("upload session committed to a different file")
             else:
                 latest = self._reconcile_open_row(db, latest)
                 if int(latest["bytes_received"]) != int(latest["expected_size"]):
-                    raise ArtifactError("upload changed while it was being committed")
+                    raise FileError("upload changed while it was being committed")
                 db.execute(
                     """
                     UPDATE upload_sessions
                     SET state = 'completed',
-                        artifact_id = ?,
+                        file_id = ?,
                         updated_at = ?,
                         completed_at = ?
                     WHERE upload_id = ?
                     """,
                     (
-                        artifact["artifact_id"],
+                        file["file_id"],
                         completed_at,
                         completed_at,
                         normalized,
@@ -642,7 +642,7 @@ class ArtifactUploadManager:
 
         return {
             "upload_id": normalized,
-            "artifact": artifact,
+            "file": file,
             "completed": True,
             "already_committed": False,
         }
@@ -662,7 +662,7 @@ class ArtifactUploadManager:
                 return {
                     "upload_id": normalized,
                     "already_committed": True,
-                    "artifact_id": str(row["artifact_id"]),
+                    "file_id": str(row["file_id"]),
                 }
             bytes_received = int(row["bytes_received"])
             db.execute(
@@ -684,9 +684,9 @@ class ArtifactUploadManager:
         limit: int = 1000,
     ) -> dict[str, Any]:
         if older_than_hours < 1 or older_than_hours > 24 * 365:
-            raise ArtifactError("older_than_hours must be between 1 and 8760")
+            raise FileError("older_than_hours must be between 1 and 8760")
         if limit <= 0 or limit > 10_000:
-            raise ArtifactError("limit must be between 1 and 10000")
+            raise FileError("limit must be between 1 and 10000")
 
         self.ensure()
         cutoff = (datetime.now(UTC) - timedelta(hours=older_than_hours)).isoformat()
@@ -707,7 +707,7 @@ class ArtifactUploadManager:
                 "upload_id": str(row["upload_id"]),
                 "state": str(row["state"]),
                 "bytes_received": int(row["bytes_received"]),
-                "artifact_id": str(row["artifact_id"]) or None,
+                "file_id": str(row["file_id"]) or None,
                 "updated_at": str(row["updated_at"]),
             }
             for row in rows

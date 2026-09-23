@@ -11,18 +11,14 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 from fastmcp import Client
 
-import koba_mcp_bridge.github_agent as github_agent
-import koba_mcp_bridge.github_reviewer as github_reviewer
-import koba_mcp_bridge.gitlab_client as gitlab_client
-from koba_mcp_bridge.gitlab_client import GitLabProfileRegistry
-from koba_mcp_bridge.secrets import (
+from mcp_bridge.secrets import (
     InfisicalClient,
     InfisicalConfig,
     SecretError,
     SecretReference,
     SecretResolver,
 )
-from koba_mcp_bridge.server import mcp
+from mcp_bridge.server import mcp
 
 
 class _InfisicalHandler(BaseHTTPRequestHandler):
@@ -173,12 +169,12 @@ def test_resolver_never_returns_value_from_check(infisical_server) -> None:
 
 
 def test_env_and_file_refs(tmp_path: Path, monkeypatch) -> None:
-    monkeypatch.setenv("KOBA_TEST_SECRET", "env-value")
+    monkeypatch.setenv("BRIDGE_TEST_SECRET", "env-value")
     secret_file = tmp_path / "secret.txt"
     secret_file.write_text("file-value\n", encoding="utf-8")
     resolver = SecretResolver(_client("http://127.0.0.1:1"))
 
-    assert resolver.resolve("env://KOBA_TEST_SECRET") == "env-value"
+    assert resolver.resolve("env://BRIDGE_TEST_SECRET") == "env-value"
     assert resolver.resolve(f"file://{secret_file}") == "file-value"
 
 
@@ -189,15 +185,15 @@ def test_infisical_config_reads_environment_and_base_path(monkeypatch) -> None:
     monkeypatch.setenv("INFISICAL_CLIENT_ID", "client-id")
     monkeypatch.setenv("INFISICAL_CLIENT_SECRET", "client-secret")
     monkeypatch.setenv("INFISICAL_ENVIRONMENT", "production")
-    monkeypatch.setenv("INFISICAL_BASE_PATH", "/koba/platform/")
+    monkeypatch.setenv("INFISICAL_BASE_PATH", "/bridge/platform/")
 
     config = InfisicalConfig.from_env()
 
     assert config.environment == "production"
-    assert config.base_path == "/koba/platform"
+    assert config.base_path == "/bridge/platform"
     public = config.public()
     assert public["environment"] == "production"
-    assert public["base_path"] == "/koba/platform"
+    assert public["base_path"] == "/bridge/platform"
 
 
 def test_convention_resolver_joins_base_path(monkeypatch) -> None:
@@ -208,7 +204,7 @@ def test_convention_resolver_joins_base_path(monkeypatch) -> None:
             client_id="client-id",
             client_secret="client-secret",
             environment="prod",
-            base_path="/koba",
+            base_path="/bridge",
         )
     )
     resolver = SecretResolver(client)
@@ -232,7 +228,7 @@ def test_convention_resolver_joins_base_path(monkeypatch) -> None:
         {
             "secret_name": "APP_ID",
             "environment": "prod",
-            "secret_path": "/koba/github/development",
+            "secret_path": "/bridge/github/development",
             "project_id": "project",
         }
     ]
@@ -287,70 +283,6 @@ def test_infisical_config_supports_bootstrap_files(tmp_path: Path, monkeypatch) 
     public = config.public()
     assert public["client_secret_source"].startswith("file:")
     assert "secret-from-file" not in json.dumps(public)
-
-
-def test_gitlab_profile_can_use_secret_reference(monkeypatch) -> None:
-    monkeypatch.setenv("GITLAB_PROFILES_FILE", "/nonexistent")
-    monkeypatch.setenv(
-        "GITLAB_PROFILES_JSON",
-        json.dumps(
-            [
-                {
-                    "profile_id": "main",
-                    "base_url": "https://gitlab.example.test",
-                    "auth_type": "private_token",
-                    "secret_ref": "infisical://prod/gitlab/accounts/main#TOKEN",
-                }
-            ]
-        ),
-    )
-    monkeypatch.setattr(
-        gitlab_client,
-        "resolve_secret",
-        lambda ref: "resolved-gitlab-token",
-    )
-
-    profile = GitLabProfileRegistry.from_env().get("main")
-    assert profile.token() == "resolved-gitlab-token"
-    public = profile.public()
-    assert public["credential_source"]["type"] == "secret_ref"
-    assert "resolved-gitlab-token" not in json.dumps(public)
-
-
-def test_github_agent_private_key_ref(monkeypatch) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_APP_ID", "123")
-    monkeypatch.setenv(
-        "GITHUB_AGENT_PRIVATE_KEY_REF",
-        "infisical://prod/github/development#PRIVATE_KEY_PEM",
-    )
-    monkeypatch.delenv("GITHUB_AGENT_PRIVATE_KEY", raising=False)
-    monkeypatch.delenv("GITHUB_AGENT_PRIVATE_KEY_B64", raising=False)
-    monkeypatch.setattr(
-        github_agent,
-        "resolve_secret",
-        lambda ref: "-----BEGIN KEY-----\\nabc\\n-----END KEY-----",
-    )
-
-    assert github_agent.github_agent_configured() is True
-    assert "BEGIN KEY" in github_agent._private_key_from_env()
-
-
-def test_github_reviewer_private_key_ref(monkeypatch) -> None:
-    monkeypatch.setenv("GITHUB_REVIEWER_APP_ID", "123")
-    monkeypatch.setenv(
-        "GITHUB_REVIEWER_PRIVATE_KEY_REF",
-        "infisical://prod/github/reviewer#PRIVATE_KEY_PEM",
-    )
-    monkeypatch.delenv("GITHUB_REVIEWER_PRIVATE_KEY", raising=False)
-    monkeypatch.delenv("GITHUB_REVIEWER_PRIVATE_KEY_B64", raising=False)
-    monkeypatch.setattr(
-        github_reviewer,
-        "resolve_secret",
-        lambda ref: "-----BEGIN KEY-----\\nabc\\n-----END KEY-----",
-    )
-
-    assert github_reviewer.github_reviewer_configured() is True
-    assert "BEGIN KEY" in github_reviewer._reviewer_private_key_from_env()
 
 
 def test_invalid_secret_reference_is_rejected() -> None:

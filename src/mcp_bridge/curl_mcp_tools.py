@@ -34,7 +34,7 @@ def register_curl_tools(
         body_json: dict[str, Any] | list[Any] | None = None,
         body_form: dict[str, Any] | None = None,
         body_base64: str | None = None,
-        body_artifact_id: str | None = None,
+        body_file_id: str | None = None,
         body_content_type: str = "",
         preset: str = DEFAULT_CURL_PRESET,
         follow_redirects: bool = True,
@@ -49,8 +49,8 @@ def register_curl_tools(
     ) -> dict[str, Any]:
         """Run a structured curl request with arbitrary HTTP method, headers, cookies and body.
 
-        For large or binary responses prefer curl_download. body_artifact_id sends
-        immutable artifact bytes directly from server-side storage without model-visible
+        For large or binary responses prefer curl_download. body_file_id sends
+        immutable file bytes directly from server-side storage without model-visible
         base64. Chrome Desktop is the default preset. Browser presets reproduce HTTP
         headers only; they are not browser engines.
         """
@@ -64,7 +64,7 @@ def register_curl_tools(
             body_json=body_json,
             body_form=body_form,
             body_base64=body_base64,
-            body_artifact_id=body_artifact_id,
+            body_file_id=body_file_id,
             body_content_type=body_content_type,
             preset=preset,
             follow_redirects=follow_redirects,
@@ -89,9 +89,9 @@ def register_curl_tools(
         body_json: dict[str, Any] | list[Any] | None = None,
         body_form: dict[str, Any] | None = None,
         body_base64: str | None = None,
-        body_artifact_id: str | None = None,
+        body_file_id: str | None = None,
         body_content_type: str = "",
-        artifact_name: str = "",
+        file_name: str = "",
         preset: str = DEFAULT_CURL_PRESET,
         follow_redirects: bool = True,
         max_redirects: int = 10,
@@ -104,11 +104,11 @@ def register_curl_tools(
         forward_sensitive_headers_on_redirect: bool = False,
         preview_bytes: int = 4096,
     ) -> dict[str, Any]:
-        """Stream an HTTP response into the immutable artifact store.
+        """Stream an HTTP response into the immutable file store.
 
         Supports arbitrary HTTP methods and the same request controls as curl_request.
         The response is never serialized through model context; the result contains
-        artifact_id plus HTTP metadata and a small text/hex preview.
+        file_id plus HTTP metadata and a small text/hex preview.
         """
         return curl_download_impl(
             url=url,
@@ -120,9 +120,9 @@ def register_curl_tools(
             body_json=body_json,
             body_form=body_form,
             body_base64=body_base64,
-            body_artifact_id=body_artifact_id,
+            body_file_id=body_file_id,
             body_content_type=body_content_type,
-            artifact_name=artifact_name,
+            file_name=file_name,
             preset=preset,
             follow_redirects=follow_redirects,
             max_redirects=max_redirects,
@@ -147,9 +147,9 @@ def register_curl_tools(
         body_json: dict[str, Any] | list[Any] | None = None,
         body_form: dict[str, Any] | None = None,
         body_base64: str | None = None,
-        body_artifact_id: str | None = None,
+        body_file_id: str | None = None,
         body_content_type: str = "",
-        artifact_name: str = "",
+        file_name: str = "",
         preset: str = DEFAULT_CURL_PRESET,
         follow_redirects: bool = True,
         max_redirects: int = 10,
@@ -164,7 +164,7 @@ def register_curl_tools(
         """Observe/capture a response byte stream for a bounded duration or byte count.
 
         Useful for SSE, MJPEG, chunked telemetry and other long-lived byte streams.
-        Captured bytes are committed to the immutable artifact store.
+        Captured bytes are committed to the immutable file store.
         """
         return curl_stream_capture_impl(
             url=url,
@@ -176,9 +176,9 @@ def register_curl_tools(
             body_json=body_json,
             body_form=body_form,
             body_base64=body_base64,
-            body_artifact_id=body_artifact_id,
+            body_file_id=body_file_id,
             body_content_type=body_content_type,
-            artifact_name=artifact_name,
+            file_name=file_name,
             preset=preset,
             follow_redirects=follow_redirects,
             max_redirects=max_redirects,

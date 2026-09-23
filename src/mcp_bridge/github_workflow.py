@@ -1240,7 +1240,7 @@ class GitHubDevClient(GitHubAppClient):
         # normal CI surface. If the PR head has none of them, inspect the
         # repository's default branch before deciding that they are "missing".
         #
-        # This keeps the strict test/docker gate for koba-mcp-bridge while
+        # This keeps the strict test/docker gate for mcp-bridge while
         # avoiding an impossible merge requirement on repositories such as
         # ghidra-mcp, whose aggregate check is named "Build Status". GitHub's
         # own branch protection/rulesets remain the final merge authority.

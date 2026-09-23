@@ -5,11 +5,11 @@ This is a navigation guide for the current repository, not a permanent package l
 ## Top level
 
 ```text
-koba-mcp-bridge/
+mcp-bridge/
 ├── .github/              GitHub CI/CD and collaboration policy
 ├── deploy/               deployment/runtime support files
 ├── docs/                 architecture and operational documentation
-├── src/koba_mcp_bridge/  current Python implementation
+├── src/mcp_bridge/  current Python implementation
 ├── tests/                unit/integration tests
 ├── Dockerfile
 ├── docker-compose.yaml
@@ -26,13 +26,21 @@ koba-mcp-bridge/
 
 ### Server composition
 
-- `server.py` — FastMCP composition, OAuth boundary, local registration, mounted backends and HTTP app wiring.
+- `server.py` — authenticated edge gateway that proxies isolated runtimes and exposes aggregate/dedicated MCP surfaces.
 
-### Files/artifact data plane
+### Files data plane
 
-- `artifact_store.py` — immutable object storage, metadata, collections and references.
-- `artifact_ingress.py` — attachment/file ingress and resumable uploads.
-- `artifact_tools.py` — MCP surface for artifact/file operations.
+- `file_store.py` — immutable object storage, metadata, collections and references.
+- `file_ingress.py` — attachment/file ingress and resumable uploads.
+- `file_tools.py` — MCP surface for Files operations.
+
+### Runtime entry points
+
+- `github_runtime.py` — private GitHub MCP runtime.
+- `gitlab_runtime.py` — private GitLab MCP runtime.
+- `files_runtime.py` — private Files MCP runtime.
+- `http_runtime.py` — private HTTP/curl MCP runtime.
+- `runtime_common.py` and `runtime_annotations.py` — shared runtime primitives.
 
 ### HTTP
 
@@ -61,7 +69,7 @@ This is a natural candidate for packaging behind an independent runtime entry po
 
 ### Ghidra integration
 
-- `reverse_workflow.py` — high-level artifact/file ↔ Ghidra adapter workflows.
+- `reverse_workflow.py` — high-level Files ↔ native Ghidra adapter workflows.
 - The actual Ghidra MCP runtime lives in its own repository/service.
 
 ## Tests
@@ -74,7 +82,7 @@ A likely future monorepo shape is:
 
 ```text
 src/
-├── koba_common/
+├── mcp_common/
 ├── gateway/
 ├── secrets/
 └── connectors/

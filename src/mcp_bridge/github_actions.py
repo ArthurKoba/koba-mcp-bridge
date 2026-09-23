@@ -13,7 +13,7 @@ from .github_workflow import protected_branches_from_env
 
 _GITHUB_API = "https://api.github.com"
 _MAX_LOG_BYTES = 8 * 1024 * 1024
-_MAX_ARTIFACT_BYTES = 8 * 1024 * 1024
+_MAX_WORKFLOW_FILE_BYTES = 8 * 1024 * 1024
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -152,7 +152,7 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
             headers={
                 "Accept": "application/vnd.github+json",
                 "Authorization": f"Bearer {token}",
-                "User-Agent": "koba-mcp-bridge",
+                "User-Agent": "mcp-bridge",
                 "X-GitHub-Api-Version": "2026-03-10",
             },
         )
@@ -174,7 +174,7 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
             redirected = urllib.request.Request(
                 location,
                 method="GET",
-                headers={"User-Agent": "koba-mcp-bridge"},
+                headers={"User-Agent": "mcp-bridge"},
             )
             try:
                 response = urllib.request.urlopen(redirected, timeout=60)
@@ -219,7 +219,7 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
             "downloaded_bytes": len(data),
         }
 
-    def list_workflow_artifacts(
+    def list_workflow_files(
         self,
         repository: str,
         run_id: int,
@@ -239,13 +239,13 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
             f"/repos/{repository}/actions/runs/{run_id}/artifacts?{query}",
         )
         if not isinstance(result, dict):
-            raise GitHubAgentError("unexpected workflow artifact response")
+            raise GitHubAgentError("unexpected workflow file response")
         raw = result.get("artifacts") if isinstance(result.get("artifacts"), list) else []
-        artifacts = []
+        files = []
         for item in raw:
             if not isinstance(item, dict):
                 continue
-            artifacts.append(
+            files.append(
                 {
                     "id": int(item.get("id", 0)),
                     "name": str(item.get("name", "")),
@@ -258,26 +258,26 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
         return {
             "repository": repository,
             "run_id": run_id,
-            "total_count": int(result.get("total_count", len(artifacts))),
-            "artifacts": artifacts,
+            "total_count": int(result.get("total_count", len(files))),
+            "files": files,
             "page": page,
         }
 
-    def download_workflow_artifact(
+    def download_workflow_file(
         self,
         repository: str,
-        artifact_id: int,
-        max_bytes: int = _MAX_ARTIFACT_BYTES,
+        workflow_file_id: int,
+        max_bytes: int = _MAX_WORKFLOW_FILE_BYTES,
     ) -> dict[str, object]:
         repository = self._assert_allowed(repository)
         data = self._download_redirect_bytes(
             repository,
-            f"/repos/{repository}/actions/artifacts/{artifact_id}/zip",
+            f"/repos/{repository}/actions/artifacts/{workflow_file_id}/zip",
             max_bytes,
         )
         return {
             "repository": repository,
-            "artifact_id": artifact_id,
+            "workflow_file_id": workflow_file_id,
             "size": len(data),
             "sha256": hashlib.sha256(data).hexdigest(),
             "content_base64": base64.b64encode(data).decode("ascii"),

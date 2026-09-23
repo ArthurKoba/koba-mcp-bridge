@@ -1,10 +1,13 @@
-import base64
-
 import pytest
 from fastmcp import Client
 
-import koba_mcp_bridge.server as server_module
-from koba_mcp_bridge.server import _configured_backends, _mount_backends, mcp
+import mcp_bridge.server as server_module
+from mcp_bridge.server import (
+    _configured_backends,
+    _mount_aggregate_backends,
+    app,
+    mcp,
+)
 
 
 @pytest.mark.asyncio
@@ -14,7 +17,7 @@ async def test_bridge_ping() -> None:
 
     assert result.data is not None
     assert result.data["status"] == "ok"
-    assert result.data["service"] == "koba-mcp-bridge"
+    assert result.data["service"] == "mcp-bridge"
 
 
 @pytest.mark.asyncio
@@ -23,7 +26,7 @@ async def test_bridge_build_info() -> None:
         result = await client.call_tool("bridge_build_info", {})
 
     assert result.data is not None
-    assert result.data["service"] == "koba-mcp-bridge"
+    assert result.data["service"] == "mcp-bridge"
     assert result.data["version"]
     assert result.data["commit"]
     assert result.data["built_at"]
@@ -31,96 +34,13 @@ async def test_bridge_build_info() -> None:
     assert result.data["python"]
 
 
-@pytest.mark.asyncio
-async def test_artifact_tools_are_registered() -> None:
-    async with Client(mcp) as client:
-        tools = await client.list_tools()
-
-    names = {tool.name for tool in tools}
-    expected = {
-        "artifact_status",
-        "artifact_ingest_file",
-        "artifact_upload_begin",
-        "artifact_upload_list",
-        "artifact_upload_status",
-        "artifact_upload_write",
-        "artifact_upload_finish",
-        "artifact_upload_cleanup",
-        "artifact_upload_cancel",
-        "artifact_list",
-        "artifact_info",
-        "artifact_read",
-        "artifact_create_text",
-        "artifact_extract",
-        "artifact_collection_list",
-        "artifact_collection_delete",
-        "artifact_collection_resolve",
-        "artifact_references",
-        "artifact_release_reference",
-        "artifact_delete",
-        "artifact_gc",
-        "ghidra_import_artifact",
-        "ghidra_project_sources",
-        "ghidra_export_program_artifact",
-        "ghidra_archive_project_artifact",
-        "curl_presets",
-        "curl_request",
-        "curl_download",
-        "curl_stream_capture",
-    }
-    assert expected <= names
-
-    ingest_tool = next(tool for tool in tools if tool.name == "artifact_ingest_file")
-    descriptor = ingest_tool.model_dump(by_alias=True)
-    assert descriptor["_meta"]["openai/fileParams"] == ["file"]
-    assert descriptor["inputSchema"]["properties"]["file"]["type"] == "object"
-    assert "download_url" in descriptor["inputSchema"]["properties"]["file"]["properties"]
-
-
-@pytest.mark.asyncio
-async def test_agent_upload_round_trip_over_mcp(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("ARTIFACT_ROOT", str(tmp_path))
-    monkeypatch.setenv("ARTIFACT_UPLOAD_MAX_BYTES", str(16 * 1024 * 1024))
-    monkeypatch.setenv("ARTIFACT_UPLOAD_CHUNK_BYTES", str(64 * 1024))
-    payload = b"mcp-agent-upload"
-
-    async with Client(mcp) as client:
-        begun = await client.call_tool(
-            "artifact_upload_begin",
-            {
-                "name": "probe.bin",
-                "size_bytes": len(payload),
-            },
-        )
-        upload_id = begun.data["upload_id"]
-        written = await client.call_tool(
-            "artifact_upload_write",
-            {
-                "upload_id": upload_id,
-                "offset": 0,
-                "data_base64": base64.b64encode(payload).decode("ascii"),
-            },
-        )
-        assert written.data["complete"] is True
-
-        finished = await client.call_tool(
-            "artifact_upload_finish",
-            {"upload_id": upload_id},
-        )
-
-    artifact = finished.data["artifact"]
-    assert artifact["artifact_id"].startswith("sha256:")
-    assert artifact["size_bytes"] == len(payload)
-
-
-
-def test_github_oauth_values_prefer_infisical_convention(
+def test_github_oauth_is_infisical_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     values = {
-        ("github/oauth", "CLIENT_ID"): "client-id-from-infisical",
-        ("github/oauth", "CLIENT_SECRET"): "client-secret-from-infisical",
-        ("github/oauth", "JWT_SIGNING_KEY"): "jwt-from-infisical",
+        ("github/oauth", "CLIENT_ID"): "client-id",
+        ("github/oauth", "CLIENT_SECRET"): "client-secret",
+        ("github/oauth", "JWT_SIGNING_KEY"): "jwt",
         ("github/oauth", "ALLOWED_USERS"): "ArthurKoba,ReviewerBot",
     }
     monkeypatch.setattr(
@@ -128,50 +48,13 @@ def test_github_oauth_values_prefer_infisical_convention(
         "resolve_config_secret",
         lambda path, name: values[(path, name)],
     )
-    monkeypatch.setenv("OAUTH_GITHUB_CLIENT_ID", "legacy-client-id")
-    monkeypatch.setenv("OAUTH_ALLOWED_GITHUB_USERS", "legacy-user")
 
-    assert server_module._github_oauth_value(
-        "CLIENT_ID",
-        "OAUTH_GITHUB_CLIENT_ID",
-    ) == "client-id-from-infisical"
+    assert server_module._github_oauth_value("CLIENT_ID") == "client-id"
     assert server_module._allowed_github_users() == {
         "arthurkoba",
         "reviewerbot",
     }
 
-def test_configured_backends_empty(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("GHIDRA_MCP_URL", raising=False)
-    assert _configured_backends() == {}
-
-
-def test_configured_backends_ghidra(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GHIDRA_MCP_URL", "http://ghidra-mcp:8081/mcp")
-    assert _configured_backends() == {"ghidra": "http://ghidra-mcp:8081/mcp"}
-
-
-def test_mounted_backend_negotiates_protocol_independently(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    url = "http://ghidra-mcp:8081/mcp"
-    calls: list[tuple[str, dict[str, str]]] = []
-    mounted: list[tuple[object, str]] = []
-    proxy = object()
-
-    def fake_create_proxy(target: str, **settings: str) -> object:
-        calls.append((target, settings))
-        return proxy
-
-    class DummyServer:
-        def mount(self, *, server: object, namespace: str) -> None:
-            mounted.append((server, namespace))
-
-    monkeypatch.setenv("GHIDRA_MCP_URL", url)
-    monkeypatch.setattr(server_module, "create_proxy", fake_create_proxy)
-
-    assert _mount_backends(DummyServer()) == {"ghidra": url}  # type: ignore[arg-type]
-    assert calls == [(url, {"name": "ghidra-backend", "mode": "auto"})]
-    assert mounted == [(proxy, "ghidra")]
 
 def test_github_oauth_failure_preserves_infisical_error(
     monkeypatch: pytest.MonkeyPatch,
@@ -181,11 +64,118 @@ def test_github_oauth_failure_preserves_infisical_error(
         raise server_module.SecretError("Infisical API HTTP 403: denied")
 
     monkeypatch.setattr(server_module, "resolve_config_secret", fail_secret)
-    monkeypatch.delenv("OAUTH_GITHUB_CLIENT_ID", raising=False)
 
     with pytest.raises(RuntimeError, match="Infisical API HTTP 403"):
-        server_module._github_oauth_value(
-            "CLIENT_ID",
-            "OAUTH_GITHUB_CLIENT_ID",
-        )
+        server_module._github_oauth_value("CLIENT_ID")
 
+
+def test_configured_backends_use_canonical_private_services(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "GITHUB_MCP_URL",
+        "GITLAB_MCP_URL",
+        "FILES_MCP_URL",
+        "HTTP_MCP_URL",
+        "ANALYSIS_MCP_URL",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    assert _configured_backends() == {
+        "github": "http://github-mcp:8000/mcp",
+        "gitlab": "http://gitlab-mcp:8000/mcp",
+        "files": "http://files-mcp:8000/mcp",
+        "http": "http://http-mcp:8000/mcp",
+        "analysis": "http://analysis-mcp:8000/mcp",
+    }
+
+
+def test_configured_backends_allow_explicit_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GITHUB_MCP_URL", "http://github-alt:9000/mcp")
+    monkeypatch.setenv("GITLAB_MCP_URL", "http://gitlab-alt:9000/mcp")
+    monkeypatch.setenv("FILES_MCP_URL", "http://files-alt:9000/mcp")
+    monkeypatch.setenv("HTTP_MCP_URL", "http://http-alt:9000/mcp")
+    monkeypatch.setenv("ANALYSIS_MCP_URL", "http://analysis-alt:9000/mcp")
+
+    assert _configured_backends() == {
+        "github": "http://github-alt:9000/mcp",
+        "gitlab": "http://gitlab-alt:9000/mcp",
+        "files": "http://files-alt:9000/mcp",
+        "http": "http://http-alt:9000/mcp",
+        "analysis": "http://analysis-alt:9000/mcp",
+    }
+
+
+def test_aggregate_mounts_expected_proxy_namespaces(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, dict[str, str]]] = []
+    mounted: list[tuple[object, str | None]] = []
+    proxy = object()
+
+    def fake_create_proxy(target: str, **settings: str) -> object:
+        calls.append((target, settings))
+        return proxy
+
+    class DummyServer:
+        def mount(
+            self,
+            *,
+            server: object,
+            namespace: str | None = None,
+        ) -> None:
+            mounted.append((server, namespace))
+
+    monkeypatch.setattr(server_module, "create_proxy", fake_create_proxy)
+
+    backends = {
+        "github": "http://github:8000/mcp",
+        "gitlab": "http://gitlab:8000/mcp",
+        "files": "http://files:8000/mcp",
+        "http": "http://http:8000/mcp",
+        "analysis": "http://analysis:8000/mcp",
+    }
+    _mount_aggregate_backends(DummyServer(), backends)  # type: ignore[arg-type]
+
+    assert calls == [
+        (
+            "http://github:8000/mcp",
+            {"name": "github-backend", "mode": "auto"},
+        ),
+        (
+            "http://files:8000/mcp",
+            {"name": "files-backend", "mode": "auto"},
+        ),
+        (
+            "http://http:8000/mcp",
+            {"name": "http-backend", "mode": "auto"},
+        ),
+        (
+            "http://analysis:8000/mcp",
+            {"name": "analysis-backend", "mode": "auto"},
+        ),
+        (
+            "http://gitlab:8000/mcp",
+            {"name": "gitlab-backend", "mode": "auto"},
+        ),
+    ]
+    assert mounted == [
+        (proxy, None),
+        (proxy, None),
+        (proxy, None),
+        (proxy, None),
+        (proxy, "gitlab"),
+    ]
+
+
+def test_http_app_mounts_all_public_surfaces() -> None:
+    paths = {getattr(route, "path", "") for route in app.routes}
+    assert {
+        "/github",
+        "/gitlab",
+        "/files",
+        "/http",
+        "/analysis",
+    } <= paths

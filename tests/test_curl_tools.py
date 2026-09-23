@@ -9,8 +9,7 @@ from urllib.parse import urlsplit
 
 import pytest
 
-from koba_mcp_bridge.artifact_store import ArtifactStore
-from koba_mcp_bridge.curl_tools import (
+from mcp_bridge.curl_tools import (
     DEFAULT_CURL_PRESET,
     CurlError,
     _curl_failure_diagnostic,
@@ -20,6 +19,7 @@ from koba_mcp_bridge.curl_tools import (
     curl_request_impl,
     curl_stream_capture_impl,
 )
+from mcp_bridge.file_store import FileStore
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -74,7 +74,7 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         if parsed.path == "/download":
-            data = b"\x00KobaBinary\xff" * 64
+            data = b"\x00BridgeBinary\xff" * 64
             self.send_response(200)
             self.send_header("Content-Type", "application/octet-stream")
             self.send_header(
@@ -125,8 +125,8 @@ def http_server():
 
 
 @pytest.fixture(autouse=True)
-def artifact_root(tmp_path, monkeypatch):
-    monkeypatch.setenv("ARTIFACT_ROOT", str(tmp_path / "artifacts"))
+def file_root(tmp_path, monkeypatch):
+    monkeypatch.setenv("FILE_ROOT", str(tmp_path / "files"))
 
 
 def test_presets_expose_browser_and_api_options() -> None:
@@ -139,7 +139,7 @@ def test_request_supports_method_query_headers_cookies_and_json(http_server) -> 
         f"{http_server}/echo?existing=1",
         method="POST",
         query={"q": ["one", "two"], "flag": True},
-        headers={"X-Koba-Test": "yes"},
+        headers={"X-Bridge-Test": "yes"},
         cookies={"session": "abc"},
         body_json={"hello": "world"},
         preset="json-api",
@@ -154,7 +154,7 @@ def test_request_supports_method_query_headers_cookies_and_json(http_server) -> 
     assert "q=one" in payload["path"]
     assert "q=two" in payload["path"]
     assert "flag=true" in payload["path"]
-    assert payload["headers"]["x-koba-test"] == "yes"
+    assert payload["headers"]["x-bridge-test"] == "yes"
     assert payload["headers"]["cookie"] == "session=abc"
     assert payload["headers"]["content-type"].startswith("application/json")
     assert json.loads(payload["body"]) == {"hello": "world"}
@@ -215,22 +215,22 @@ def test_sensitive_redirect_can_be_explicitly_enabled(http_server) -> None:
     assert result["redirect_count"] == 1
 
 
-def test_download_streams_into_artifact_store(http_server) -> None:
+def test_download_streams_into_file_store(http_server) -> None:
     result = curl_download_impl(f"{http_server}/download")
-    artifact = result["artifact"]
+    file = result["file"]
 
     assert result["status"] == 200
-    assert artifact["name"] == "fixture.bin"
-    stored = ArtifactStore().path_for(artifact["artifact_id"]).read_bytes()
-    assert stored == b"\x00KobaBinary\xff" * 64
+    assert file["name"] == "fixture.bin"
+    stored = FileStore().path_for(file["file_id"]).read_bytes()
+    assert stored == b"\x00BridgeBinary\xff" * 64
     assert result["body_is_text"] is False
     assert result["body_preview_hex"]
 
 
-def test_artifact_can_be_sent_as_raw_request_body(http_server) -> None:
-    store = ArtifactStore()
+def test_file_can_be_sent_as_raw_request_body(http_server) -> None:
+    store = FileStore()
     source = store.put_bytes(
-        b"artifact-payload",
+        b"file-payload",
         name="payload.bin",
         mime_type="application/octet-stream",
         source="test",
@@ -239,30 +239,30 @@ def test_artifact_can_be_sent_as_raw_request_body(http_server) -> None:
     result = curl_request_impl(
         f"{http_server}/echo",
         method="POST",
-        body_artifact_id=source["artifact_id"],
+        body_file_id=source["file_id"],
     )
     payload = json.loads(result["body_text"])
-    assert payload["body"] == "artifact-payload"
+    assert payload["body"] == "file-payload"
     assert payload["headers"]["content-type"].startswith(
         "application/octet-stream"
     )
 
 
-def test_stream_capture_commits_partial_stream_to_artifact(http_server) -> None:
+def test_stream_capture_commits_partial_stream_to_file(http_server) -> None:
     result = curl_stream_capture_impl(
         f"{http_server}/stream",
         duration_seconds=0.35,
         max_bytes=1024 * 1024,
-        artifact_name="events.txt",
+        file_name="events.txt",
     )
 
     assert result["status"] == 200
     assert result["captured_bytes"] > 0
     assert result["stop_reason"] in {"duration", "eof"}
-    artifact = result["artifact"]
-    captured = ArtifactStore().path_for(artifact["artifact_id"]).read_bytes()
+    file = result["file"]
+    captured = FileStore().path_for(file["file_id"]).read_bytes()
     assert captured.startswith(b"data:")
-    assert artifact["name"] == "events.txt"
+    assert file["name"] == "events.txt"
 
 
 def test_rejects_header_injection() -> None:

@@ -1,17 +1,17 @@
-# koba-mcp-bridge
+# mcp-bridge
 
 Extensible MCP gateway for AI agents, local tools, isolated compute workers, development automation, and reverse-engineering workflows.
 
 ## Purpose
 
-`koba-mcp-bridge` is the single authenticated MCP entry point for tools and workloads running on user-owned infrastructure.
+`mcp-bridge` is a modular MCP platform with one authenticated edge gateway and isolated provider/runtime processes.
 
 The project is designed around a few core ideas:
 
 - expose local and self-hosted tools through one MCP endpoint;
 - aggregate other MCP servers behind a single OAuth boundary;
 - keep long-running or compute-heavy work outside the chat process;
-- persist task state, logs, artifacts, and errors so work can survive interrupted sessions;
+- persist task state, logs, files, and errors so work can survive interrupted sessions;
 - isolate workers and constrain CPU, memory, storage, network, and filesystem access;
 - make integrations modular so new development and analysis tools can be added over time.
 
@@ -28,26 +28,39 @@ the roadmap as already implemented.
 ## Architecture
 
 ```text
-AI client / MCP client
+ChatGPT / MCP clients
         |
         | OAuth + MCP
         v
-koba-mcp-bridge
+mcp-gateway
         |
-        +-- local bridge_* tools
-        +-- github_agent_* -> GitHub App development identity
-        +-- github_reviewer_* -> optional independent GitHub App reviewer identity
-        +-- ghidra_* -> optional Ghidra MCP backend
-        +-- future mounted MCP backends
-        +-- task/state management
-        +-- workers / artifacts / automation
+        +-- github-mcp   (private)
+        +-- gitlab-mcp   (private)
+        +-- files-mcp    (private)
+        +-- http-mcp     (private)
+        +-- analysis-mcp (private)
+                              |
+                              +-- ghidra-mcp (native/private)
 ```
 
-Mounted MCP backends are optional. The public bridge starts normally when none are configured. FastMCP proxy providers connect lazily, so a temporarily unavailable backend does not prevent the gateway itself from starting.
+The gateway is the only public process. It exposes both an aggregate MCP and dedicated
+authenticated surfaces:
 
-## Artifact service
+```text
+/mcp
+/github/mcp
+/gitlab/mcp
+/files/mcp
+/http/mcp
+/analysis/mcp
+```
 
-Koba provides one universal persistent file service for every backend and worker.
+Deploying or restarting one private runtime does not require restarting the others.
+The raw Ghidra MCP remains native and is consumed only behind the analysis boundary.
+
+## Files service
+
+MCP Bridge provides one universal persistent file service for every backend and worker.
 Files are immutable and content-addressed. The public identifier is:
 
 ```text
@@ -57,44 +70,44 @@ sha256:<digest>
 Physical storage paths are private implementation details and are never used as
 cross-service identifiers.
 
-For client/chat attachments, agents should call `artifact_ingest_file` with the
+For client/chat attachments, agents should call `file_ingest` with the
 attachment/file argument itself. The tool marks `file` in
 `_meta["openai/fileParams"]`, so ChatGPT supplies a structured file payload
-containing `download_url`, `file_id`, and optional MIME/name metadata. Koba
+containing `download_url`, `file_id`, and optional MIME/name metadata. MCP Bridge
 streams the authorized temporary URL directly into canonical storage and returns
-`artifact_id`. Attachment bytes never need to be serialized through
+`file_id`. Attachment bytes never need to be serialized through
 model-visible base64.
 
-For generic MCP clients that cannot provide a file-capable argument, Koba also
+For generic MCP clients that cannot provide a file-capable argument, MCP Bridge also
 provides a resumable fallback protocol:
 
-- `artifact_upload_begin` creates an upload session from file metadata;
-- `artifact_upload_write` appends one bounded base64 chunk at the exact next offset;
-- `artifact_upload_list` enumerates open/completed sessions for autonomous recovery;
-- `artifact_upload_status` resumes interrupted transfers from the server-confirmed offset;
-- `artifact_upload_finish` verifies size and optional SHA-256, commits the immutable
-  object, and returns its `artifact_id`;
-- `artifact_upload_cleanup` previews or removes stale upload-session state by age without deleting committed artifacts;
-- `artifact_upload_cancel` discards a specific unfinished transfer.
+- `file_upload_begin` creates an upload session from file metadata;
+- `file_upload_write` appends one bounded base64 chunk at the exact next offset;
+- `file_upload_list` enumerates open/completed sessions for autonomous recovery;
+- `file_upload_status` resumes interrupted transfers from the server-confirmed offset;
+- `file_upload_finish` verifies size and optional SHA-256, commits the immutable
+  object, and returns its `file_id`;
+- `file_upload_cleanup` previews or removes stale upload-session state by age without deleting committed files;
+- `file_upload_cancel` discards a specific unfinished transfer.
 
-The protocol is transport-only. The agent does not choose a Koba filesystem path
+The protocol is transport-only. The agent does not choose a MCP Bridge filesystem path
 and no backend-specific directory participates in upload. After commit, every
-consumer receives only the immutable `artifact_id`.
+consumer receives only the immutable `file_id`.
 
-The generic artifact surface also provides:
+The generic file surface also provides:
 
-- `artifact_status`, `artifact_list`, `artifact_info`, `artifact_read`;
-- `artifact_create_text`;
-- `artifact_extract`, `artifact_collection_list`,
-  `artifact_collection_resolve`, `artifact_collection_delete`;
-- `artifact_references`, `artifact_release_reference`;
-- `artifact_delete`, `artifact_gc`.
+- `file_status`, `file_list`, `file_info`, `file_read`;
+- `file_create_text`;
+- `file_extract`, `file_collection_list`,
+  `file_collection_resolve`, `file_collection_delete`;
+- `file_references`, `file_release_reference`;
+- `file_delete`, `file_gc`.
 
 Archive extraction creates a collection manifest whose members are themselves
-immutable artifacts. The same object can therefore be reused by multiple
-projects, workers, and backends without copying it again in the artifact store.
+immutable files. The same object can therefore be reused by multiple
+projects, workers, and backends without copying it again in the file store.
 
-Consumers hold durable references to source artifacts. Normal deletion refuses
+Consumers hold durable references to source files. Normal deletion refuses
 to remove referenced objects; garbage collection only targets objects with no
 consumer or collection references.
 
@@ -114,35 +127,21 @@ Browser presets reproduce HTTP request headers only. They do not emulate Chrome
 JavaScript execution, cookies/session state beyond what the caller supplies,
 TLS fingerprints, or browser HTTP/2 settings.
 
-## Ghidra integration
+## Analysis and Ghidra boundary
 
-Ghidra is a consumer of the artifact service, not the owner of uploaded files.
-`ghidra_import_artifact(artifact_id, ...)` resolves the immutable object
-internally, imports it into the currently open Ghidra project, and records a
-durable `ghidra-project` source reference.
+The public MCP Bridge data model is Files. The analysis runtime consumes `file_id` values and
+uses the native `ghidra-mcp` service internally.
 
-After import, Ghidra stores the program in its own project database under
-`/projects`. The canonical source artifact remains independently available for
-re-import, verification, or use by another backend. `ghidra_project_sources`
-lists the retained source objects for the current project.
+Raw Ghidra stays on the private Docker network and keeps its own native tool vocabulary.
+MCP Bridge does not rename or modify the Ghidra backend merely to match platform terminology.
 
-Ghidra outputs can be brought back into the same universal artifact store with:
-
-- `ghidra_export_program_artifact` for GZF;
-- `ghidra_archive_project_artifact` for GAR.
-
-Set the runtime variable below to mount the internal Ghidra MCP server:
-
-```text
-GHIDRA_MCP_URL=http://ghidra-mcp:8081/mcp
-```
-
-The mounted backend is namespaced as `ghidra`. Ghidra itself stays on the
-private Docker network.
+The current analysis surface includes the existing high-level import/export workflows.
+Further analysis/recovery vocabulary can evolve in `analysis-mcp` without changing the
+native Ghidra service.
 
 ## Secrets / Infisical
 
-Koba uses self-hosted Infisical as the central provider for provider-specific
+MCP Bridge uses self-hosted Infisical as the central provider for provider-specific
 credentials and configuration. Runtime workloads authenticate with an Infisical
 Machine Identity using Universal Auth and receive a short-lived access token.
 
@@ -158,10 +157,9 @@ INFISICAL_CLIENT_SECRET=<machine identity client secret>
 INFISICAL_VERIFY_TLS=true
 ```
 
-Connectors resolve values by convention below `INFISICAL_BASE_PATH`. Explicit
-`env://`, `file://`, and `infisical://` references remain available as
-low-level compatibility primitives, but normal connector configuration does not
-require per-secret `*_REF` variables.
+Provider connectors resolve their credentials by convention below `INFISICAL_BASE_PATH`.
+GitHub and GitLab provider credentials are not read from legacy provider-specific
+environment variables or JSON profile files.
 
 Deployment and migration instructions are in
 [`deploy/infisical/README.md`](deploy/infisical/README.md).
@@ -195,9 +193,8 @@ GitLab profiles are discovered from Infisical folders below:
 └── CA_FILE      # optional
 ```
 
-Creating a new account folder makes the profile discoverable without adding Coolify
-environment variables. Legacy `GITLAB_PROFILES_FILE` and `GITLAB_PROFILES_JSON`
-remain fallback-only during migration.
+Creating a new account folder makes the profile discoverable without adding provider
+credentials to Coolify. Infisical is the GitLab account registry.
 
 Supported authentication modes are:
 
@@ -244,8 +241,6 @@ The development identity is resolved from Infisical:
 ├── APP_ID
 └── PRIVATE_KEY_PEM
 ```
-
-Legacy environment variables remain fallback-only during the migration window.
 
 The GitHub App installation is the single source of truth for repository access. There is no duplicated bridge-side repository allowlist. Adding or removing repositories in the GitHub App installation immediately changes the repository set visible to the bridge without changing Coolify environment variables.
 
@@ -315,7 +310,7 @@ Issues and CI:
 - issue comments;
 - GitHub Actions workflow-run and job listing;
 - job-log diagnostics;
-- workflow artifact listing/download;
+- workflow file listing/download;
 - dispatch `workflow_dispatch` workflows with explicit refs/inputs;
 - rerun one job, rerun failed jobs, rerun a workflow run, and cancel a workflow run.
 
@@ -343,8 +338,6 @@ The reviewer identity is resolved from Infisical:
 └── PRIVATE_KEY_PEM
 ```
 
-Legacy environment variables remain fallback-only during the migration window.
-
 The reviewer App installation is also the sole source of repository access. `github_reviewer_list_repositories` discovers its current installation repository set directly from GitHub. No reviewer repository list is duplicated in Coolify.
 
 When reviewer credentials are absent, no `github_reviewer_*` tools are registered. When configured, the reviewer surface intentionally exposes only read/review operations:
@@ -354,7 +347,7 @@ When reviewer credentials are absent, no `github_reviewer_*` tools are registere
 - directory, branches, tags, code-search, commit-history, commit and ref comparison reads;
 - PR list/metadata, changed files, comments, reviews and review-thread reads;
 - check-run, workflow-run/job and required-check reads;
-- job-log and workflow artifact diagnostics;
+- job-log and workflow file diagnostics;
 - rich review submission with inline comments;
 - review-thread replies and resolve/unresolve operations.
 

@@ -7,9 +7,9 @@ import pytest
 from fastmcp import Client, FastMCP
 from mcp.types import ToolAnnotations
 
-from koba_mcp_bridge.github_actions import GitHubActionsClient
-from koba_mcp_bridge.github_actions_tools import register_github_actions_tools
-from koba_mcp_bridge.github_agent import GitHubAgentError
+from mcp_bridge.github_actions import GitHubActionsClient
+from mcp_bridge.github_actions_tools import register_github_actions_tools
+from mcp_bridge.github_agent import GitHubAgentError
 
 
 class RecordingActionsClient(GitHubActionsClient):
@@ -85,14 +85,14 @@ def test_job_log_returns_tail() -> None:
     assert result["truncated"] is True
 
 
-def test_list_workflow_artifacts_normalizes_payload() -> None:
+def test_list_workflow_files_normalizes_payload() -> None:
     client = RecordingActionsClient()
-    result = client.list_workflow_artifacts(
+    result = client.list_workflow_files(
         "ArthurKoba/koba-mcp-bridge",
         77,
     )
     assert result["total_count"] == 1
-    assert result["artifacts"] == [
+    assert result["files"] == [
         {
             "id": 9,
             "name": "coverage",
@@ -104,10 +104,10 @@ def test_list_workflow_artifacts_normalizes_payload() -> None:
     ]
 
 
-def test_download_artifact_returns_base64_and_hash() -> None:
+def test_download_file_returns_base64_and_hash() -> None:
     client = RecordingActionsClient()
-    client.download_payload = b"PK\x03\x04artifact"
-    result = client.download_workflow_artifact(
+    client.download_payload = b"PK\x03\x04file"
+    result = client.download_workflow_file(
         "ArthurKoba/koba-mcp-bridge",
         9,
     )

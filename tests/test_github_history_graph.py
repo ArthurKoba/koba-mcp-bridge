@@ -4,10 +4,10 @@ import pytest
 from fastmcp import Client, FastMCP
 from mcp.types import ToolAnnotations
 
-from koba_mcp_bridge.github_actions import GitHubActionsClient
-from koba_mcp_bridge.github_actions_tools import register_github_actions_tools
-from koba_mcp_bridge.github_agent import GitHubAgentError
-from koba_mcp_bridge.github_history_graph import rewrite_branch_identity_graph
+from mcp_bridge.github_actions import GitHubActionsClient
+from mcp_bridge.github_actions_tools import register_github_actions_tools
+from mcp_bridge.github_agent import GitHubAgentError
+from mcp_bridge.github_history_graph import rewrite_branch_identity_graph
 
 _AGENT_NAME = "Koba AI Agent"
 _AGENT_EMAIL = "330168119+koba-ai-agent[bot]@users.noreply.github.com"
