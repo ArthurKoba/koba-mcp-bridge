@@ -8,7 +8,7 @@ from .runtime_annotations import (
 )
 from .runtime_common import build_private_mcp, private_http_app
 
-mcp = build_private_mcp("koba-gitlab")
+mcp = build_private_mcp("gitlab-mcp")
 
 register_gitlab_tools(
     mcp,
