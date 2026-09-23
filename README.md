@@ -143,15 +143,23 @@ TLS fingerprints, or browser HTTP/2 settings.
 
 ## Analysis and Ghidra boundary
 
-The public MCP Bridge data model is Files. The analysis runtime consumes `file_id` values and
-uses the native `ghidra-mcp` service internally.
+Native `ghidra-mcp` remains an independent private backend and keeps its canonical
+tool names, argument names and implementation unchanged.
 
-Raw Ghidra stays on the private Docker network and keeps its own native tool vocabulary.
-MCP Bridge does not rename or modify the Ghidra backend merely to match platform terminology.
+The Analysis runtime is intentionally thin. It reads the live Ghidra MCP tool catalog
+and creates an Analysis-facing facade dynamically rather than reimplementing Ghidra
+operations. Tool descriptions and selected domain terms are exposed using the
+behavior-analysis vocabulary used by the project.
 
-The current analysis surface includes the existing high-level import/export workflows.
-Further analysis/recovery vocabulary can evolve in `analysis` without changing the
-native Ghidra service.
+Argument compatibility is handled in the Analysis adapter with Pydantic-backed dynamic
+models. The preferred public names are the Analysis aliases (for example
+`action_name`, `inbound_actions`, `low_level_view`); legacy Ghidra argument names
+remain accepted as a compatibility fallback. If both forms are supplied, the Analysis
+alias takes precedence. Before dispatch, the adapter always normalizes the payload back
+to the canonical Ghidra argument keys and calls the original Ghidra tool.
+
+This keeps one implementation of the actual analysis behavior: Ghidra. MCP Bridge owns
+only the facade, terminology mapping, validation and result-envelope normalization.
 
 ## Secrets / Infisical
 

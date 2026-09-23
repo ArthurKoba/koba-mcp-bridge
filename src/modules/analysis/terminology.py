@@ -8,7 +8,7 @@ from typing import Literal, Protocol, cast
 from pydantic import AliasChoices, ConfigDict, Field, create_model
 from pydantic.fields import FieldInfo
 
-from common.models import JsonObject, JsonValue, StrictModel, json_object, json_value
+from common.models import JsonObject, JsonValue, StrictModel, json_object
 
 Surface = Literal["ghidra", "analysis"]
 
@@ -277,8 +277,8 @@ def _prefer_analysis_aliases(
     arguments: JsonObject,
 ) -> JsonObject:
     normalized = dict(arguments)
-    for ghidra_name in _schema_properties(input_schema):
-        analysis_name = analysis_argument_name(ghidra_name)
+    for ghidra_name, property_schema in _schema_properties(input_schema).items():
+        analysis_name = analysis_argument_name(ghidra_name, property_schema)
         if analysis_name == ghidra_name or analysis_name not in normalized:
             continue
         normalized.pop(ghidra_name, None)
