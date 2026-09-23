@@ -5,48 +5,35 @@ mcp-bridge/
 ├── .github/
 ├── docs/
 ├── src/
-│   ├── mcp_bridge/       # thin public gateway only
-│   ├── mcp_common/       # shared runtime + secrets primitives
-│   ├── github_mcp/       # GitHub provider runtime
-│   ├── gitlab_mcp/       # GitLab provider runtime
-│   ├── files_mcp/        # persistent Files runtime
-│   ├── http_mcp/         # HTTP/curl runtime
-│   └── analysis_mcp/     # analysis/Ghidra adapter runtime
+│   ├── bridge/            # public gateway only
+│   ├── common/            # shared runtime + secrets primitives
+│   └── modules/
+│       ├── github/
+│       ├── gitlab/
+│       ├── files/
+│       ├── curl/
+│       └── analysis/
 ├── tests/
-│   ├── mcp_bridge/
-│   ├── mcp_common/
-│   ├── github_mcp/
-│   ├── gitlab_mcp/
-│   ├── files_mcp/
-│   ├── http_mcp/
-│   └── analysis_mcp/
+│   ├── bridge/
+│   ├── common/
+│   └── modules/
+│       ├── github/
+│       ├── gitlab/
+│       ├── files/
+│       ├── curl/
+│       └── analysis/
 ├── Dockerfile
 ├── docker-compose.yaml
 ├── docker-entrypoint.sh
-├── otel-collector.yaml
 ├── pyproject.toml
 └── README.md
 ```
 
-## Gateway
+`bridge` owns only OAuth, public MCP surfaces and composition.
 
-`src/mcp_bridge/` contains only version metadata and the public gateway composition.
-It proxies the private runtimes and owns OAuth/public HTTP surfaces.
+`common` contains provider-neutral primitives shared by modules.
 
-## Shared layer
+Each directory under `modules/` owns one private runtime and its implementation.
+Provider code does not belong in `bridge` or `common`.
 
-`src/mcp_common/` contains shared runtime helpers, tool annotations and the Infisical
-secret resolver. Provider-specific behavior does not belong here.
-
-## Runtime packages
-
-Every runtime package owns its implementation and its `runtime.py` entry point:
-
-- `github_mcp.runtime`
-- `gitlab_mcp.runtime`
-- `files_mcp.runtime`
-- `http_mcp.runtime`
-- `analysis_mcp.runtime`
-
-The production Compose file in the repository root is the single deployment definition.
-There is no separate local/development Compose and no `deploy/` source tree.
+The root `docker-compose.yaml` is the single production deployment definition.

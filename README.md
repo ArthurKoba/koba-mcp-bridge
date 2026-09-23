@@ -29,13 +29,14 @@ own packages.
 
 ```text
 src/
-├── mcp_bridge/      # public gateway only
-├── mcp_common/      # shared runtime/secrets primitives
-├── github_mcp/
-├── gitlab_mcp/
-├── files_mcp/
-├── http_mcp/
-└── analysis_mcp/
+├── bridge/
+├── common/
+└── modules/
+    ├── github/
+    ├── gitlab/
+    ├── files/
+    ├── curl/
+    └── analysis/
 ```
 
 ## Architecture
@@ -45,13 +46,13 @@ ChatGPT / MCP clients
         |
         | OAuth + MCP
         v
-mcp-gateway
+gateway
         |
-        +-- github-mcp   (private)
-        +-- gitlab-mcp   (private)
-        +-- files-mcp    (private)
-        +-- http-mcp     (private)
-        +-- analysis-mcp (private)
+        +-- github   (private)
+        +-- gitlab   (private)
+        +-- files    (private)
+        +-- curl     (private)
+        +-- analysis (private)
                               |
                               +-- ghidra-mcp (native/private)
 ```
@@ -149,7 +150,7 @@ Raw Ghidra stays on the private Docker network and keeps its own native tool voc
 MCP Bridge does not rename or modify the Ghidra backend merely to match platform terminology.
 
 The current analysis surface includes the existing high-level import/export workflows.
-Further analysis/recovery vocabulary can evolve in `analysis-mcp` without changing the
+Further analysis/recovery vocabulary can evolve in `analysis` without changing the
 native Ghidra service.
 
 ## Secrets / Infisical
