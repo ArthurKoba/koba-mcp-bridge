@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
-
 from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
@@ -205,7 +203,7 @@ def register_github_reviewer_tools(
         number: int,
         event: str,
         body: str,
-        comments: list[dict[str, Any]] | None = None,
+        comments: list[ReviewComment] | None = None,
         commit_id: str | None = None,
     ) -> dict[str, object]:
         """Submit COMMENT, APPROVE, or REQUEST_CHANGES with optional inline comments."""

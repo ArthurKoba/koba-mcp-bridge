@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from typing import Any
-
 from .github_agent import GitHubAgentError
+from .models import ReviewComment
 from .github_workflow import GitHubDevClient
 
 
@@ -106,7 +105,7 @@ class GitHubReviewClient(GitHubDevClient):
         number: int,
         event: str,
         body: str,
-        comments: list[dict[str, Any]] | None = None,
+        comments: list[ReviewComment] | None = None,
         commit_id: str | None = None,
     ) -> dict[str, object]:
         repository = self._assert_allowed(repository)
@@ -117,19 +116,10 @@ class GitHubReviewClient(GitHubDevClient):
         if commit_id:
             payload["commit_id"] = commit_id
         if comments:
-            normalized: list[dict[str, object]] = []
-            allowed = {"path", "body", "line", "side", "start_line", "start_side", "position"}
-            for comment in comments:
-                if not comment.get("path") or not comment.get("body"):
-                    raise GitHubAgentError("each review comment requires path and body")
-                normalized.append(
-                    {
-                        key: value
-                        for key, value in comment.items()
-                        if key in allowed and value is not None
-                    }
-                )
-            payload["comments"] = normalized
+            payload["comments"] = [
+                comment.model_dump(exclude_none=True)
+                for comment in comments
+            ]
         _, result = self._repo_request(
             repository,
             "POST",

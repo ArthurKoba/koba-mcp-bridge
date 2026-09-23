@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
-
 from fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 from .github_identity import GitHubPrettyIdentityClient
 
@@ -11,9 +10,9 @@ from .github_identity import GitHubPrettyIdentityClient
 def register_github_core_tools(
     mcp: FastMCP,
     client_factory: Callable[[], GitHubPrettyIdentityClient],
-    read_annotations: Any,
-    write_annotations: Any,
-    destructive_annotations: Any,
+    read_annotations: ToolAnnotations,
+    write_annotations: ToolAnnotations,
+    destructive_annotations: ToolAnnotations,
 ) -> None:
     @mcp.tool(title="GitHub agent list repositories", annotations=read_annotations)
     def github_agent_list_repositories() -> dict[str, object]:

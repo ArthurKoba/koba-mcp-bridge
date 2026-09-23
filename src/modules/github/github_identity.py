@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
+from common.models import JsonObject, json_object
 
 from .github_actions import GitHubActionsClient
 from .github_agent import GitHubAgentError
@@ -74,10 +74,13 @@ class GitHubPrettyIdentityClient(GitHubActionsClient):
         }
 
     @staticmethod
-    def _copy_payload(payload: object | None) -> dict[str, Any] | None:
-        if not isinstance(payload, dict):
+    def _copy_payload(payload: object | None) -> JsonObject | None:
+        if payload is None:
             return None
-        return dict(payload)
+        try:
+            return json_object(payload, context="GitHub request payload")
+        except ValueError as exc:
+            raise GitHubAgentError("GitHub request payload must be JSON-compatible") from exc
 
     def _repo_request(
         self,

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
-
 from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 from .github_workflow import GitHubDevClient
+from .models import AtomicChange, CopySpec
 
 
 def register_github_workflow_tools(
@@ -62,7 +61,7 @@ def register_github_workflow_tools(
         source_ref: str,
         branch: str,
         message: str,
-        copies: list[dict[str, Any]],
+        copies: list[CopySpec],
         expected_head_sha: str | None = None,
         operation: str = "copy",
         overwrite: bool = False,
@@ -84,7 +83,7 @@ def register_github_workflow_tools(
         repository: str,
         branch: str,
         message: str,
-        changes: list[dict[str, Any]],
+        changes: list[AtomicChange],
         expected_head_sha: str | None = None,
     ) -> dict[str, object]:
         """Commit multiple text/binary file changes atomically using Git Data objects."""
