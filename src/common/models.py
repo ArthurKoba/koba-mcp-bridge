@@ -48,6 +48,13 @@ def validated_call(function: Callable[P, R]) -> Callable[P, R]:
     return cast(Callable[P, R], wrapped)
 
 
+def json_loads(data: str | bytes, *, context: str = "value") -> JsonValue:
+    try:
+        return _JSON_VALUE.validate_json(data)
+    except ValidationError as exc:
+        raise ValueError(f"{context} is not valid JSON") from exc
+
+
 def json_value(value: object, *, context: str = "value") -> JsonValue:
     try:
         return _JSON_VALUE.validate_python(value, strict=True)
