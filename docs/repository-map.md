@@ -26,13 +26,21 @@ koba-mcp-bridge/
 
 ### Server composition
 
-- `server.py` — FastMCP composition, OAuth boundary, local registration, mounted backends and HTTP app wiring.
+- `server.py` — authenticated gateway with embedded rollback mode and proxy mode for isolated runtimes.
 
-### Files/file data plane
+### Files data plane
 
 - `file_store.py` — immutable object storage, metadata, collections and references.
 - `file_ingress.py` — attachment/file ingress and resumable uploads.
-- `file_tools.py` — MCP surface for file/file operations.
+- `file_tools.py` — MCP surface for Files operations.
+
+### Runtime entry points
+
+- `github_runtime.py` — private GitHub MCP runtime.
+- `gitlab_runtime.py` — private GitLab MCP runtime.
+- `files_runtime.py` — private Files MCP runtime.
+- `http_runtime.py` — private HTTP/curl MCP runtime.
+- `runtime_common.py` and `runtime_annotations.py` — shared runtime primitives.
 
 ### HTTP
 
@@ -61,7 +69,7 @@ This is a natural candidate for packaging behind an independent runtime entry po
 
 ### Ghidra integration
 
-- `reverse_workflow.py` — high-level file/file ↔ Ghidra adapter workflows.
+- `reverse_workflow.py` — high-level Files ↔ native Ghidra adapter workflows.
 - The actual Ghidra MCP runtime lives in its own repository/service.
 
 ## Tests
