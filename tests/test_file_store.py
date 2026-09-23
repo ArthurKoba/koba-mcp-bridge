@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import sqlite3
 import tarfile
 
 import pytest
@@ -136,3 +137,88 @@ def test_collection_delete_releases_members_for_gc(store: FileStore, tmp_path) -
     after = store.gc(dry_run=True)
     assert member["file_id"] in after["candidates"]
     assert source["file_id"] in after["candidates"]
+
+
+def test_existing_database_is_migrated_to_files_schema(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("FILE_ROOT", str(tmp_path))
+    database = tmp_path / "index.sqlite3"
+    db = sqlite3.connect(database)
+    db.executescript(
+        """
+        CREATE TABLE artifacts (
+            artifact_id TEXT PRIMARY KEY,
+            sha256 TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            mime_type TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        CREATE TABLE aliases (
+            artifact_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            source TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (artifact_id, name, source)
+        );
+        CREATE TABLE collections (
+            collection_id TEXT PRIMARY KEY,
+            source_artifact_id TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        CREATE TABLE collection_items (
+            collection_id TEXT NOT NULL,
+            path TEXT NOT NULL,
+            artifact_id TEXT NOT NULL,
+            PRIMARY KEY (collection_id, path)
+        );
+        CREATE TABLE artifact_refs (
+            artifact_id TEXT NOT NULL,
+            consumer_type TEXT NOT NULL,
+            consumer_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (artifact_id, consumer_type, consumer_id, role)
+        );
+        CREATE INDEX idx_collection_artifact
+            ON collection_items(artifact_id);
+        """
+    )
+    file_id = "sha256:" + "a" * 64
+    db.execute(
+        "INSERT INTO artifacts VALUES (?, ?, ?, ?, ?, ?)",
+        (file_id, "a" * 64, "firmware.bin", "application/octet-stream", 4, "now"),
+    )
+    db.execute(
+        "INSERT INTO aliases VALUES (?, ?, ?, ?)",
+        (file_id, "firmware.bin", "upload", "now"),
+    )
+    db.commit()
+    db.close()
+
+    store = FileStore()
+    store.ensure()
+
+    info = store.info(file_id)
+    assert info["file_id"] == file_id
+    assert info["name"] == "firmware.bin"
+
+    db = sqlite3.connect(database)
+    tables = {
+        row[0]
+        for row in db.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        ).fetchall()
+    }
+    schema = "\n".join(
+        row[0] or ""
+        for row in db.execute(
+            "SELECT sql FROM sqlite_master WHERE sql IS NOT NULL"
+        ).fetchall()
+    )
+    db.close()
+
+    assert {"files", "aliases", "collections", "collection_items", "file_refs"} <= tables
+    assert "artifacts" not in tables
+    assert "artifact_id" not in schema
+    assert "source_artifact_id" not in schema
+    assert "artifact_refs" not in schema
