@@ -1,4 +1,4 @@
-<!-- Koba MCP Bridge internal development PR template -->
+<!-- MCP Bridge internal development PR template -->
 
 ## Summary
 

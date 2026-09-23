@@ -3,7 +3,7 @@
 Production Infisical is deployed as the native one-click Infisical Service in Coolify.
 The repository does not own a second Compose definition for that service.
 
-Koba only needs the runtime bootstrap:
+MCP Bridge only needs the runtime bootstrap:
 
 ```text
 INFISICAL_HOST=https://secrets.koba-nexus.ru
@@ -44,7 +44,7 @@ Current layout:
   CA_FILE      # optional
 ```
 
-The Koba machine identity uses Universal Auth with Viewer access to the project.
+The MCP Bridge machine identity uses Universal Auth with Viewer access to the project.
 Access tokens are short-lived; the bootstrap client secret remains in the deployment
 system because it is required to authenticate to Infisical itself.
 

@@ -18,7 +18,7 @@ The reviewer read surface receives the same richer commit observations, but no h
 `github_agent_list_branches` distinguishes two independent concepts:
 
 - `github_protected`: GitHub's branch-protection/ruleset result;
-- `bridge_reserved`: the branch name is reserved by `GITHUB_AGENT_PROTECTED_BRANCHES` in Koba MCP Bridge.
+- `bridge_reserved`: the branch name is reserved by `GITHUB_AGENT_PROTECTED_BRANCHES` in MCP Bridge.
 
 Each branch also reports `mutation_allowed` and `mutation_denial_reason`. A branch can therefore be `github_protected=false` while still being unavailable for direct Agent mutation because Bridge policy reserves it.
 
