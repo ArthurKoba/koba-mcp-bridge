@@ -167,7 +167,7 @@ def ingest_file(
 
     request = urllib.request.Request(
         download_url,
-        headers={"User-Agent": "koba-mcp-bridge/0.1 file-ingress"},
+        headers={"User-Agent": "mcp-bridge/0.1 file-ingress"},
     )
     temporary = store.tmp / f"attachment-{uuid.uuid4().hex}.part"
     digest = hashlib.sha256()
