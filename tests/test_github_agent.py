@@ -31,8 +31,8 @@ def test_github_agent_loads_convention_config_from_infisical(
 def test_repository_selector_only_validates_owner_name_shape() -> None:
     client = GitHubAppClient(app_id="123", private_key="key")
 
-    assert client._assert_allowed("ArthurKoba/koba-mcp-bridge") == (
-        "ArthurKoba/koba-mcp-bridge"
+    assert client._assert_allowed("ArthurKoba/mcp-bridge") == (
+        "ArthurKoba/mcp-bridge"
     )
     assert client._assert_allowed("someone/else") == "someone/else"
 
@@ -70,7 +70,7 @@ class RecordingInstallationClient(GitHubAppClient):
                 "total_count": 2,
                 "repositories": [
                     {
-                        "full_name": "ArthurKoba/koba-mcp-bridge",
+                        "full_name": "ArthurKoba/mcp-bridge",
                         "private": False,
                         "default_branch": "main",
                         "archived": False,
@@ -98,7 +98,7 @@ def test_list_repositories_uses_github_installation_scope() -> None:
     assert result["count"] == 2
     assert [repo["full_name"] for repo in result["repositories"]] == [
         "ArthurKoba/ghidra-mcp",
-        "ArthurKoba/koba-mcp-bridge",
+        "ArthurKoba/mcp-bridge",
     ]
     assert client._installation_ids["arthurkoba/ghidra-mcp"] == 99
     assert client._installation_ids["arthurkoba/mcp-bridge"] == 99
