@@ -391,7 +391,11 @@ class FileStore:
             if row is None:
                 raise FileError("file does not exist")
             aliases = [
-                dict(item)
+                FileAlias(
+                    name=str(item["name"]),
+                    source=str(item["source"]),
+                    created_at=str(item["created_at"]),
+                )
                 for item in db.execute(
                     """
                     SELECT name, source, created_at
@@ -403,7 +407,12 @@ class FileStore:
                 ).fetchall()
             ]
             refs = [
-                dict(item)
+                FileReference(
+                    consumer_type=str(item["consumer_type"]),
+                    consumer_id=str(item["consumer_id"]),
+                    role=str(item["role"]),
+                    created_at=str(item["created_at"]),
+                )
                 for item in db.execute(
                     """
                     SELECT consumer_type, consumer_id, role, created_at
@@ -415,7 +424,10 @@ class FileStore:
                 ).fetchall()
             ]
             collections = [
-                dict(item)
+                FileCollectionMembership(
+                    collection_id=str(item["collection_id"]),
+                    path=str(item["path"]),
+                )
                 for item in db.execute(
                     """
                     SELECT collection_id, path
@@ -426,13 +438,19 @@ class FileStore:
                     (normalized,),
                 ).fetchall()
             ]
-        result = dict(row)
-        result["aliases"] = aliases
-        result["references"] = refs
-        result["collections"] = collections
-        result["size_display"] = _size_display(int(row["size_bytes"]))
-        result["present"] = self.path_for(normalized).is_file()
-        return result
+        return FileInfo(
+            file_id=str(row["file_id"]),
+            sha256=str(row["sha256"]),
+            name=str(row["name"]),
+            mime_type=str(row["mime_type"]),
+            size_bytes=int(row["size_bytes"]),
+            created_at=str(row["created_at"]),
+            aliases=aliases,
+            references=refs,
+            collections=collections,
+            size_display=_size_display(int(row["size_bytes"])),
+            present=self.path_for(normalized).is_file(),
+        ).to_json()
 
     def list(self, query: str = "", offset: int = 0, limit: int = 100) -> JsonObject:
         if offset < 0:
@@ -472,18 +490,26 @@ class FileStore:
                 """,
                 [*params, limit, offset],
             ).fetchall()
-        items = []
-        for row in rows:
-            item = dict(row)
-            item["size_display"] = _size_display(int(row["size_bytes"]))
-            items.append(item)
-        return {
-            "items": items,
-            "offset": offset,
-            "limit": limit,
-            "total": total,
-            "truncated": offset + len(items) < total,
-        }
+        items = [
+            FileListItem(
+                file_id=str(row["file_id"]),
+                sha256=str(row["sha256"]),
+                name=str(row["name"]),
+                mime_type=str(row["mime_type"]),
+                size_bytes=int(row["size_bytes"]),
+                created_at=str(row["created_at"]),
+                reference_count=int(row["reference_count"]),
+                size_display=_size_display(int(row["size_bytes"])),
+            )
+            for row in rows
+        ]
+        return FileListResponse(
+            items=items,
+            offset=offset,
+            limit=limit,
+            total=total,
+            truncated=offset + len(items) < total,
+        ).to_json()
 
     def find_by_name(self, name: str) -> JsonObject:
         self.ensure()
@@ -522,15 +548,15 @@ class FileStore:
             handle.seek(offset)
             data = handle.read(length)
         next_offset = offset + len(data)
-        return {
-            "file_id": info["file_id"],
-            "offset": offset,
-            "bytes_read": len(data),
-            "next_offset": next_offset,
-            "size_bytes": size,
-            "eof": next_offset >= size,
-            "data_base64": base64.b64encode(data).decode("ascii"),
-        }
+        return FileReadResponse(
+            file_id=str(info["file_id"]),
+            offset=offset,
+            bytes_read=len(data),
+            next_offset=next_offset,
+            size_bytes=size,
+            eof=next_offset >= size,
+            data_base64=base64.b64encode(data).decode("ascii"),
+        ).to_json()
 
     def put_text(
         self,
@@ -593,7 +619,10 @@ class FileStore:
                 """,
                 (normalized, consumer_type, consumer_id, role),
             )
-        return {"file_id": normalized, "released": cursor.rowcount > 0}
+        return FileReferenceReleaseResponse(
+            file_id=normalized,
+            released=cursor.rowcount > 0,
+        ).to_json()
 
     def references(
         self,
@@ -620,7 +649,16 @@ class FileStore:
                 """,
                 params,
             ).fetchall()
-        return [dict(row) for row in rows]
+        return [
+            FileReference(
+                file_id=str(row["file_id"]),
+                consumer_type=str(row["consumer_type"]),
+                consumer_id=str(row["consumer_id"]),
+                role=str(row["role"]),
+                created_at=str(row["created_at"]),
+            ).to_json()
+            for row in rows
+        ]
 
     def extract(self, file_id: str) -> JsonObject:
         source = self.info(file_id)
@@ -955,13 +993,13 @@ class FileStore:
             file_count = int(db.execute("SELECT COUNT(*) FROM files").fetchone()[0])
             collection_count = int(db.execute("SELECT COUNT(*) FROM collections").fetchone()[0])
             reference_count = int(db.execute("SELECT COUNT(*) FROM file_refs").fetchone()[0])
-        return {
-            "status": "ok",
-            "file_count": file_count,
-            "collection_count": collection_count,
-            "reference_count": reference_count,
-            "upload_max_bytes": upload_max_bytes(),
-            "max_extract_files": max_extract_files(),
-            "max_extract_bytes": max_extract_bytes(),
-            "free_bytes": usage.free,
-        }
+        return FileStoreStatus(
+            status="ok",
+            file_count=file_count,
+            collection_count=collection_count,
+            reference_count=reference_count,
+            upload_max_bytes=upload_max_bytes(),
+            max_extract_files=max_extract_files(),
+            max_extract_bytes=max_extract_bytes(),
+            free_bytes=usage.free,
+        ).to_json()
