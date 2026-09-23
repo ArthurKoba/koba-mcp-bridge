@@ -784,9 +784,11 @@ class GitHubDevClient(GitHubAppClient):
             "GET",
             f"/repos/{repository}/git/ref/heads/{branch_q}",
         )
-        if not isinstance(ref, dict) or not isinstance(ref.get("object"), dict):
+        if not isinstance(ref, dict):
             raise GitHubAgentError("unable to resolve branch head")
-        head_sha = str(ref["object"].get("sha", ""))
+        head_sha = json_str(
+            json_member_object(ref, "object", required=True).get("sha")
+        )
         if not head_sha:
             raise GitHubAgentError("branch head has no sha")
         if head_sha != expected_head_sha:
@@ -842,9 +844,8 @@ class GitHubDevClient(GitHubAppClient):
             f"/repos/{repository}/git/ref/heads/{branch_q}",
         )
         current_object = (
-            current_ref.get("object")
+            json_member_object(current_ref, "object")
             if isinstance(current_ref, dict)
-            and isinstance(current_ref.get("object"), dict)
             else {}
         )
         current_head_sha = json_str(current_object.get("sha"))

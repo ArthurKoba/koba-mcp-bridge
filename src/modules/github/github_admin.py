@@ -3,6 +3,7 @@ from __future__ import annotations
 import urllib.parse
 
 from common.models import (
+    JsonObject,
     json_bool,
     json_member_object,
     json_object,
@@ -14,7 +15,7 @@ from .github_agent import GitHubAgentError
 from .github_workflow import protected_branches_from_env
 
 
-def _tree_sha(commit: dict[str, object]) -> str:
+def _tree_sha(commit: JsonObject) -> str:
     payload = json_object(commit, context="GitHub commit")
     tree = json_member_object(payload, "tree", required=True)
     sha = json_str(tree.get("sha"))

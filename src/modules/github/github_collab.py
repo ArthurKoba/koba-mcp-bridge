@@ -2,7 +2,14 @@ from __future__ import annotations
 
 import os
 
-from common.models import json_int, json_member_object, json_str
+from common.models import (
+    json_bool,
+    json_int,
+    json_member_array,
+    json_member_object,
+    json_object,
+    json_str,
+)
 
 from .github_agent import GitHubAgentError
 from .github_review import GitHubReviewClient
@@ -273,56 +280,54 @@ class GitHubCollabClient(GitHubReviewClient):
             query,
             {"owner": owner, "name": name, "number": number},
         )
-        repo = data.get("repository")
-        if not isinstance(repo, dict) or not isinstance(repo.get("pullRequest"), dict):
-            raise GitHubAgentError("pull request was not found in GraphQL response")
-        pull = repo["pullRequest"]
-        review_threads = pull.get("reviewThreads")
-        if not isinstance(review_threads, dict):
-            raise GitHubAgentError("GraphQL response has no reviewThreads")
-        nodes = review_threads.get("nodes")
-        threads = []
-        if isinstance(nodes, list):
-            for thread in nodes:
-                if not isinstance(thread, dict):
+        try:
+            repo = json_member_object(data, "repository", required=True)
+            pull = json_member_object(repo, "pullRequest", required=True)
+            review_threads = json_member_object(
+                pull,
+                "reviewThreads",
+                required=True,
+            )
+            nodes = json_member_array(review_threads, "nodes")
+        except ValueError as exc:
+            raise GitHubAgentError(
+                "pull request review threads response is invalid"
+            ) from exc
+
+        threads: list[dict[str, object]] = []
+        for raw_thread in nodes:
+            if not isinstance(raw_thread, dict):
+                continue
+            thread = raw_thread
+            comments_data = json_member_object(thread, "comments")
+            comment_nodes = json_member_array(comments_data, "nodes")
+            comments: list[dict[str, object]] = []
+            for raw_comment in comment_nodes:
+                if not isinstance(raw_comment, dict):
                     continue
-                comments_data = thread.get("comments")
-                comment_nodes = (
-                    comments_data.get("nodes")
-                    if isinstance(comments_data, dict)
-                    else []
-                )
-                comments = []
-                if isinstance(comment_nodes, list):
-                    for comment in comment_nodes:
-                        if not isinstance(comment, dict):
-                            continue
-                        author = (
-                            comment.get("author")
-                            if isinstance(comment.get("author"), dict)
-                            else {}
-                        )
-                        comments.append(
-                            {
-                                "id": json_str(comment.get("id")),
-                                "database_id": comment.get("databaseId"),
-                                "author": json_str(author.get("login")),
-                                "body": json_str(comment.get("body")),
-                                "created_at": json_str(comment.get("createdAt")),
-                                "url": json_str(comment.get("url")),
-                            }
-                        )
-                threads.append(
+                comment = raw_comment
+                author = json_member_object(comment, "author")
+                comments.append(
                     {
-                        "id": json_str(thread.get("id")),
-                        "resolved": bool(thread.get("isResolved", False)),
-                        "outdated": bool(thread.get("isOutdated", False)),
-                        "path": json_str(thread.get("path")),
-                        "line": thread.get("line"),
-                        "start_line": thread.get("startLine"),
-                        "comments": comments,
+                        "id": json_str(comment.get("id")),
+                        "database_id": comment.get("databaseId"),
+                        "author": json_str(author.get("login")),
+                        "body": json_str(comment.get("body")),
+                        "created_at": json_str(comment.get("createdAt")),
+                        "url": json_str(comment.get("url")),
                     }
                 )
+            threads.append(
+                {
+                    "id": json_str(thread.get("id")),
+                    "resolved": json_bool(thread.get("isResolved")),
+                    "outdated": json_bool(thread.get("isOutdated")),
+                    "path": json_str(thread.get("path")),
+                    "line": thread.get("line"),
+                    "start_line": thread.get("startLine"),
+                    "comments": comments,
+                }
+            )
         return {"repository": repository, "number": number, "threads": threads}
 
     def set_review_thread_resolved(
@@ -350,14 +355,17 @@ class GitHubCollabClient(GitHubReviewClient):
             mutation,
             {"input": {"threadId": thread_id}},
         )
-        payload = data.get(field)
-        if not isinstance(payload, dict) or not isinstance(payload.get("thread"), dict):
-            raise GitHubAgentError("GraphQL review thread mutation returned no thread")
-        thread = payload["thread"]
+        try:
+            payload = json_member_object(data, field, required=True)
+            thread = json_member_object(payload, "thread", required=True)
+        except ValueError as exc:
+            raise GitHubAgentError(
+                "GraphQL review thread mutation returned no thread"
+            ) from exc
         return {
             "repository": repository,
-            "thread_id": str(thread.get("id", thread_id)),
-            "resolved": bool(thread.get("isResolved", False)),
+            "thread_id": json_str(thread.get("id"), default=thread_id),
+            "resolved": json_bool(thread.get("isResolved")),
         }
 
     def mark_pull_ready_for_review(
@@ -384,12 +392,19 @@ class GitHubCollabClient(GitHubReviewClient):
         }
         """
         data = self._graphql(repository, mutation, {"input": {"pullRequestId": node_id}})
-        payload = data.get("markPullRequestReadyForReview")
-        if not isinstance(payload, dict) or not isinstance(payload.get("pullRequest"), dict):
-            raise GitHubAgentError("GraphQL ready-for-review mutation returned no pull request")
-        result = payload["pullRequest"]
+        try:
+            payload = json_member_object(
+                data,
+                "markPullRequestReadyForReview",
+                required=True,
+            )
+            result = json_member_object(payload, "pullRequest", required=True)
+        except ValueError as exc:
+            raise GitHubAgentError(
+                "GraphQL ready-for-review mutation returned no pull request"
+            ) from exc
         return {
             "repository": repository,
-            "number": int(result.get("number", number)),
-            "draft": bool(result.get("isDraft", False)),
+            "number": json_int(result.get("number"), default=number),
+            "draft": json_bool(result.get("isDraft")),
         }
