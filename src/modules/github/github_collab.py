@@ -4,6 +4,7 @@ import os
 
 from common.models import (
     JsonObject,
+    json_array,
     json_bool,
     json_int,
     json_member_array,
@@ -65,7 +66,7 @@ class GitHubCollabClient(GitHubReviewClient):
         return {
             "repository": repository,
             "number": number,
-            "required_reviewers": required,
+            "required_reviewers": json_array(required, context="GitHub required reviewers"),
             "status": "ok",
         }
 
@@ -139,9 +140,9 @@ class GitHubCollabClient(GitHubReviewClient):
             raise GitHubAgentError("at least one reviewer or team reviewer is required")
         payload: JsonObject = {}
         if reviewers:
-            payload["reviewers"] = reviewers
+            payload["reviewers"] = json_array(reviewers, context="GitHub reviewers")
         if team_reviewers:
-            payload["team_reviewers"] = team_reviewers
+            payload["team_reviewers"] = json_array(team_reviewers, context="GitHub team reviewers")
         _, result = self._repo_request(
             repository,
             "POST",
@@ -183,9 +184,9 @@ class GitHubCollabClient(GitHubReviewClient):
             raise GitHubAgentError("at least one reviewer or team reviewer is required")
         payload: JsonObject = {}
         if reviewers:
-            payload["reviewers"] = reviewers
+            payload["reviewers"] = json_array(reviewers, context="GitHub reviewers")
         if team_reviewers:
-            payload["team_reviewers"] = team_reviewers
+            payload["team_reviewers"] = json_array(team_reviewers, context="GitHub team reviewers")
         self._repo_request(
             repository,
             "DELETE",
@@ -325,10 +326,14 @@ class GitHubCollabClient(GitHubReviewClient):
                     "path": json_str(thread.get("path")),
                     "line": thread.get("line"),
                     "start_line": thread.get("startLine"),
-                    "comments": comments,
+                    "comments": json_array(comments, context="GitHub review thread comments"),
                 }
             )
-        return {"repository": repository, "number": number, "threads": threads}
+        return {
+            "repository": repository,
+            "number": number,
+            "threads": json_array(threads, context="GitHub review threads"),
+        }
 
     def set_review_thread_resolved(
         self,

@@ -6,6 +6,7 @@ from typing import Protocol, cast
 from common.models import (
     JsonContainer,
     JsonObject,
+    json_array,
     json_bool,
     json_int,
     json_member_array,
@@ -179,7 +180,7 @@ class GitHubHistoryMixin:
                     "mutation_denial_reason": denial_reason,
                 }
             )
-        return {"repository": repository, "branches": branches}
+        return {"repository": repository, "branches": json_array(branches, context="GitHub branches")}
 
     def list_commits(
         self,
@@ -232,7 +233,11 @@ class GitHubHistoryMixin:
                     ],
                 }
             )
-        return {"repository": repository, "commits": commits, "page": page}
+        return {
+            "repository": repository,
+            "commits": json_array(commits, context="GitHub commits"),
+            "page": page,
+        }
 
     def get_commit(self, repository: str, ref: str) -> JsonObject:
         repository = self._history_host()._assert_allowed(repository)
@@ -376,7 +381,10 @@ class GitHubHistoryMixin:
                 "history_identity_rewrite": contents_write,
             },
             "bridge_policy": {
-                "reserved_branches": sorted(protected_branches_from_env()),
+                "reserved_branches": json_array(
+                    sorted(protected_branches_from_env()),
+                    context="GitHub reserved branches",
+                ),
                 "reserved_branch_mutation_allowed": False,
             },
             "reviewer_available": reviewer_available,
@@ -593,8 +601,8 @@ class GitHubHistoryMixin:
             "preserve_trees": preserve_trees,
             "preserve_author_dates": preserve_author_dates,
             "final_tree_sha": new_head_tree,
-            "mapping": mapping,
-            "plan": plan,
+            "mapping": json_object(mapping, context="GitHub history rewrite mapping"),
+            "plan": json_array(plan, context="GitHub history rewrite plan"),
             "old_shas_reachable_from_new_head": False,
             "ref_updated": False,
         }

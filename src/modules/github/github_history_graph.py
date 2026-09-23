@@ -4,8 +4,10 @@ import urllib.parse
 
 from common.models import (
     JsonObject,
+    json_array,
     json_member_array,
     json_member_object,
+    json_object,
     json_str,
 )
 
@@ -132,8 +134,8 @@ def rewrite_branch_identity_graph(
                     "new_sha": old_sha,
                     "tree_sha": tree_sha,
                     "message": message,
-                    "old_parent_shas": old_parents,
-                    "new_parent_shas": new_parents,
+                    "old_parent_shas": json_array(old_parents, context="GitHub old parent SHAs"),
+                    "new_parent_shas": json_array(new_parents, context="GitHub new parent SHAs"),
                     "reused": True,
                 }
             )
@@ -152,7 +154,7 @@ def rewrite_branch_identity_graph(
         payload: JsonObject = {
             "message": message,
             "tree": tree_sha,
-            "parents": new_parents,
+            "parents": json_array(new_parents, context="GitHub commit parents"),
             "author": author_payload,
             "committer": committer_payload,
         }
@@ -184,8 +186,8 @@ def rewrite_branch_identity_graph(
                 "new_sha": new_sha,
                 "tree_sha": tree_sha,
                 "message": message,
-                "old_parent_shas": old_parents,
-                "new_parent_shas": new_parents,
+                "old_parent_shas": json_array(old_parents, context="GitHub old parent SHAs"),
+                "new_parent_shas": json_array(new_parents, context="GitHub new parent SHAs"),
                 "reused": False,
             }
         )
@@ -219,8 +221,8 @@ def rewrite_branch_identity_graph(
         "preserve_trees": preserve_trees,
         "preserve_author_dates": preserve_author_dates,
         "final_tree_sha": new_head_tree,
-        "mapping": mapping,
-        "plan": plan,
+        "mapping": json_object(mapping, context="GitHub history rewrite mapping"),
+        "plan": json_array(plan, context="GitHub history rewrite plan"),
         "history_changed": new_head != old_head,
         "old_shas_reachable_from_new_head": any(
             old_sha == new_sha for old_sha, new_sha in mapping.items()

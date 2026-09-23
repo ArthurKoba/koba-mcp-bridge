@@ -8,6 +8,7 @@ import urllib.request
 
 from common.models import (
     JsonObject,
+    json_array,
     json_bool,
     json_int,
     json_member_array,
@@ -110,7 +111,7 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
             "repository": repository,
             "number": number,
             "head_sha": head_sha,
-            "required_reviewers": required,
+            "required_reviewers": json_array(required, context="GitHub required reviewers"),
             "status": "ok",
         }
 
@@ -268,7 +269,7 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
             "repository": repository,
             "run_id": run_id,
             "total_count": json_int(result.get("total_count"), default=len(files)),
-            "files": files,
+            "files": json_array(files, context="GitHub workflow files"),
             "page": page,
         }
 

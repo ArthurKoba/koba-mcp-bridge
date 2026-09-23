@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from common.models import (
     JsonObject,
     JsonValue,
+    json_array,
     json_int,
     json_member_object,
     json_str,
@@ -190,7 +191,11 @@ class GitHubReviewClient(GitHubDevClient):
                     "html_url": json_str(item.get("html_url")),
                 }
             )
-        return {"repository": repository, "number": number, "comments": comments}
+        return {
+            "repository": repository,
+            "number": number,
+            "comments": json_array(comments, context="GitHub review comments"),
+        }
 
     def list_review_comments(
         self,
@@ -222,4 +227,8 @@ class GitHubReviewClient(GitHubDevClient):
                     "html_url": json_str(item.get("html_url")),
                 }
             )
-        return {"repository": repository, "number": number, "comments": comments}
+        return {
+            "repository": repository,
+            "number": number,
+            "comments": json_array(comments, context="GitHub review comments"),
+        }

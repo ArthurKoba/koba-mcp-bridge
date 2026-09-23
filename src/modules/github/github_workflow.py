@@ -11,6 +11,7 @@ from common.config import env_list
 from common.models import (
     JsonObject,
     JsonValue,
+    json_array,
     json_bool,
     json_int,
     json_member_array,
@@ -96,7 +97,12 @@ class GitHubDevClient(GitHubAppClient):
             for item in result
             if isinstance(item, dict)
         ]
-        return {"repository": repository, "path": path, "ref": ref, "entries": entries}
+        return {
+            "repository": repository,
+            "path": path,
+            "ref": ref,
+            "entries": json_array(entries, context="GitHub directory entries"),
+        }
 
     def get_binary_file(
         self,
@@ -470,8 +476,14 @@ class GitHubDevClient(GitHubAppClient):
             "previous_head_sha": head_sha,
             "commit_sha": commit_sha,
             "tree_sha": tree_sha,
-            "copied": processed if operation == "copy" else [],
-            "moved": processed if operation == "move" else [],
+            "copied": json_array(
+                processed if operation == "copy" else [],
+                context="GitHub copied files",
+            ),
+            "moved": json_array(
+                processed if operation == "move" else [],
+                context="GitHub moved files",
+            ),
         }
 
     def delete_file(
@@ -701,7 +713,11 @@ class GitHubDevClient(GitHubAppClient):
                     "date": json_str(author.get("date")),
                 }
             )
-        return {"repository": repository, "commits": commits, "page": page}
+        return {
+            "repository": repository,
+            "commits": json_array(commits, context="GitHub commits"),
+            "page": page,
+        }
 
     def get_commit(self, repository: str, ref: str) -> JsonObject:
         repository = self._assert_allowed(repository)
@@ -848,7 +864,7 @@ class GitHubDevClient(GitHubAppClient):
                     "target_ref must resolve to an ancestor of the current branch head"
                 )
 
-        result = {
+        result: JsonObject = {
             "repository": repository,
             "branch": branch,
             "previous_head_sha": head_sha,
@@ -907,7 +923,11 @@ class GitHubDevClient(GitHubAppClient):
             if isinstance(item, dict):
                 commit = json_member_object(item, "commit")
                 tags.append({"name": json_str(item.get("name")), "sha": json_str(commit.get("sha"))})
-        return {"repository": repository, "tags": tags, "page": page}
+        return {
+            "repository": repository,
+            "tags": json_array(tags, context="GitHub tags"),
+            "page": page,
+        }
 
     def create_tag(
         self,
@@ -1149,7 +1169,11 @@ class GitHubDevClient(GitHubAppClient):
             for item in result
             if isinstance(item, dict)
         ]
-        return {"repository": repository, "number": number, "files": files}
+        return {
+            "repository": repository,
+            "number": number,
+            "files": json_array(files, context="GitHub pull files"),
+        }
 
     def add_pull_comment(
         self,
@@ -1196,7 +1220,11 @@ class GitHubDevClient(GitHubAppClient):
                     "submitted_at": json_str(item.get("submitted_at")),
                 }
             )
-        return {"repository": repository, "number": number, "reviews": reviews}
+        return {
+            "repository": repository,
+            "number": number,
+            "reviews": json_array(reviews, context="GitHub reviews"),
+        }
 
     def create_review(
         self,
@@ -1265,7 +1293,11 @@ class GitHubDevClient(GitHubAppClient):
                         "details_url": json_str(item.get("details_url")),
                     }
                 )
-        return {"repository": repository, "ref": ref, "check_runs": checks}
+        return {
+            "repository": repository,
+            "ref": ref,
+            "check_runs": json_array(checks, context="GitHub check runs"),
+        }
 
     def assert_required_checks(self, repository: str, ref: str) -> JsonObject:
         result = self.check_runs(repository, ref)
@@ -1306,7 +1338,7 @@ class GitHubDevClient(GitHubAppClient):
                 return {
                     "repository": repository,
                     "ref": ref,
-                    "required": required,
+                    "required": json_array(required, context="GitHub required checks"),
                     "status": "delegated_to_github",
                 }
 
@@ -1324,7 +1356,7 @@ class GitHubDevClient(GitHubAppClient):
             raise GitHubAgentError(
                 f"required checks not satisfied; missing={missing}, failing={failing}"
             )
-        return {"repository": repository, "ref": ref, "required": required, "status": "ok"}
+        return {"repository": repository, "ref": ref, "required": json_array(required, context="GitHub required checks"), "status": "ok"}
 
     def merge_pull_request(
         self,
@@ -1408,7 +1440,11 @@ class GitHubDevClient(GitHubAppClient):
             if not isinstance(item, dict) or "pull_request" in item:
                 continue
             issues.append(self._compact_issue(item))
-        return {"repository": repository, "issues": issues, "page": page}
+        return {
+            "repository": repository,
+            "issues": json_array(issues, context="GitHub issues"),
+            "page": page,
+        }
 
     @staticmethod
     def _compact_issue(item: JsonObject) -> JsonObject:
@@ -1441,7 +1477,7 @@ class GitHubDevClient(GitHubAppClient):
         repository = self._assert_allowed(repository)
         payload: JsonObject = {"title": title, "body": body}
         if labels is not None:
-            payload["labels"] = labels
+            payload["labels"] = json_array(labels, context="GitHub issue labels")
         _, result = self._repo_request(
             repository,
             "POST",
@@ -1472,7 +1508,7 @@ class GitHubDevClient(GitHubAppClient):
                 raise GitHubAgentError("state must be open or closed")
             payload["state"] = state
         if labels is not None:
-            payload["labels"] = labels
+            payload["labels"] = json_array(labels, context="GitHub issue labels")
         if not payload:
             raise GitHubAgentError("no issue fields were supplied")
         _, result = self._repo_request(
@@ -1547,7 +1583,11 @@ class GitHubDevClient(GitHubAppClient):
             for item in raw
             if isinstance(item, dict)
         ]
-        return {"repository": repository, "workflow_runs": runs, "page": page}
+        return {
+            "repository": repository,
+            "workflow_runs": json_array(runs, context="GitHub workflow runs"),
+            "page": page,
+        }
 
     def list_workflow_jobs(self, repository: str, run_id: int) -> JsonObject:
         repository = self._assert_allowed(repository)
@@ -1570,4 +1610,8 @@ class GitHubDevClient(GitHubAppClient):
             for item in raw
             if isinstance(item, dict)
         ]
-        return {"repository": repository, "run_id": run_id, "jobs": jobs}
+        return {
+            "repository": repository,
+            "run_id": run_id,
+            "jobs": json_array(jobs, context="GitHub workflow jobs"),
+        }

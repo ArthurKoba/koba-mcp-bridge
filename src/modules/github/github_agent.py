@@ -17,6 +17,7 @@ import jwt
 from common.models import (
     JsonContainer,
     JsonObject,
+    json_array,
     json_bool,
     json_container,
     json_int,
@@ -515,7 +516,7 @@ class GitHubAppClient:
         return {
             "app_id": self.app_id,
             "count": len(repositories),
-            "repositories": repositories,
+            "repositories": json_array(repositories, context="GitHub repositories"),
         }
 
     def _repository_metadata(
@@ -620,7 +621,7 @@ class GitHubAppClient:
                 )
             except ValueError as exc:
                 raise GitHubAgentError("unexpected branch list response") from exc
-        return {"repository": repository, "branches": branches}
+        return {"repository": repository, "branches": json_array(branches, context="GitHub branches")}
 
     def create_branch(self, repository: str, branch: str, from_branch: str) -> JsonObject:
         repository = self._assert_allowed(repository)
@@ -796,7 +797,7 @@ class GitHubAppClient:
             "ahead_by": json_int(compare_payload.get("ahead_by")),
             "behind_by": json_int(compare_payload.get("behind_by")),
             "total_commits": json_int(compare_payload.get("total_commits")),
-            "files": normalized_files,
+            "files": json_array(normalized_files, context="GitHub compare files"),
         }
 
     def fast_forward(self, repository: str, branch: str, to_ref: str) -> JsonObject:
