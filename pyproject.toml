@@ -1,7 +1,7 @@
 [project]
-name = "koba-mcp-bridge"
+name = "mcp-bridge"
 version = "0.1.0"
-description = "Extensible MCP bridge for local tools, isolated workers, and long-running agent tasks."
+description = "Modular MCP bridge for local tools, isolated workers, and long-running agent tasks."
 readme = "README.md"
 requires-python = ">=3.13"
 license = { text = "MIT" }
