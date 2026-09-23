@@ -201,22 +201,40 @@ class UploadFinishResponse(StrictModel):
 class UploadCancelResponse(StrictModel):
     upload_id: UploadId
     cancelled: bool
-    already_completed: bool = False
+    discarded_bytes: int = Field(ge=0)
+
+
+class UploadAlreadyAbsentResponse(StrictModel):
+    upload_id: UploadId
+    already_absent: Literal[True]
+
+
+class UploadAlreadyCommittedResponse(StrictModel):
+    upload_id: UploadId
+    already_committed: Literal[True]
+    file_id: FileId
 
 
 class UploadCleanupItem(StrictModel):
     upload_id: UploadId
-    name: str
     state: Literal["open", "completed"]
+    bytes_received: int = Field(ge=0)
+    file_id: FileId | None
     updated_at: str
 
 
+class UploadCleanupPreviewResponse(StrictModel):
+    dry_run: Literal[True]
+    older_than_hours: int = Field(ge=1)
+    sessions: list[UploadCleanupItem]
+    count: int = Field(ge=0)
+
+
 class UploadCleanupResponse(StrictModel):
-    dry_run: bool
-    older_than_hours: int = Field(ge=0)
-    matched: int = Field(ge=0)
+    dry_run: Literal[False]
+    older_than_hours: int = Field(ge=1)
     removed: list[UploadCleanupItem]
-    truncated: bool
+    count: int = Field(ge=0)
 
 
 class FileToolResult(StrictModel):
