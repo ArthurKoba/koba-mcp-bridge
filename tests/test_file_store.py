@@ -5,7 +5,7 @@ import tarfile
 
 import pytest
 
-from koba_mcp_bridge.file_store import FileError, FileStore
+from mcp_bridge.file_store import FileError, FileStore
 
 
 @pytest.fixture

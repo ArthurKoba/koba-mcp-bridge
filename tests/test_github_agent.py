@@ -3,8 +3,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-import koba_mcp_bridge.github_agent as github_agent
-from koba_mcp_bridge.github_agent import (
+import mcp_bridge.github_agent as github_agent
+from mcp_bridge.github_agent import (
     GitHubAgentError,
     GitHubAppClient,
 )
@@ -101,7 +101,7 @@ def test_list_repositories_uses_github_installation_scope() -> None:
         "ArthurKoba/koba-mcp-bridge",
     ]
     assert client._installation_ids["arthurkoba/ghidra-mcp"] == 99
-    assert client._installation_ids["arthurkoba/koba-mcp-bridge"] == 99
+    assert client._installation_ids["arthurkoba/mcp-bridge"] == 99
 
 def test_app_id_must_be_positive_numeric() -> None:
     client = GitHubAppClient(app_id="not-an-id", private_key="unused")

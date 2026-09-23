@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 
 import pytest
 
-from koba_mcp_bridge.curl_tools import (
+from mcp_bridge.curl_tools import (
     DEFAULT_CURL_PRESET,
     CurlError,
     _curl_failure_diagnostic,
@@ -19,7 +19,7 @@ from koba_mcp_bridge.curl_tools import (
     curl_request_impl,
     curl_stream_capture_impl,
 )
-from koba_mcp_bridge.file_store import FileStore
+from mcp_bridge.file_store import FileStore
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -74,7 +74,7 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         if parsed.path == "/download":
-            data = b"\x00KobaBinary\xff" * 64
+            data = b"\x00BridgeBinary\xff" * 64
             self.send_response(200)
             self.send_header("Content-Type", "application/octet-stream")
             self.send_header(
@@ -139,7 +139,7 @@ def test_request_supports_method_query_headers_cookies_and_json(http_server) -> 
         f"{http_server}/echo?existing=1",
         method="POST",
         query={"q": ["one", "two"], "flag": True},
-        headers={"X-Koba-Test": "yes"},
+        headers={"X-Bridge-Test": "yes"},
         cookies={"session": "abc"},
         body_json={"hello": "world"},
         preset="json-api",
@@ -154,7 +154,7 @@ def test_request_supports_method_query_headers_cookies_and_json(http_server) -> 
     assert "q=one" in payload["path"]
     assert "q=two" in payload["path"]
     assert "flag=true" in payload["path"]
-    assert payload["headers"]["x-koba-test"] == "yes"
+    assert payload["headers"]["x-bridge-test"] == "yes"
     assert payload["headers"]["cookie"] == "session=abc"
     assert payload["headers"]["content-type"].startswith("application/json")
     assert json.loads(payload["body"]) == {"hello": "world"}
@@ -222,7 +222,7 @@ def test_download_streams_into_file_store(http_server) -> None:
     assert result["status"] == 200
     assert file["name"] == "fixture.bin"
     stored = FileStore().path_for(file["file_id"]).read_bytes()
-    assert stored == b"\x00KobaBinary\xff" * 64
+    assert stored == b"\x00BridgeBinary\xff" * 64
     assert result["body_is_text"] is False
     assert result["body_preview_hex"]
 
