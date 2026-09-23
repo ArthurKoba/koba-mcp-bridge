@@ -40,7 +40,7 @@ Infisical is now the selected implementation for this phase.
 ## Phase 5 — Files surface
 
 - establish Files as the user-facing component name;
-- preserve immutable artifact IDs and collection/reference semantics;
+- preserve immutable file IDs and collection/reference semantics;
 - make Files independently deployable.
 
 ## Phase 6 — HTTP runtime boundary
