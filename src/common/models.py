@@ -81,3 +81,57 @@ def json_array(value: object, *, context: str = "value") -> JsonArray:
 
 def model_json(model: BaseModel) -> JsonObject:
     return json_object(model.model_dump(mode="json"))
+
+
+def json_int(value: JsonValue | None, *, default: int = 0) -> int:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError as exc:
+            raise ValueError(f"expected integer-compatible JSON value, got {value!r}") from exc
+    raise ValueError(f"expected integer-compatible JSON value, got {type(value).__name__}")
+
+
+def json_float(value: JsonValue | None, *, default: float = 0.0) -> float:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError as exc:
+            raise ValueError(f"expected float-compatible JSON value, got {value!r}") from exc
+    raise ValueError(f"expected float-compatible JSON value, got {type(value).__name__}")
+
+
+def json_str(value: JsonValue | None, *, default: str = "") -> str:
+    if value is None:
+        return default
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (bool, int, float)):
+        return str(value)
+    raise ValueError(f"expected scalar JSON value, got {type(value).__name__}")
+
+
+def json_object_or_empty(value: JsonValue | None) -> JsonObject:
+    if value is None:
+        return {}
+    return json_object(value)
+
+
+def json_array_or_empty(value: JsonValue | None) -> JsonArray:
+    if value is None:
+        return []
+    return json_array(value)
