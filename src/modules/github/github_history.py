@@ -21,14 +21,6 @@ from .policy import protected_branches_from_env
 _GITHUB_API = "https://api.github.com"
 
 
-
-
-
-
-
-
-
-
 class _GitHubHistoryHost(Protocol):
     app_id: str
 
@@ -68,12 +60,6 @@ class GitHubHistoryMixin:
 
     def _history_host(self) -> _GitHubHistoryHost:
         return cast(_GitHubHistoryHost, self)
-
-
-
-
-
-
 
     def _agent_app_identity(self) -> JsonObject:
         _, app = self._history_host()._request(
