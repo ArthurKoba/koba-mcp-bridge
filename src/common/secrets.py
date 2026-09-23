@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import ssl
 import threading
@@ -10,18 +9,13 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from .config import env_bool
+from .json import JsonTypeError, json_loads, json_object
+from .types import JsonObject
 
 
 class SecretError(RuntimeError):
     """Raised when MCP Bridge cannot resolve a configured secret reference."""
-
-
-def _env_bool(name: str, default: bool = True) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _env_float(
@@ -106,7 +100,7 @@ class InfisicalConfig:
             client_secret=client_secret,
             environment=environment,
             base_path=base_path,
-            verify_tls=_env_bool("INFISICAL_VERIFY_TLS", True),
+            verify_tls=env_bool("INFISICAL_VERIFY_TLS", True),
             ca_file=ca_file,
             client_id_source=client_id_source,
             client_secret_source=client_secret_source,
@@ -135,7 +129,7 @@ class InfisicalConfig:
         if not self.client_secret:
             raise SecretError("Infisical client secret is not configured")
 
-    def public(self) -> dict[str, Any]:
+    def public(self) -> JsonObject:
         return {
             "configured": self.configured(),
             "host": self.host or None,
@@ -212,7 +206,7 @@ class SecretReference:
             "secret reference scheme must be env://, file://, or infisical://"
         )
 
-    def public(self) -> dict[str, Any]:
+    def public(self) -> JsonObject:
         if self.scheme == "env":
             return {"scheme": "env", "env_name": self.env_name}
         if self.scheme == "file":
@@ -247,7 +241,7 @@ class InfisicalClient:
         request: urllib.request.Request,
         *,
         timeout: float = 30,
-    ) -> tuple[int, dict[str, Any]]:
+    ) -> tuple[int, JsonObject]:
         try:
             with urllib.request.urlopen(
                 request,
@@ -255,9 +249,14 @@ class InfisicalClient:
                 context=self._ssl_context(),
             ) as response:
                 raw = response.read()
-                data = json.loads(raw.decode("utf-8")) if raw else {}
-                if not isinstance(data, dict):
-                    raise SecretError("Infisical returned a non-object JSON response")
+                data = (
+                    json_object(
+                        json_loads(raw.decode("utf-8")),
+                        context="Infisical response",
+                    )
+                    if raw
+                    else {}
+                )
                 return response.status, data
         except urllib.error.HTTPError as exc:
             raw = exc.read()
@@ -265,7 +264,7 @@ class InfisicalClient:
             raise SecretError(f"Infisical API HTTP {exc.code}: {detail}") from exc
         except urllib.error.URLError as exc:
             raise SecretError(f"Infisical API transport error: {exc.reason}") from exc
-        except json.JSONDecodeError as exc:
+        except (ValueError, JsonTypeError) as exc:
             raise SecretError("Infisical returned invalid JSON") from exc
 
     def _login_locked(self) -> str:
@@ -313,7 +312,7 @@ class InfisicalClient:
         environment: str,
         secret_path: str = "/",
         project_id: str = "",
-    ) -> list[dict[str, Any]]:
+    ) -> list[JsonObject]:
         env = environment.strip()
         path = secret_path.strip() or "/"
         if not env:
@@ -354,7 +353,7 @@ class InfisicalClient:
         environment: str,
         secret_path: str = "/",
         project_id: str = "",
-    ) -> tuple[str, dict[str, Any]]:
+    ) -> tuple[str, JsonObject]:
         name = secret_name.strip()
         env = environment.strip()
         if not name or not env:
@@ -404,7 +403,7 @@ class InfisicalClient:
         }
         return value, metadata
 
-    def status(self, *, authenticate: bool = False) -> dict[str, Any]:
+    def status(self, *, authenticate: bool = False) -> JsonObject:
         result = self.config.public()
         result["provider"] = "infisical"
         if authenticate:
@@ -522,7 +521,7 @@ class SecretResolver:
             secret_path=self._config_path(relative_path),
         )
 
-    def list_folders(self, relative_path: str) -> list[dict[str, Any]]:
+    def list_folders(self, relative_path: str) -> list[JsonObject]:
         return self.infisical.list_folders(
             environment=self.infisical.config.environment,
             secret_path=self._config_path(relative_path),
@@ -554,7 +553,7 @@ class SecretResolver:
             project_id=ref.project_id,
         )
 
-    def check(self, reference: str) -> dict[str, Any]:
+    def check(self, reference: str) -> JsonObject:
         ref = SecretReference.parse(reference)
         self.resolve(reference)
         return {
@@ -583,14 +582,14 @@ def resolve_config_secret(relative_path: str, secret_name: str) -> str:
     return _default_resolver.get(relative_path, secret_name)
 
 
-def list_config_folders(relative_path: str) -> list[dict[str, Any]]:
+def list_config_folders(relative_path: str) -> list[JsonObject]:
     """List immediate Infisical folders under one convention-based path."""
     return _default_resolver.list_folders(relative_path)
 
 
-def secret_reference_available(reference: str) -> dict[str, Any]:
+def secret_reference_available(reference: str) -> JsonObject:
     return _default_resolver.check(reference)
 
 
-def secrets_status(authenticate: bool = False) -> dict[str, Any]:
+def secrets_status(authenticate: bool = False) -> JsonObject:
     return _default_resolver.infisical.status(authenticate=authenticate)
