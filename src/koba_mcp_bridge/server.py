@@ -73,21 +73,45 @@ def _backend_url(name: str, default: str) -> str:
 def _configured_backends() -> dict[str, str]:
     return {
         "github": _backend_url("GITHUB_MCP_URL", "http://github-mcp:8000/mcp"),
+        "gitlab": _backend_url("GITLAB_MCP_URL", "http://gitlab-mcp:8000/mcp"),
         "files": _backend_url("FILES_MCP_URL", "http://files-mcp:8000/mcp"),
         "http": _backend_url("HTTP_MCP_URL", "http://http-mcp:8000/mcp"),
-        "analysis": _backend_url("ANALYSIS_MCP_URL", "http://analysis-mcp:8000/mcp"),
+        "analysis": _backend_url(
+            "ANALYSIS_MCP_URL",
+            "http://analysis-mcp:8000/mcp",
+        ),
     }
 
 
-def _mount_backends(server: FastMCP) -> dict[str, str]:
-    backends = _configured_backends()
-    for name, url in backends.items():
-        proxy = create_proxy(url, name=f"{name}-backend", mode="auto")
-        server.mount(server=proxy)
-    return backends
+def _proxy(name: str, url: str):
+    return create_proxy(url, name=f"{name}-backend", mode="auto")
+
+
+def _public_facade(name: str, backend_name: str, backend_url: str) -> FastMCP:
+    surface = FastMCP(
+        name,
+        version=__version__,
+        auth=_auth,
+        middleware=_auth_middleware,
+    )
+    surface.mount(server=_proxy(backend_name, backend_url))
+    return surface
+
+
+def _mount_aggregate_backends(
+    server: FastMCP,
+    backends: dict[str, str],
+) -> None:
+    for name in ("github", "files", "http", "analysis"):
+        server.mount(server=_proxy(name, backends[name]))
+    server.mount(
+        server=_proxy("gitlab", backends["gitlab"]),
+        namespace="gitlab",
+    )
 
 
 _auth, _auth_middleware = _build_auth()
+_BACKENDS = _configured_backends()
 
 mcp = FastMCP(
     "koba-mcp-gateway",
@@ -101,24 +125,33 @@ mcp = FastMCP(
     middleware=_auth_middleware,
 )
 
-gitlab_mcp = FastMCP(
+github_mcp = _public_facade(
+    "koba-github-gateway",
+    "github",
+    _BACKENDS["github"],
+)
+gitlab_mcp = _public_facade(
     "koba-gitlab-gateway",
-    version=__version__,
-    instructions=(
-        "Authenticated GitLab facade backed by the private GitLab MCP runtime. "
-        "Every operation requires an explicit profile_id."
-    ),
-    auth=_auth,
-    middleware=_auth_middleware,
+    "gitlab",
+    _BACKENDS["gitlab"],
+)
+files_mcp = _public_facade(
+    "koba-files-gateway",
+    "files",
+    _BACKENDS["files"],
+)
+http_mcp = _public_facade(
+    "koba-http-gateway",
+    "http",
+    _BACKENDS["http"],
+)
+analysis_mcp = _public_facade(
+    "koba-analysis-gateway",
+    "analysis",
+    _BACKENDS["analysis"],
 )
 
-gitlab_proxy = create_proxy(
-    _backend_url("GITLAB_MCP_URL", "http://gitlab-mcp:8000/mcp"),
-    name="gitlab-backend",
-    mode="auto",
-)
-gitlab_mcp.mount(server=gitlab_proxy)
-mcp.mount(gitlab_mcp, namespace="gitlab")
+_mount_aggregate_backends(mcp, _BACKENDS)
 
 
 @mcp.tool(title="Bridge ping", annotations=READ_ONLY_LOCAL)
@@ -146,7 +179,15 @@ def bridge_build_info() -> dict[str, str]:
 @mcp.tool(title="Bridge capabilities", annotations=READ_ONLY_LOCAL)
 def bridge_capabilities() -> dict[str, object]:
     return {
-        "backends": sorted(_MOUNTED_BACKENDS),
+        "backends": sorted(_BACKENDS),
+        "public_surfaces": [
+            "/mcp",
+            "/github/mcp",
+            "/gitlab/mcp",
+            "/files/mcp",
+            "/http/mcp",
+            "/analysis/mcp",
+        ],
         "features": [
             "mcp",
             "streamable-http",
@@ -164,7 +205,6 @@ def bridge_capabilities() -> dict[str, object]:
 
 
 register_secrets_tools(mcp, READ_EXTERNAL)
-_MOUNTED_BACKENDS = _mount_backends(mcp)
 
 
 def _split_env(name: str, default: str) -> list[str]:
@@ -181,15 +221,18 @@ _allowed_origins = _split_env(
     "http://localhost:*,http://127.0.0.1:*,http://[::1]:*",
 )
 
-app = mcp.http_app(
-    path="/mcp",
-    allowed_hosts=_allowed_hosts,
-    allowed_origins=_allowed_origins,
-)
 
-gitlab_app = gitlab_mcp.http_app(
-    path="/mcp",
-    allowed_hosts=_allowed_hosts,
-    allowed_origins=_allowed_origins,
-)
-app.mount("/gitlab", gitlab_app)
+def _http_app(surface: FastMCP):
+    return surface.http_app(
+        path="/mcp",
+        allowed_hosts=_allowed_hosts,
+        allowed_origins=_allowed_origins,
+    )
+
+
+app = _http_app(mcp)
+app.mount("/github", _http_app(github_mcp))
+app.mount("/gitlab", _http_app(gitlab_mcp))
+app.mount("/files", _http_app(files_mcp))
+app.mount("/http", _http_app(http_mcp))
+app.mount("/analysis", _http_app(analysis_mcp))
