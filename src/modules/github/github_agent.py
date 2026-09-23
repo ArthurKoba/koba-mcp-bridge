@@ -393,7 +393,7 @@ class GitHubAppClient:
         *,
         payload: object | None = None,
         allowed_errors: set[int] | None = None,
-    ) -> tuple[int, JsonValue]:
+    ) -> tuple[int, JsonContainer]:
         repository = self._assert_allowed(repository)
         token = self._installation_token(repository)
         return self._request(
