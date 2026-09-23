@@ -14,8 +14,10 @@ import uuid
 import zipfile
 from contextlib import contextmanager, suppress
 from datetime import UTC, datetime
-from pathlib import Path, PurePosixPath
-from typing import Any, BinaryIO
+from pathlib import Path
+
+from common.types import JsonObject, PurePosixPath
+from typing import BinaryIO
 
 _DEFAULT_ROOT = "/files"
 _DEFAULT_READ_CHUNK = 1024 * 1024
@@ -220,7 +222,7 @@ class FileStore:
         mime_type: str,
         size_bytes: int,
         source: str,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         file_id = f"sha256:{digest}"
         created_at = _now()
         with self._connect() as db:
@@ -248,7 +250,7 @@ class FileStore:
         name: str,
         mime_type: str = "",
         source: str = "upload",
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         self.ensure()
         if len(data) > upload_max_bytes():
             raise FileError("file exceeds FILE_UPLOAD_MAX_BYTES")
@@ -282,7 +284,7 @@ class FileStore:
         mime_type: str = "",
         source: str = "generated",
         max_bytes: int | None = None,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         self.ensure()
         limit = max_bytes or upload_max_bytes()
         digest = hashlib.sha256()
@@ -328,7 +330,7 @@ class FileStore:
         mime_type: str = "",
         source: str = "generated",
         consume: bool = False,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         self.ensure()
         if not path.is_file():
             raise FileError("source file does not exist")
@@ -359,7 +361,7 @@ class FileStore:
             source=source,
         )
 
-    def info(self, file_id: str) -> dict[str, Any]:
+    def info(self, file_id: str) -> JsonObject:
         normalized, _ = _normalize_file_id(file_id)
         self.ensure()
         with self._connect() as db:
@@ -413,13 +415,13 @@ class FileStore:
         result["present"] = self.path_for(normalized).is_file()
         return result
 
-    def list(self, query: str = "", offset: int = 0, limit: int = 100) -> dict[str, Any]:
+    def list(self, query: str = "", offset: int = 0, limit: int = 100) -> JsonObject:
         if offset < 0:
             raise FileError("offset must be non-negative")
         if limit <= 0 or limit > 1000:
             raise FileError("limit must be between 1 and 1000")
         self.ensure()
-        params: list[Any] = []
+        params: list[object] = []
         where = ""
         if query.strip():
             where = """
@@ -464,7 +466,7 @@ class FileStore:
             "truncated": offset + len(items) < total,
         }
 
-    def find_by_name(self, name: str) -> dict[str, Any]:
+    def find_by_name(self, name: str) -> JsonObject:
         self.ensure()
         with self._connect() as db:
             row = db.execute(
@@ -487,7 +489,7 @@ class FileStore:
         file_id: str,
         offset: int = 0,
         length: int = _DEFAULT_READ_CHUNK,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         if offset < 0:
             raise FileError("offset must be non-negative")
         if length <= 0 or length > 16 * 1024 * 1024:
@@ -516,7 +518,7 @@ class FileStore:
         name: str,
         content: str,
         mime_type: str = "text/plain; charset=utf-8",
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         return self.put_bytes(
             content.encode("utf-8"),
             name=name,
@@ -530,7 +532,7 @@ class FileStore:
         consumer_type: str,
         consumer_id: str,
         role: str = "source",
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         normalized, _ = _normalize_file_id(file_id)
         self.info(normalized)
         if not consumer_type.strip() or not consumer_id.strip() or not role.strip():
@@ -558,7 +560,7 @@ class FileStore:
         consumer_type: str,
         consumer_id: str,
         role: str = "source",
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         normalized, _ = _normalize_file_id(file_id)
         self.info(normalized)
         with self._connect() as db:
@@ -578,10 +580,10 @@ class FileStore:
         self,
         consumer_type: str = "",
         consumer_id: str = "",
-    ) -> list[dict[str, Any]]:
+    ) -> list[JsonObject]:
         self.ensure()
         clauses = []
-        params: list[Any] = []
+        params: list[object] = []
         if consumer_type.strip():
             clauses.append("consumer_type = ?")
             params.append(consumer_type.strip())
@@ -601,12 +603,12 @@ class FileStore:
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def extract(self, file_id: str) -> dict[str, Any]:
+    def extract(self, file_id: str) -> JsonObject:
         source = self.info(file_id)
         archive_path = self.path_for(file_id)
         file_limit = max_extract_files()
         byte_limit = max_extract_bytes()
-        entries: list[dict[str, Any]] = []
+        entries: list[JsonObject] = []
         total_bytes = 0
 
         if zipfile.is_zipfile(archive_path):
@@ -719,14 +721,14 @@ class FileStore:
         prefix: str = "",
         offset: int = 0,
         limit: int = 200,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         if not collection_id.startswith("collection:"):
             raise FileError("invalid collection_id")
         if offset < 0 or limit <= 0 or limit > 1000:
             raise FileError("invalid collection pagination")
         self.ensure()
         where = "collection_id = ?"
-        params: list[Any] = [collection_id]
+        params: list[object] = [collection_id]
         if prefix.strip():
             where += " AND path LIKE ?"
             params.append(f"{prefix.strip()}%")
@@ -763,7 +765,7 @@ class FileStore:
             "truncated": offset + len(rows) < total,
         }
 
-    def collection_delete(self, collection_id: str) -> dict[str, Any]:
+    def collection_delete(self, collection_id: str) -> JsonObject:
         if not collection_id.startswith("collection:"):
             raise FileError("invalid collection_id")
         self.ensure()
@@ -807,7 +809,7 @@ class FileStore:
             "deleted": True,
         }
 
-    def collection_resolve(self, collection_id: str, path: str) -> dict[str, Any]:
+    def collection_resolve(self, collection_id: str, path: str) -> JsonObject:
         safe = _safe_collection_path(path)
         self.ensure()
         with self._connect() as db:
@@ -826,7 +828,7 @@ class FileStore:
         result["collection_path"] = safe
         return result
 
-    def delete(self, file_id: str, force: bool = False) -> dict[str, Any]:
+    def delete(self, file_id: str, force: bool = False) -> JsonObject:
         info = self.info(file_id)
         normalized = str(info["file_id"])
         refs = info["references"]
@@ -892,7 +894,7 @@ class FileStore:
                 path.parent.rmdir()
         return {"file_id": normalized, "deleted": True, "forced": force}
 
-    def gc(self, dry_run: bool = True, limit: int = 1000) -> dict[str, Any]:
+    def gc(self, dry_run: bool = True, limit: int = 1000) -> JsonObject:
         if limit <= 0 or limit > 10_000:
             raise FileError("limit must be between 1 and 10000")
         self.ensure()
@@ -927,7 +929,7 @@ class FileStore:
             deleted.append(file_id)
         return {"dry_run": False, "deleted": deleted, "count": len(deleted)}
 
-    def status(self) -> dict[str, Any]:
+    def status(self) -> JsonObject:
         self.ensure()
         usage = shutil.disk_usage(self.root)
         with self._connect() as db:

@@ -12,7 +12,9 @@ import uuid
 from contextlib import contextmanager, suppress
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, NotRequired, TypedDict
+from typing import NotRequired, TypedDict
+
+from common.types import JsonObject
 
 from .file_store import FileError, FileStore, upload_max_bytes
 
@@ -143,7 +145,7 @@ def ingest_file(
     mime_type: str = "",
     expected_size: int | None = None,
     expected_sha256: str = "",
-) -> dict[str, Any]:
+) -> JsonObject:
     """Stream one client-authorized attachment directly into canonical file storage."""
     store = FileStore()
     store.ensure()
@@ -320,7 +322,7 @@ class FileUploadManager:
             raise FileError("upload session does not exist")
         return row
 
-    def _public_status(self, row: sqlite3.Row) -> dict[str, Any]:
+    def _public_status(self, row: sqlite3.Row) -> JsonObject:
         expected = int(row["expected_size"])
         received = int(row["bytes_received"])
         state = str(row["state"])
@@ -384,7 +386,7 @@ class FileUploadManager:
         size_bytes: int,
         mime_type: str = "",
         expected_sha256: str = "",
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         self.ensure()
         clean_name = _validate_name(name)
         if size_bytes < 0 or size_bytes > upload_max_bytes():
@@ -431,7 +433,7 @@ class FileUploadManager:
             raise
         return self.status(upload_id)
 
-    def status(self, upload_id: str) -> dict[str, Any]:
+    def status(self, upload_id: str) -> JsonObject:
         normalized = _normalize_upload_id(upload_id)
         self.ensure()
         with self._connect() as db:
@@ -450,7 +452,7 @@ class FileUploadManager:
         state: str = "",
         offset: int = 0,
         limit: int = 100,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         if offset < 0:
             raise FileError("offset must be non-negative")
         if limit <= 0 or limit > 1000:
@@ -461,7 +463,7 @@ class FileUploadManager:
 
         self.ensure()
         where = ""
-        params: list[Any] = []
+        params: list[object] = []
         if clean_state:
             where = "WHERE state = ?"
             params.append(clean_state)
@@ -497,7 +499,7 @@ class FileUploadManager:
         upload_id: str,
         offset: int,
         data_base64: str,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         normalized = _normalize_upload_id(upload_id)
         if offset < 0:
             raise FileError("offset must be non-negative")
@@ -555,7 +557,7 @@ class FileUploadManager:
             assert row is not None
             return self._public_status(row)
 
-    def finish(self, upload_id: str) -> dict[str, Any]:
+    def finish(self, upload_id: str) -> JsonObject:
         normalized = _normalize_upload_id(upload_id)
         current = self.status(normalized)
         if current["committed"]:
@@ -647,7 +649,7 @@ class FileUploadManager:
             "already_committed": False,
         }
 
-    def cancel(self, upload_id: str) -> dict[str, Any]:
+    def cancel(self, upload_id: str) -> JsonObject:
         normalized = _normalize_upload_id(upload_id)
         self.ensure()
         with self._connect() as db:
@@ -682,7 +684,7 @@ class FileUploadManager:
         older_than_hours: int = 24,
         dry_run: bool = True,
         limit: int = 1000,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         if older_than_hours < 1 or older_than_hours > 24 * 365:
             raise FileError("older_than_hours must be between 1 and 8760")
         if limit <= 0 or limit > 10_000:
@@ -720,7 +722,7 @@ class FileUploadManager:
                 "count": len(sessions),
             }
 
-        removed: list[dict[str, Any]] = []
+        removed: list[JsonObject] = []
         for item in sessions:
             upload_id = str(item["upload_id"])
             with self._connect() as db:
