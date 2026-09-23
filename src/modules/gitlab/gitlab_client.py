@@ -10,7 +10,7 @@ import threading
 import urllib.parse
 
 from common.config import env_list
-from common.models import JsonObject, JsonValue, json_loads
+from common.models import JsonObject, JsonValue, json_loads, json_object, json_value
 from common.secrets import SecretError, list_config_folders, resolve_config_secret
 
 from .models import (
@@ -96,14 +96,16 @@ class GitLabProfileRegistry:
             verify_raw = cls._optional_secret(path, "VERIFY_TLS", "true")
             verify_tls = verify_raw.casefold() not in {"0", "false", "no", "off"}
             profiles.append(
-                GitLabProfile(
-                    profile_id=profile_id,
-                    base_url=base_url,
-                    auth_type=auth_type,
-                    convention_path=path,
-                    verify_tls=verify_tls,
-                    ca_file=cls._optional_secret(path, "CA_FILE"),
-                    label=cls._optional_secret(path, "LABEL", profile_id),
+                GitLabProfile.model_validate(
+                    {
+                        "profile_id": profile_id,
+                        "base_url": base_url,
+                        "auth_type": auth_type,
+                        "convention_path": path,
+                        "verify_tls": verify_tls,
+                        "ca_file": cls._optional_secret(path, "CA_FILE"),
+                        "label": cls._optional_secret(path, "LABEL", profile_id),
+                    }
                 )
             )
         return profiles
@@ -344,7 +346,10 @@ class GitLabClient:
         body = (
             None
             if payload is None
-            else json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            else json.dumps(
+                json_value(payload, context="GitLab request payload"),
+                ensure_ascii=False,
+            ).encode("utf-8")
         )
         target = self._target(path, query)
         status, headers, raw = self._perform(
@@ -356,7 +361,7 @@ class GitLabClient:
         data = self._decode_response(raw, headers)
         if status >= 400 and not (allowed_errors and status in allowed_errors):
             raise GitLabError(self._error_message(status, target, data))
-        return GitLabResponse(status, data, headers)
+        return GitLabResponse(status=status, data=data, headers=headers)
 
     def request_text(self, method: str, path: str) -> GitLabResponse:
         target = self._target(path)
@@ -369,7 +374,7 @@ class GitLabClient:
         text = raw.decode("utf-8", "replace")
         if status >= 400:
             raise GitLabError(self._error_message(status, target, text))
-        return GitLabResponse(status, text, headers)
+        return GitLabResponse(status=status, data=text, headers=headers)
 
     @staticmethod
     def project_selector(project: str | int) -> str:
@@ -610,18 +615,16 @@ class GitLabClient:
         branch = _assert_mutable_branch(branch)
         if not actions:
             raise GitLabError("actions must not be empty")
-        allowed = {"create", "update", "delete", "move", "chmod"}
-        clean_actions: list[JsonObject] = []
-        for action in actions:
-            if action.action not in allowed:
-                raise GitLabError(f"unsupported commit action: {action.action}")
-            clean_actions.append(action.to_json())
+        clean_actions = [action.to_json() for action in actions]
         selector = self.project_selector(project)
-        payload: JsonObject = {
-            "branch": branch,
-            "commit_message": commit_message,
-            "actions": clean_actions,
-        }
+        payload = json_object(
+            {
+                "branch": branch,
+                "commit_message": commit_message,
+                "actions": clean_actions,
+            },
+            context="GitLab commit payload",
+        )
         if start_branch:
             payload["start_branch"] = start_branch
         response = self.request(
