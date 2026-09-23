@@ -27,6 +27,10 @@ class _BackendTool(Protocol):
     description: str | None
 
 
+class _SignatureTarget(Protocol):
+    __signature__: inspect.Signature
+
+
 class AnalysisProviderError(RuntimeError):
     pass
 
@@ -172,7 +176,8 @@ class AnalysisToolProvider(Provider):
                 result = await client.call_tool(ghidra_name, canonical)
             return decode_call_result(result)
 
-        setattr(invoke, "__signature__", _analysis_signature(ghidra_schema))
+        signature_target = cast(_SignatureTarget, invoke)
+        signature_target.__signature__ = _analysis_signature(ghidra_schema)
         description = analysis_text(backend_tool.description or "")
         title = _backend_tool_title(backend_tool)
         tool = FunctionTool.from_function(
