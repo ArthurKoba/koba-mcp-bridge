@@ -10,6 +10,7 @@ from fastmcp.server import create_proxy
 from fastmcp.server.auth import AuthContext
 from fastmcp.server.auth.providers.github import GitHubProvider
 from fastmcp.server.middleware import AuthMiddleware
+
 from . import __version__
 from .artifact_tools import register_artifact_tools
 from .curl_mcp_tools import register_curl_tools
@@ -32,7 +33,7 @@ from .runtime_annotations import (
     WRITE_EXTERNAL,
     WRITE_LOCAL,
 )
-from .secrets import SecretError, resolve_config_secret, resolve_secret
+from .secrets import SecretError, resolve_config_secret
 from .secrets_tools import register_secrets_tools
 
 _STARTED_AT = datetime.now(UTC).isoformat()
@@ -44,26 +45,6 @@ def _env_bool(name: str, default: bool = False) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _required_env(name: str) -> str:
-    value = os.getenv(name, "").strip()
-    if not value:
-        raise RuntimeError(f"{name} is required when OAuth is enabled")
-    return value
-
-
-def _required_secret(name: str, ref_name: str) -> str:
-    reference = os.getenv(ref_name, "").strip()
-    if reference:
-        try:
-            return resolve_secret(reference)
-        except SecretError:
-            legacy = os.getenv(name, "").strip()
-            if legacy:
-                return legacy
-            raise
-    return _required_env(name)
 
 
 def _github_oauth_value(secret_name: str, legacy_env: str) -> str:
