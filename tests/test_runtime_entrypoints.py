@@ -3,11 +3,11 @@ from __future__ import annotations
 import pytest
 from fastmcp import Client
 
-from mcp_bridge.analysis_runtime import mcp as analysis_mcp
-from mcp_bridge.files_runtime import mcp as files_mcp
-from mcp_bridge.github_runtime import mcp as github_mcp
-from mcp_bridge.gitlab_runtime import mcp as gitlab_mcp
-from mcp_bridge.http_runtime import mcp as http_mcp
+from analysis_mcp.runtime import mcp as analysis_mcp
+from files_mcp.runtime import mcp as files_mcp
+from github_mcp.runtime import mcp as github_mcp
+from gitlab_mcp.runtime import mcp as gitlab_mcp
+from http_mcp.runtime import mcp as http_mcp
 
 
 async def _tool_names(mcp) -> set[str]:

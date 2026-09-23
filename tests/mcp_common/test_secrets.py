@@ -11,7 +11,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 from fastmcp import Client
 
-from mcp_bridge.secrets import (
+from mcp_common.secrets import (
     InfisicalClient,
     InfisicalConfig,
     SecretError,
