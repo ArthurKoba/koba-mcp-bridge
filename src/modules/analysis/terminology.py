@@ -182,8 +182,7 @@ def analysis_schema(input_schema: JsonObject) -> JsonObject:
 
 def normalize_arguments(input_schema: JsonObject, arguments: JsonObject) -> JsonObject:
     model = _argument_model(_schema_cache_key(input_schema))
-    _reject_alias_conflicts(input_schema, arguments)
-    validated = model.model_validate(arguments)
+    validated = model.model_validate(_prefer_analysis_aliases(input_schema, arguments))
     return json_object(validated.model_dump(mode="json"), context="normalized tool arguments")
 
 
@@ -193,8 +192,7 @@ def arguments_for_surface(
     surface: Surface,
 ) -> JsonObject:
     model = _argument_model(_schema_cache_key(input_schema))
-    _reject_alias_conflicts(input_schema, arguments)
-    validated = model.model_validate(arguments)
+    validated = model.model_validate(_prefer_analysis_aliases(input_schema, arguments))
     return json_object(
         validated.model_dump(mode="json", by_alias=surface == "analysis"),
         context=f"{surface} tool arguments",
@@ -239,7 +237,7 @@ def _argument_model(schema_key: str) -> type[ToolArgumentsBase]:
                 FieldInfo,
                 Field(
                     default=default,
-                    validation_alias=AliasChoices(ghidra_name, analysis_name),
+                    validation_alias=AliasChoices(analysis_name, ghidra_name),
                     serialization_alias=analysis_name,
                 ),
             )
@@ -274,16 +272,14 @@ def _python_type(property_schema: JsonObject) -> object:
     }.get(raw_type, JsonValue)
 
 
-def _reject_alias_conflicts(input_schema: JsonObject, arguments: JsonObject) -> None:
-    for ghidra_name, property_schema in _schema_properties(input_schema).items():
-        analysis_name = analysis_argument_name(ghidra_name, property_schema)
-        if analysis_name == ghidra_name:
+def _prefer_analysis_aliases(
+    input_schema: JsonObject,
+    arguments: JsonObject,
+) -> JsonObject:
+    normalized = dict(arguments)
+    for ghidra_name in _schema_properties(input_schema):
+        analysis_name = analysis_argument_name(ghidra_name)
+        if analysis_name == ghidra_name or analysis_name not in normalized:
             continue
-        if ghidra_name not in arguments or analysis_name not in arguments:
-            continue
-        canonical = json_value(arguments[ghidra_name])
-        aliased = json_value(arguments[analysis_name])
-        if canonical != aliased:
-            raise ValueError(
-                f"conflicting values for {ghidra_name!r} and alias {analysis_name!r}"
-            )
+        normalized.pop(ghidra_name, None)
+    return json_object(normalized, context="analysis tool arguments")

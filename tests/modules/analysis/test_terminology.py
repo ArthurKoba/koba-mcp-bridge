@@ -64,16 +64,19 @@ def test_argument_model_serializes_either_surface() -> None:
     assert "function_name" not in analysis
 
 
-def test_conflicting_alias_values_are_rejected() -> None:
-    with pytest.raises(ValueError, match="conflicting values"):
-        normalize_arguments(
-            _function_schema(),
-            {
-                "function_name": "FUN_1000",
-                "action_name": "FUN_2000",
-                "program": "fw",
-            },
-        )
+def test_analysis_alias_wins_when_both_surfaces_are_supplied() -> None:
+    result = normalize_arguments(
+        _function_schema(),
+        {
+            "function_name": "FUN_1000",
+            "action_name": "FUN_2000",
+            "include_callers": False,
+            "include_inbound_actions": True,
+            "program": "fw",
+        },
+    )
+    assert result["function_name"] == "FUN_2000"
+    assert result["include_callers"] is True
 
 
 def test_unknown_arguments_are_rejected() -> None:

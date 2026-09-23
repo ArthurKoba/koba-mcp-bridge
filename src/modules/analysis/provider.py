@@ -27,6 +27,10 @@ class _BackendTool(Protocol):
     description: str | None
 
 
+class _SignatureCallable(Protocol):
+    __signature__: inspect.Signature
+
+
 class _SignatureTarget(Protocol):
     __signature__: inspect.Signature
 
