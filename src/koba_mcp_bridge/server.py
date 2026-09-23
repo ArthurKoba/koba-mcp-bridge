@@ -12,7 +12,7 @@ from fastmcp.server.auth.providers.github import GitHubProvider
 from fastmcp.server.middleware import AuthMiddleware
 
 from . import __version__
-from .artifact_tools import register_artifact_tools
+from .file_tools import register_file_tools
 from .curl_mcp_tools import register_curl_tools
 from .github_actions_tools import register_github_actions_tools
 from .github_agent import github_agent_configured
@@ -128,11 +128,11 @@ mcp = FastMCP(
     instructions=(
         "Koba MCP Bridge is the authenticated gateway for Koba infrastructure, "
         "local tools, and mounted MCP backends. Files are first-class immutable "
-        "artifacts identified by artifact_id. For client/chat attachments, prefer "
-        "artifact_ingest_file so the client can hand Koba an authorized file URL and "
+        "files identified by file_id. For client/chat attachments, prefer "
+        "file_ingest so the client can hand Koba an authorized file URL and "
         "Koba can stream the bytes directly without model-visible base64. Use "
-        "artifact_upload_* only as the generic resumable fallback. Backend-specific "
-        "adapters such as ghidra_import_artifact consume artifact_id. Filesystem paths "
+        "file_upload_* only as the generic resumable fallback. Backend-specific "
+        "adapters such as ghidra_import_file consume file_id. Filesystem paths "
         "are private server implementation details and are never cross-service identifiers."
     ),
     auth=_auth,
@@ -202,15 +202,15 @@ def bridge_capabilities() -> dict[str, object]:
         "streamable-http",
         "opentelemetry",
         "gateway",
-        "artifact-store-v2",
+        "file-store-v2",
         "agent-resumable-upload",
         "attachment-file-ingress",
-        "artifact-collections",
-        "artifact-references",
+        "file-collections",
+        "file-references",
         "infisical-secrets",
         "secret-references",
         "curl-http-client",
-        "curl-artifact-download",
+        "curl-file-download",
         "curl-stream-capture",
         "curl-browser-header-presets",
         "gitlab-multi-profile",
@@ -276,7 +276,7 @@ register_github_actions_tools(
     WRITE_EXTERNAL,
     DESTRUCTIVE_EXTERNAL,
 )
-register_artifact_tools(mcp, READ_ONLY_LOCAL, WRITE_LOCAL, DESTRUCTIVE_LOCAL)
+register_file_tools(mcp, READ_ONLY_LOCAL, WRITE_LOCAL, DESTRUCTIVE_LOCAL)
 register_secrets_tools(mcp, READ_EXTERNAL)
 register_curl_tools(mcp, READ_ONLY_LOCAL, WRITE_EXTERNAL)
 register_reverse_workflow_tools(mcp, READ_ONLY_LOCAL, WRITE_LOCAL)
