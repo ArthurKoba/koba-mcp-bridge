@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import http.client
+import json
 import queue
 import ssl
 import threading
@@ -369,7 +370,7 @@ class GitHubAppClient:
         *,
         payload: object | None = None,
         allowed_errors: set[int] | None = None,
-    ) -> tuple[int, object]:
+    ) -> tuple[int, JsonValue]:
         repository = self._assert_allowed(repository)
         token = self._installation_token(repository)
         return self._request(

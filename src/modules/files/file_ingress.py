@@ -14,7 +14,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import cast
+from typing import IO, Literal, cast
 
 from common.models import JsonObject, validated_call
 
@@ -124,7 +124,7 @@ class _AttachmentRedirectHandler(urllib.request.HTTPRedirectHandler):
     def redirect_request(
         self,
         req: urllib.request.Request,
-        fp: http.client.HTTPResponse,
+        fp: IO[bytes],
         code: int,
         msg: str,
         headers: http.client.HTTPMessage,
@@ -242,17 +242,19 @@ def ingest_file(
                 f"expected {expected_digest}, found {actual_digest}"
             )
 
-        file = store.put_file(
-            temporary,
-            name=clean_name,
-            mime_type=detected_mime,
-            source="attachment-ingress",
-            consume=True,
+        stored_file = FileInfo.model_validate(
+            store.put_file(
+                temporary,
+                name=clean_name,
+                mime_type=detected_mime,
+                source="attachment-ingress",
+                consume=True,
+            )
         )
-        if str(file["sha256"]) != actual_digest:
+        if stored_file.sha256 != actual_digest:
             raise FileError("file store returned an unexpected SHA-256")
         return AttachmentIngestResponse(
-            file=FileInfo.model_validate(file),
+            file=stored_file,
             completed=True,
             transport="client-file",
         ).to_json()
@@ -326,7 +328,7 @@ class FileUploadManager:
             ).fetchone()
         if row is None:
             raise FileError("upload session does not exist")
-        return row
+        return cast(sqlite3.Row, row)
 
     def _public_status(self, row: sqlite3.Row) -> JsonObject:
         expected = int(row["expected_size"])
@@ -716,16 +718,21 @@ class FileUploadManager:
                 (cutoff, limit),
             ).fetchall()
 
-        sessions = [
-            UploadCleanupItem(
-                upload_id=str(row["upload_id"]),
-                state=str(row["state"]),
+        sessions = []
+        for row in rows:
+            raw_state = str(row["state"])
+            if raw_state not in {"open", "completed"}:
+                raise FileError(f"invalid upload state: {raw_state}")
+            state = cast(Literal["open", "completed"], raw_state)
+            sessions.append(
+                UploadCleanupItem(
+                    upload_id=str(row["upload_id"]),
+                    state=state,
                 bytes_received=int(row["bytes_received"]),
                 file_id=str(row["file_id"]) or None,
-                updated_at=str(row["updated_at"]),
+                    updated_at=str(row["updated_at"]),
+                )
             )
-            for row in rows
-        ]
         if dry_run:
             return UploadCleanupPreviewResponse(
                 dry_run=True,

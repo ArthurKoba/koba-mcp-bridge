@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import builtins
 import hashlib
 import json
 import mimetypes
@@ -16,7 +17,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
-from typing import BinaryIO
+from typing import IO
 
 from common.models import JsonObject
 
@@ -299,7 +300,7 @@ class FileStore:
 
     def put_stream(
         self,
-        source_stream: BinaryIO,
+        source_stream: IO[bytes],
         name: str,
         mime_type: str = "",
         source: str = "generated",
@@ -540,9 +541,9 @@ class FileStore:
             raise FileError("offset must be non-negative")
         if length <= 0 or length > 16 * 1024 * 1024:
             raise FileError("length must be between 1 and 16777216")
-        info = self.info(file_id)
+        info = FileInfo.model_validate(self.info(file_id))
         path = self.path_for(file_id)
-        size = int(info["size_bytes"])
+        size = info.size_bytes
         if offset > size:
             raise FileError("offset exceeds file size")
         with path.open("rb") as handle:
@@ -550,7 +551,7 @@ class FileStore:
             data = handle.read(length)
         next_offset = offset + len(data)
         return FileReadResponse(
-            file_id=str(info["file_id"]),
+            file_id=info.file_id,
             offset=offset,
             bytes_read=len(data),
             next_offset=next_offset,
@@ -629,7 +630,7 @@ class FileStore:
         self,
         consumer_type: str = "",
         consumer_id: str = "",
-    ) -> list[JsonObject]:
+    ) -> builtins.list[JsonObject]:
         self.ensure()
         clauses = []
         params: list[object] = []
@@ -666,13 +667,13 @@ class FileStore:
         archive_path = self.path_for(file_id)
         file_limit = max_extract_files()
         byte_limit = max_extract_bytes()
-        entries: list[CollectionItem] = []
+        entries: builtins.list[CollectionItem] = []
         total_bytes = 0
 
         if zipfile.is_zipfile(archive_path):
             with zipfile.ZipFile(archive_path) as archive:
-                members = archive.infolist()
-                regular = [member for member in members if not member.is_dir()]
+                zip_members = archive.infolist()
+                regular = [member for member in zip_members if not member.is_dir()]
                 if len(regular) > file_limit:
                     raise FileError("archive exceeds configured file-count limit")
                 for member in regular:
@@ -685,26 +686,26 @@ class FileStore:
                     total_bytes += int(member.file_size)
                     if total_bytes > byte_limit:
                         raise FileError("archive exceeds configured extraction size limit")
-                    with archive.open(member, "r") as stream:
-                        item = self.put_stream(
-                            stream,
+                    with archive.open(member, "r") as zip_stream:
+                        stored = self.put_stream(
+                            zip_stream,
                             name=path,
                             source=f"collection:{source.file_id}",
                             max_bytes=byte_limit,
                         )
-                    item_info = FileInfo.model_validate(item)
+                    stored_info = FileInfo.model_validate(stored)
                     entries.append(
                         CollectionItem(
                             path=path,
-                            file_id=item_info.file_id,
-                            size_bytes=item_info.size_bytes,
+                            file_id=stored_info.file_id,
+                            size_bytes=stored_info.size_bytes,
                         )
                     )
         elif tarfile.is_tarfile(archive_path):
             with tarfile.open(archive_path, mode="r:*") as archive:
-                members = archive.getmembers()
-                regular = [member for member in members if member.isfile()]
-                for member in members:
+                tar_members = archive.getmembers()
+                regular = [member for member in tar_members if member.isfile()]
+                for member in tar_members:
                     if member.isdir() or member.isfile():
                         continue
                     raise FileError(f"unsupported archive member type: {member.name}")
@@ -715,22 +716,22 @@ class FileStore:
                     total_bytes += int(member.size)
                     if total_bytes > byte_limit:
                         raise FileError("archive exceeds configured extraction size limit")
-                    stream = archive.extractfile(member)
-                    if stream is None:
+                    tar_stream = archive.extractfile(member)
+                    if tar_stream is None:
                         raise FileError(f"unable to read archive member: {member.name}")
-                    with stream:
-                        item = self.put_stream(
-                            stream,
+                    with tar_stream:
+                        stored = self.put_stream(
+                            tar_stream,
                             name=path,
                             source=f"collection:{source.file_id}",
                             max_bytes=byte_limit,
                         )
-                    item_info = FileInfo.model_validate(item)
+                    stored_info = FileInfo.model_validate(stored)
                     entries.append(
                         CollectionItem(
                             path=path,
-                            file_id=item_info.file_id,
-                            size_bytes=item_info.size_bytes,
+                            file_id=stored_info.file_id,
+                            size_bytes=stored_info.size_bytes,
                         )
                     )
         else:
@@ -739,8 +740,8 @@ class FileStore:
         manifest = json.dumps(
             sorted(
                 [
-                    {"path": item.path, "file_id": item.file_id}
-                    for item in entries
+                    {"path": entry.path, "file_id": entry.file_id}
+                    for entry in entries
                 ],
                 key=lambda item: item["path"],
             ),
@@ -759,14 +760,14 @@ class FileStore:
                 """,
                 (collection_id, source.file_id, _now()),
             )
-            for item in entries:
+            for entry in entries:
                 db.execute(
                     """
                     INSERT OR IGNORE INTO collection_items
                         (collection_id, path, file_id)
                     VALUES (?, ?, ?)
                     """,
-                    (collection_id, item.path, item.file_id),
+                    (collection_id, entry.path, entry.file_id),
                 )
 
         return CollectionExtractResponse(
