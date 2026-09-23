@@ -17,6 +17,7 @@ from common.secrets import (
     SecretReference,
     SecretResolver,
 )
+from common.settings import InfisicalSettings
 
 
 class _InfisicalHandler(BaseHTTPRequestHandler):
@@ -176,7 +177,6 @@ def test_env_and_file_refs(tmp_path: Path, monkeypatch) -> None:
     assert resolver.resolve(f"file://{secret_file}") == "file-value"
 
 
-
 def test_infisical_config_reads_environment_and_base_path(monkeypatch) -> None:
     monkeypatch.setenv("INFISICAL_HOST", "https://secrets.example.test")
     monkeypatch.setenv("INFISICAL_PROJECT_ID", "project")
@@ -185,7 +185,7 @@ def test_infisical_config_reads_environment_and_base_path(monkeypatch) -> None:
     monkeypatch.setenv("INFISICAL_ENVIRONMENT", "production")
     monkeypatch.setenv("INFISICAL_BASE_PATH", "/bridge/platform/")
 
-    config = InfisicalConfig.from_env()
+    config = InfisicalSettings().config()
 
     assert config.environment == "production"
     assert config.base_path == "/bridge/platform"
@@ -261,6 +261,7 @@ def test_convention_resolver_root_base_path(monkeypatch) -> None:
         "path": "/github/reviewer",
     }
 
+
 def test_infisical_config_supports_bootstrap_files(tmp_path: Path, monkeypatch) -> None:
     client_id = tmp_path / "client-id"
     client_secret = tmp_path / "client-secret"
@@ -274,7 +275,7 @@ def test_infisical_config_supports_bootstrap_files(tmp_path: Path, monkeypatch) 
     monkeypatch.delenv("INFISICAL_CLIENT_ID", raising=False)
     monkeypatch.delenv("INFISICAL_CLIENT_SECRET", raising=False)
 
-    config = InfisicalConfig.from_env()
+    config = InfisicalSettings().config()
     assert config.configured() is True
     assert config.client_id == "id-from-file"
     assert config.client_secret == "secret-from-file"
@@ -299,6 +300,7 @@ async def test_secrets_diagnostics_are_registered() -> None:
     names = {tool.name for tool in tools}
     assert "secrets_status" in names
     assert "secrets_check_reference" in names
+
 
 def test_convention_secret_cache_reuses_value_until_cleared(monkeypatch) -> None:
     client = _client("http://127.0.0.1:1")

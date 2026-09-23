@@ -13,7 +13,11 @@ from modules.github.github_reviewer_tools import register_github_reviewer_tools
 
 class RecordingHistoryClient(GitHubActionsClient):
     def __init__(self) -> None:
-        super().__init__(app_id="4970571", private_key="unused")
+        super().__init__(
+            app_id="4970571",
+            private_key="unused",
+            protected_branches=frozenset({"production"}),
+        )
         self.head = "c3"
         self.ref_reads = 0
         self.race_on_second_ref_read = False
@@ -234,10 +238,7 @@ def _reviewer_client() -> GitHubCollabClient:
     return GitHubCollabClient(app_id="4978904", private_key="unused")
 
 
-def test_branch_observability_distinguishes_bridge_policy(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_PROTECTED_BRANCHES", "production")
+def test_branch_observability_distinguishes_bridge_policy() -> None:
     client = RecordingHistoryClient()
     result = client.list_branches("ArthurKoba/example")
     branches = {item["name"]: item for item in result["branches"]}
@@ -272,10 +273,7 @@ def test_commit_observability_includes_git_and_github_identity() -> None:
     assert detailed["verification"]["signature_present"] is False
 
 
-def test_capabilities_report_permissions_identity_and_policy(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_PROTECTED_BRANCHES", "production")
+def test_capabilities_report_permissions_identity_and_policy() -> None:
     client = RecordingHistoryClient()
     result = client.capabilities("ArthurKoba/example", reviewer_available=True)
 
@@ -289,10 +287,7 @@ def test_capabilities_report_permissions_identity_and_policy(
     assert result["reviewer_available"] is True
 
 
-def test_rewrite_dry_run_builds_mapping_without_moving_ref(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_PROTECTED_BRANCHES", "production")
+def test_rewrite_dry_run_builds_mapping_without_moving_ref() -> None:
     client = RecordingHistoryClient()
     result = client.rewrite_branch_identity(
         "ArthurKoba/example",
@@ -322,10 +317,7 @@ def test_rewrite_dry_run_builds_mapping_without_moving_ref(
     )
 
 
-def test_rewrite_force_updates_once_after_validation(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_PROTECTED_BRANCHES", "production")
+def test_rewrite_force_updates_once_after_validation() -> None:
     client = RecordingHistoryClient()
     result = client.rewrite_branch_identity(
         "ArthurKoba/example",
@@ -342,10 +334,7 @@ def test_rewrite_force_updates_once_after_validation(
     assert client.head == "n3"
 
 
-def test_rewrite_rejects_head_race_before_force_ref_update(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_PROTECTED_BRANCHES", "production")
+def test_rewrite_rejects_head_race_before_force_ref_update() -> None:
     client = RecordingHistoryClient()
     client.race_on_second_ref_read = True
 
@@ -361,8 +350,7 @@ def test_rewrite_rejects_head_race_before_force_ref_update(
     assert client.head == "c3"
 
 
-def test_rewrite_requires_expected_head(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_PROTECTED_BRANCHES", "production")
+def test_rewrite_requires_expected_head() -> None:
     client = RecordingHistoryClient()
     with pytest.raises(GitHubAgentError, match="expected_head_sha is required"):
         client.rewrite_branch_identity(

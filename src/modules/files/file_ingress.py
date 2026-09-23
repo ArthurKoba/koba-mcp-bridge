@@ -13,7 +13,7 @@ from typing import IO, cast
 
 from common.models import JsonObject, validated_call
 
-from .file_store import FileError, FileStore, upload_max_bytes
+from .file_store import FileError, FileStore
 from .models import AttachmentIngestResponse, ClientFile, FileInfo
 from .validation import validate_file_name as _validate_name
 from .validation import validate_sha256 as _validate_sha256
@@ -86,9 +86,10 @@ def ingest_file(
     mime_type: str = "",
     expected_size: int | None = None,
     expected_sha256: str = "",
+    *,
+    store: FileStore,
 ) -> JsonObject:
     """Stream one client-authorized attachment directly into canonical file storage."""
-    store = FileStore()
     store.ensure()
 
     download_url = file.download_url.strip()
@@ -100,10 +101,10 @@ def ingest_file(
 
     if (
         expected_size is not None
-        and (expected_size < 0 or expected_size > upload_max_bytes())
+        and (expected_size < 0 or expected_size > store.settings.upload_max_bytes)
     ):
         raise FileError(
-            f"expected_size must be between 0 and {upload_max_bytes()}"
+            f"expected_size must be between 0 and {store.settings.upload_max_bytes}"
         )
 
     request = urllib.request.Request(
@@ -137,8 +138,8 @@ def ingest_file(
                     raise FileError("attachment returned invalid Content-Length") from exc
                 if declared_size < 0:
                     raise FileError("attachment returned invalid Content-Length")
-                if declared_size > upload_max_bytes():
-                    raise FileError("attachment exceeds FILE_UPLOAD_MAX_BYTES")
+                if declared_size > store.settings.upload_max_bytes:
+                    raise FileError("attachment exceeds the configured upload size limit")
                 if expected_size is not None and declared_size != expected_size:
                     raise FileError(
                         "attachment Content-Length does not match expected_size"
@@ -157,8 +158,8 @@ def ingest_file(
                     if not chunk:
                         break
                     total += len(chunk)
-                    if total > upload_max_bytes():
-                        raise FileError("attachment exceeds FILE_UPLOAD_MAX_BYTES")
+                    if total > store.settings.upload_max_bytes:
+                        raise FileError("attachment exceeds the configured upload size limit")
                     digest.update(chunk)
                     handle.write(chunk)
                 handle.flush()

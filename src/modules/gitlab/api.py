@@ -14,10 +14,17 @@ from .models import GitLabProfile, GitLabResponse
 
 
 class GitLabApiClient:
-    def __init__(self, profile: GitLabProfile, *, max_connections: int = 4) -> None:
+    def __init__(
+        self,
+        profile: GitLabProfile,
+        *,
+        max_connections: int = 4,
+        protected_branches: frozenset[str] = frozenset({"main", "master"}),
+    ) -> None:
         profile.bind_token_resolver(credentials.resolve_config_secret)
         self.profile = profile
         self.max_connections = max(1, int(max_connections))
+        self.protected_branches = protected_branches
         parsed = urllib.parse.urlsplit(profile.base_url)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             raise GitLabError(

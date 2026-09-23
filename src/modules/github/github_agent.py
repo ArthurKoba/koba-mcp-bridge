@@ -28,6 +28,7 @@ from common.models import (
     json_value,
 )
 from common.secrets import SecretError, resolve_config_secret
+from common.settings import GitHubPolicySettings
 
 _GITHUB_API = "https://api.github.com"
 _GITHUB_API_VERSION = "2026-03-10"
@@ -86,6 +87,9 @@ class GitHubAppClient:
     _tokens: dict[int, tuple[str, float]] = field(default_factory=dict)
     repository_cache_ttl_seconds: float = 30.0
     max_connections: int = 8
+    protected_branches: frozenset[str] = frozenset({"main", "master"})
+    required_checks: tuple[str, ...] = ("test", "docker")
+    required_reviewers: tuple[str, ...] = ()
     _transport: PooledHttpTransport = field(init=False, repr=False)
     _cache_lock: threading.Lock = field(
         default_factory=threading.Lock,
@@ -115,10 +119,13 @@ class GitHubAppClient:
         )
 
     @classmethod
-    def from_infisical(cls) -> Self:
+    def from_infisical(cls, policy: GitHubPolicySettings) -> Self:
         return cls(
             app_id=_development_app_id(),
             private_key=_development_private_key(),
+            protected_branches=policy.protected_branches,
+            required_checks=policy.required_checks,
+            required_reviewers=policy.required_reviewers,
         )
 
     def _assert_allowed(self, repository: str) -> str:

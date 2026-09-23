@@ -10,7 +10,6 @@ from common.models import JsonObject
 from .github_actions import GitHubActionsClient
 from .github_admin import repoint_reserved_branch
 from .github_history_graph import rewrite_branch_identity_graph
-from .github_reviewer import github_reviewer_client, github_reviewer_configured
 
 
 def register_github_actions_tools(
@@ -19,6 +18,8 @@ def register_github_actions_tools(
     read_annotations: ToolAnnotations,
     write_annotations: ToolAnnotations,
     destructive_annotations: ToolAnnotations,
+    *,
+    reviewer_client_factory: Callable[[], GitHubActionsClient] | None = None,
 ) -> None:
     """Register GitHub capability/history controls plus Actions diagnostics."""
 
@@ -27,7 +28,7 @@ def register_github_actions_tools(
         """Inspect effective GitHub App permissions, identity, and bridge policy."""
         return client_factory().capabilities(
             repository,
-            reviewer_available=github_reviewer_configured(),
+            reviewer_available=reviewer_client_factory is not None,
         )
 
     @mcp.tool(
@@ -223,7 +224,7 @@ def register_github_actions_tools(
         """Cancel an in-progress GitHub Actions workflow run."""
         return client_factory().cancel_workflow_run(repository, run_id)
 
-    if github_reviewer_configured():
+    if reviewer_client_factory is not None:
 
         @mcp.tool(title="GitHub reviewer workflow job log", annotations=read_annotations)
         def github_reviewer_workflow_job_log(
@@ -232,7 +233,7 @@ def register_github_actions_tools(
             max_chars: int = 100_000,
         ) -> JsonObject:
             """Read the tail of one Actions job log using reviewer identity."""
-            return github_reviewer_client().get_workflow_job_log(
+            return reviewer_client_factory().get_workflow_job_log(
                 repository,
                 job_id,
                 max_chars,
@@ -246,7 +247,7 @@ def register_github_actions_tools(
             page: int = 1,
         ) -> JsonObject:
             """List workflow files using reviewer identity."""
-            return github_reviewer_client().list_workflow_files(
+            return reviewer_client_factory().list_workflow_files(
                 repository,
                 run_id,
                 per_page,
@@ -263,7 +264,7 @@ def register_github_actions_tools(
             max_bytes: int = 8 * 1024 * 1024,
         ) -> JsonObject:
             """Download a small workflow file ZIP using reviewer identity."""
-            return github_reviewer_client().download_workflow_file(
+            return reviewer_client_factory().download_workflow_file(
                 repository,
                 workflow_file_id,
                 max_bytes,

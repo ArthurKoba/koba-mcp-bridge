@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from common.runtime_common import build_private_mcp, private_http_app
+from common.settings import AnalysisSettings, PrivateRuntimeSettings
 
 from .provider import AnalysisToolProvider
 
-mcp = build_private_mcp("analysis")
-mcp.add_provider(AnalysisToolProvider())
+_private_settings = PrivateRuntimeSettings()
+_analysis_settings = AnalysisSettings()
 
-app = private_http_app(mcp)
+mcp = build_private_mcp("analysis")
+mcp.add_provider(AnalysisToolProvider(_analysis_settings))
+
+app = private_http_app(mcp, _private_settings)

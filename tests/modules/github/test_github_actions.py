@@ -10,10 +10,17 @@ from modules.github.github_agent import GitHubAgentError
 
 
 class RecordingActionsClient(GitHubActionsClient):
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        required_reviewers: tuple[str, ...] = (),
+        protected_branches: frozenset[str] = frozenset({"main", "master"}),
+    ) -> None:
         super().__init__(
             app_id="123",
             private_key="key-material",
+            required_reviewers=required_reviewers,
+            protected_branches=protected_branches,
         )
         self.calls: list[tuple[str, str]] = []
         self.download_payload = b"line-1\nline-2\nlast-error\n"
@@ -110,7 +117,6 @@ def test_download_file_returns_base64_and_hash() -> None:
     )
     assert result["content_base64"] == base64.b64encode(client.download_payload).decode()
     assert result["sha256"] == hashlib.sha256(client.download_payload).hexdigest()
-
 
 
 def test_enable_workflow_uses_actions_enable_endpoint() -> None:
@@ -218,11 +224,10 @@ def test_rerun_and_cancel_endpoints() -> None:
     ]
 
 
-def test_required_reviewer_approval_must_match_current_head(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_REQUIRED_REVIEWERS", "koba-ai-reviewer[bot]")
-    client = RecordingActionsClient()
+def test_required_reviewer_approval_must_match_current_head() -> None:
+    client = RecordingActionsClient(
+        required_reviewers=("koba-ai-reviewer[bot]",)
+    )
     client.reviews = [
         {
             "user": {"login": "koba-ai-reviewer[bot]"},
@@ -235,11 +240,10 @@ def test_required_reviewer_approval_must_match_current_head(
         client.assert_required_reviews("ArthurKoba/koba-mcp-bridge", 7)
 
 
-def test_required_reviewer_approval_on_current_head_passes(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_REQUIRED_REVIEWERS", "koba-ai-reviewer[bot]")
-    client = RecordingActionsClient()
+def test_required_reviewer_approval_on_current_head_passes() -> None:
+    client = RecordingActionsClient(
+        required_reviewers=("koba-ai-reviewer[bot]",)
+    )
     client.reviews = [
         {
             "user": {"login": "koba-ai-reviewer[bot]"},
@@ -253,11 +257,10 @@ def test_required_reviewer_approval_on_current_head_passes(
     assert result["head_sha"] == "current-head"
 
 
-def test_required_reviewer_changes_requested_blocks_current_head(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("GITHUB_AGENT_REQUIRED_REVIEWERS", "koba-ai-reviewer[bot]")
-    client = RecordingActionsClient()
+def test_required_reviewer_changes_requested_blocks_current_head() -> None:
+    client = RecordingActionsClient(
+        required_reviewers=("koba-ai-reviewer[bot]",)
+    )
     client.reviews = [
         {
             "user": {"login": "koba-ai-reviewer[bot]"},
@@ -270,14 +273,12 @@ def test_required_reviewer_changes_requested_blocks_current_head(
         client.assert_required_reviews("ArthurKoba/koba-mcp-bridge", 7)
 
 
-def test_protected_pull_request_merge_requires_administrator(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("GITHUB_AGENT_PROTECTED_BRANCHES", raising=False)
+def test_protected_pull_request_merge_requires_administrator() -> None:
     client = RecordingActionsClient()
 
     with pytest.raises(GitHubAgentError, match="requires administrator"):
         client.merge_pull_request("ArthurKoba/koba-mcp-bridge", 7)
+
 
 @pytest.mark.asyncio
 async def test_dispatch_workflow_is_exposed_on_fastmcp_surface() -> None:

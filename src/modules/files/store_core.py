@@ -12,14 +12,13 @@ from pathlib import Path
 from typing import IO, Protocol, cast
 
 from common.models import JsonObject
+from common.settings import FileSettings
 
 from .file_primitives import (
     FileError,
-    file_root,
     guess_mime,
     normalize_file_id,
     now_iso,
-    upload_max_bytes,
 )
 
 
@@ -28,8 +27,9 @@ class _MetadataLookup(Protocol):
 
 
 class FileStoreCore:
-    def __init__(self, root: Path | None = None) -> None:
-        self.root = (root or file_root()).resolve(strict=False)
+    def __init__(self, settings: FileSettings) -> None:
+        self.settings = settings
+        self.root = settings.root.resolve(strict=False)
         self.objects = self.root / "objects" / "sha256"
         self.tmp = self.root / "tmp"
         self.database = self.root / "files.sqlite3"
@@ -162,8 +162,8 @@ class FileStoreCore:
         source: str = "upload",
     ) -> JsonObject:
         self.ensure()
-        if len(data) > upload_max_bytes():
-            raise FileError("file exceeds FILE_UPLOAD_MAX_BYTES")
+        if len(data) > self.settings.upload_max_bytes:
+            raise FileError("file exceeds the configured upload size limit")
         digest = hashlib.sha256(data).hexdigest()
         target = self._object_path(digest)
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -196,7 +196,7 @@ class FileStoreCore:
         max_bytes: int | None = None,
     ) -> JsonObject:
         self.ensure()
-        limit = max_bytes or upload_max_bytes()
+        limit = max_bytes or self.settings.upload_max_bytes
         digest = hashlib.sha256()
         total = 0
         fd, temporary = tempfile.mkstemp(prefix="stream-", dir=self.tmp)
@@ -245,8 +245,8 @@ class FileStoreCore:
         if not path.is_file():
             raise FileError("source file does not exist")
         size = path.stat().st_size
-        if size > upload_max_bytes():
-            raise FileError("file exceeds FILE_UPLOAD_MAX_BYTES")
+        if size > self.settings.upload_max_bytes:
+            raise FileError("file exceeds the configured upload size limit")
         digest = hashlib.sha256()
         with path.open("rb") as handle:
             for chunk in iter(lambda: handle.read(1024 * 1024), b""):

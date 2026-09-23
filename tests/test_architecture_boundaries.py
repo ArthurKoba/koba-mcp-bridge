@@ -68,3 +68,53 @@ def test_provider_packages_do_not_import_each_other() -> None:
                 )
             )
     assert violations == []
+
+
+def _environment_accesses(path: Path) -> list[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    accesses: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Attribute):
+            continue
+        if not isinstance(node.value, ast.Name) or node.value.id != "os":
+            continue
+        if node.attr in {"getenv", "environ", "environb", "putenv", "unsetenv"}:
+            accesses.append(f"{path.relative_to(_SRC)}:{node.lineno} os.{node.attr}")
+    return accesses
+
+
+def test_process_environment_is_not_read_inside_application_or_provider_code() -> None:
+    violations: list[str] = []
+    for root in (_SRC / "bridge", _SRC / "modules"):
+        for path in _python_files(root):
+            violations.extend(_environment_accesses(path))
+    assert violations == []
+
+
+def test_process_settings_are_created_only_in_composition_roots() -> None:
+    violations: list[str] = []
+    settings_types = {
+        "AnalysisSettings",
+        "BridgeSettings",
+        "CurlSettings",
+        "FileSettings",
+        "GitHubPolicySettings",
+        "GitLabSettings",
+        "InfisicalSettings",
+        "PrivateRuntimeSettings",
+    }
+    allowed = {_SRC / "bridge" / "server.py"}
+    allowed.update((_SRC / "modules").glob("*/runtime.py"))
+
+    for path in _python_files(_SRC):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if not isinstance(node.func, ast.Name) or node.func.id not in settings_types:
+                continue
+            if path not in allowed:
+                violations.append(
+                    f"{path.relative_to(_SRC)}:{node.lineno} constructs {node.func.id}"
+                )
+    assert violations == []

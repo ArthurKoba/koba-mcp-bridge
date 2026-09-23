@@ -12,7 +12,6 @@ from common.models import (
 
 from .github_actions import GitHubActionsClient
 from .github_agent import GitHubAgentError
-from .policy import protected_branches_from_env
 
 
 def _tree_sha(commit: JsonObject) -> str:
@@ -52,7 +51,7 @@ def repoint_reserved_branch(
         raise GitHubAgentError("expected_head_sha is required")
     if not target_sha:
         raise GitHubAgentError("target_sha is required")
-    if branch.casefold() not in protected_branches_from_env():
+    if branch.casefold() not in client.protected_branches:
         raise GitHubAgentError(
             f"branch is not reserved by bridge mutation policy: {branch}"
         )

@@ -3,6 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 
 from common.secrets import SecretError, resolve_config_secret
+from common.settings import GitHubPolicySettings
 
 from .github_agent import GitHubAgentError
 from .github_identity import GitHubPrettyIdentityClient
@@ -50,8 +51,11 @@ def _reviewer_private_key() -> str:
 
 
 @lru_cache(maxsize=1)
-def github_reviewer_client() -> GitHubPrettyIdentityClient:
+def github_reviewer_client(policy: GitHubPolicySettings) -> GitHubPrettyIdentityClient:
     return GitHubPrettyIdentityClient(
         app_id=_reviewer_app_id(),
         private_key=_reviewer_private_key(),
+        protected_branches=policy.protected_branches,
+        required_checks=policy.required_checks,
+        required_reviewers=policy.required_reviewers,
     )

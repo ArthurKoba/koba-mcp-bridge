@@ -10,7 +10,7 @@ class GitHubRepositoryClientBase(GitHubAppClient):
     """Base for repository capabilities that share GitHub policy and path encoding."""
 
     def _assert_mutable_branch(self, branch: str) -> str:
-        return require_mutable_branch(branch)
+        return require_mutable_branch(branch, self.protected_branches)
 
     @staticmethod
     def _quote(value: str) -> str:

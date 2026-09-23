@@ -4,12 +4,16 @@ from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 from common.models import JsonObject, JsonValue
+from modules.files.file_store import FileStore
 
 
 def register_curl_tools(
     mcp: FastMCP,
     read_annotations: ToolAnnotations,
     write_annotations: ToolAnnotations,
+    *,
+    store: FileStore,
+    curl_binary: str,
 ) -> None:
     from .curl_tools import (
         DEFAULT_CURL_PRESET,
@@ -77,6 +81,8 @@ def register_curl_tools(
             max_response_bytes=max_response_bytes,
             forward_sensitive_headers_on_redirect=forward_sensitive_headers_on_redirect,
             preview_bytes=preview_bytes,
+            store=store,
+            curl_binary=curl_binary,
         )
 
     @mcp.tool(title="Curl download", annotations=write_annotations)
@@ -135,6 +141,8 @@ def register_curl_tools(
             store_http_errors=store_http_errors,
             forward_sensitive_headers_on_redirect=forward_sensitive_headers_on_redirect,
             preview_bytes=preview_bytes,
+            store=store,
+            curl_binary=curl_binary,
         )
 
     @mcp.tool(title="Curl stream capture", annotations=write_annotations)
@@ -190,4 +198,6 @@ def register_curl_tools(
             max_bytes=max_bytes,
             forward_sensitive_headers_on_redirect=forward_sensitive_headers_on_redirect,
             preview_bytes=preview_bytes,
+            store=store,
+            curl_binary=curl_binary,
         )

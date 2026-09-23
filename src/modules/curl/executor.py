@@ -9,7 +9,8 @@ from functools import lru_cache
 from pathlib import Path
 
 from common.models import JsonObject, JsonValue, json_loads, json_object, json_value
-from modules.files.file_store import FileStore, upload_max_bytes
+from common.settings import CurlSettings
+from modules.files.file_store import FileStore
 
 from .errors import CurlError
 from .request import (
@@ -25,6 +26,7 @@ from .request import (
 
 _MAX_REDIRECTS = 20
 
+
 @lru_cache(maxsize=1)
 def _system_curl_binary() -> str:
     found = shutil.which("curl")
@@ -32,14 +34,10 @@ def _system_curl_binary() -> str:
         raise CurlError("curl executable is not installed")
     return found
 
-def _curl_binary() -> str:
-    configured = os.getenv("CURL_BINARY", "").strip()
-    if configured:
-        path = Path(configured)
-        if not path.is_file():
-            raise CurlError("CURL_BINARY does not point to a file")
-        return str(path)
-    return _system_curl_binary()
+
+def resolve_curl_binary(settings: CurlSettings) -> str:
+    return str(settings.binary) if settings.binary is not None else _system_curl_binary()
+
 
 def _metadata_from_stdout(stdout: str) -> JsonObject:
     text = stdout.strip()
@@ -53,8 +51,10 @@ def _metadata_from_stdout(stdout: str) -> JsonObject:
         return json_object(value, context="curl --write-out")
     return {"write_out": value}
 
+
 def _build_curl_command(
     *,
+    curl_binary: str,
     method: str,
     url: str,
     headers: dict[str, str],
@@ -78,13 +78,11 @@ def _build_curl_command(
         raise CurlError(
             "connect_timeout_seconds must be greater than 0 and at most 300"
         )
-    if max_response_bytes <= 0 or max_response_bytes > upload_max_bytes():
-        raise CurlError(
-            f"max_response_bytes must be between 1 and {upload_max_bytes()}"
-        )
+    if max_response_bytes <= 0:
+        raise CurlError("max_response_bytes must be greater than 0")
 
     args = [
-        _curl_binary(),
+        curl_binary,
         "--silent",
         "--show-error",
         "--compressed",
@@ -124,8 +122,11 @@ def _build_curl_command(
         args.extend(["--data-binary", f"@{body_path}"])
     return args
 
+
 def _execute_curl(
     *,
+    store: FileStore,
+    curl_binary: str,
     method: str,
     url: str,
     query: JsonObject | None,
@@ -147,7 +148,6 @@ def _execute_curl(
     max_response_bytes: int,
     forward_sensitive_headers_on_redirect: bool,
 ) -> tuple[JsonObject, Path, Path]:
-    store = FileStore()
     store.ensure()
     clean_method = _validate_method(method)
     final_request_url = _with_query(_validate_url(url), query)
@@ -176,6 +176,7 @@ def _execute_curl(
     )
 
     command = _build_curl_command(
+        curl_binary=curl_binary,
         method=clean_method,
         url=final_request_url,
         headers=merged,

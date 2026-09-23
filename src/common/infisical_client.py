@@ -21,7 +21,9 @@ from .secret_errors import SecretError
 
 class InfisicalClient:
     def __init__(self, config: InfisicalConfig | None = None) -> None:
-        self.config = config or InfisicalConfig.from_env()
+        if config is None:
+            raise ValueError("InfisicalClient requires explicit InfisicalConfig")
+        self.config = config
         self._access_token = ""
         self._access_token_expiry = 0.0
         self._lock = threading.Lock()

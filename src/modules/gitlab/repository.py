@@ -110,7 +110,7 @@ class GitLabRepositoryClient(GitLabApiClient):
         commit_message: str,
         last_commit_id: str = "",
     ) -> JsonObject:
-        branch = require_mutable_branch(branch)
+        branch = require_mutable_branch(branch, self.protected_branches)
         selector = self.project_selector(project)
         file_path = urllib.parse.quote(path.strip("/"), safe="")
         existing = self.request(
@@ -149,7 +149,7 @@ class GitLabRepositoryClient(GitLabApiClient):
         commit_message: str,
         last_commit_id: str = "",
     ) -> JsonObject:
-        branch = require_mutable_branch(branch)
+        branch = require_mutable_branch(branch, self.protected_branches)
         selector = self.project_selector(project)
         file_path = urllib.parse.quote(path.strip("/"), safe="")
         payload: JsonObject = {
@@ -179,7 +179,7 @@ class GitLabRepositoryClient(GitLabApiClient):
         actions: list[GitLabCommitAction],
         start_branch: str = "",
     ) -> JsonObject:
-        branch = require_mutable_branch(branch)
+        branch = require_mutable_branch(branch, self.protected_branches)
         if not actions:
             raise GitLabError("actions must not be empty")
         clean_actions = [action.to_json() for action in actions]
@@ -234,7 +234,7 @@ class GitLabRepositoryClient(GitLabApiClient):
         branch: str,
         ref: str,
     ) -> JsonObject:
-        branch = require_mutable_branch(branch)
+        branch = require_mutable_branch(branch, self.protected_branches)
         selector = self.project_selector(project)
         response = self.request(
             "POST",
@@ -248,7 +248,7 @@ class GitLabRepositoryClient(GitLabApiClient):
         }
 
     def delete_branch(self, project: str | int, branch: str) -> JsonObject:
-        branch = require_mutable_branch(branch)
+        branch = require_mutable_branch(branch, self.protected_branches)
         selector = self.project_selector(project)
         branch_q = urllib.parse.quote(branch, safe="")
         response = self.request(

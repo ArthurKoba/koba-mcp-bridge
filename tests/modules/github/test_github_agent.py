@@ -1,6 +1,7 @@
 import pytest
 
 import modules.github.github_agent as github_agent
+from common.settings import GitHubPolicySettings
 from modules.github.github_agent import (
     GitHubAgentError,
     GitHubAppClient,
@@ -19,7 +20,13 @@ def test_github_agent_loads_convention_config_from_infisical(
         }[(path, name)],
     )
 
-    client = GitHubAppClient.from_infisical()
+    client = GitHubAppClient.from_infisical(
+        GitHubPolicySettings(
+            protected_branches=frozenset({"main", "master"}),
+            required_checks=("test", "docker"),
+            required_reviewers=(),
+        )
+    )
 
     assert client.app_id == "777"
     assert client.private_key == "pem-material"
@@ -99,6 +106,7 @@ def test_list_repositories_uses_github_installation_scope() -> None:
     ]
     assert client._installation_ids["arthurkoba/ghidra-mcp"] == 99
     assert client._installation_ids["arthurkoba/mcp-bridge"] == 99
+
 
 def test_app_id_must_be_positive_numeric() -> None:
     client = GitHubAppClient(app_id="not-an-id", private_key="unused")

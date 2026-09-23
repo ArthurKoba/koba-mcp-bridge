@@ -1,84 +1,78 @@
 from __future__ import annotations
 
-import os
 import threading
 import time
 
+from common.settings import GitLabSettings
+
 from .gitlab_client import GitLabClient, GitLabProfileRegistry
 
-_registry_lock = threading.Lock()
+
+class GitLabRuntimeContext:
+    def __init__(self, settings: GitLabSettings) -> None:
+        self.settings = settings
+        self._lock = threading.Lock()
+        self._registry_cache: tuple[float, GitLabProfileRegistry] | None = None
+        self._client_cache: dict[str, GitLabClient] = {}
+
+    def registry(self) -> GitLabProfileRegistry:
+        ttl = self.settings.registry_cache_ttl_seconds
+        now = time.monotonic()
+        with self._lock:
+            cached = self._registry_cache
+            if ttl > 0 and cached is not None and cached[0] > now:
+                return cached[1]
+            value = GitLabProfileRegistry.from_infisical()
+            self._registry_cache = (now + ttl, value)
+            return value
+
+    def client(self, profile_id: str) -> GitLabClient:
+        profile = self.registry().get(profile_id)
+        key = profile.profile_id.casefold()
+        with self._lock:
+            cached = self._client_cache.get(key)
+            if cached is not None and cached.profile == profile:
+                return cached
+            value = GitLabClient(
+                profile,
+                protected_branches=self.settings.protected_branches,
+            )
+            self._client_cache[key] = value
+            return value
+
+    def clear(self) -> None:
+        with self._lock:
+            self._registry_cache = None
+            self._client_cache.clear()
 
 
-class _RegistryCacheState:
+class _RuntimeHolder:
     def __init__(self) -> None:
-        self.value: tuple[float, tuple[str, ...], GitLabProfileRegistry] | None = None
+        self.context: GitLabRuntimeContext | None = None
 
 
-_registry_cache = _RegistryCacheState()
-_client_cache: dict[str, GitLabClient] = {}
+_runtime = _RuntimeHolder()
 
 
-def _cache_ttl_seconds() -> float:
-    raw = os.getenv("GITLAB_REGISTRY_CACHE_TTL_SECONDS", "60").strip()
-    try:
-        value = float(raw)
-    except ValueError as exc:
-        raise RuntimeError("GITLAB_REGISTRY_CACHE_TTL_SECONDS must be a number") from exc
-    if value < 0 or value > 3600:
-        raise RuntimeError(
-            "GITLAB_REGISTRY_CACHE_TTL_SECONDS must be between 0 and 3600"
-        )
-    return value
+def configure_runtime(settings: GitLabSettings) -> GitLabRuntimeContext:
+    _runtime.context = GitLabRuntimeContext(settings)
+    return _runtime.context
 
 
-def _registry_fingerprint() -> tuple[str, ...]:
-    return (
-        os.getenv("INFISICAL_HOST", ""),
-        os.getenv("INFISICAL_PROJECT_ID", ""),
-        os.getenv("INFISICAL_ENVIRONMENT", "prod"),
-        os.getenv("INFISICAL_BASE_PATH", "/"),
-        os.getenv("INFISICAL_CLIENT_ID", ""),
-        os.getenv("INFISICAL_CLIENT_ID_FILE", ""),
-        os.getenv("INFISICAL_CLIENT_SECRET_FILE", ""),
-        os.getenv("INFISICAL_VERIFY_TLS", "true"),
-        os.getenv("INFISICAL_CA_FILE", ""),
-    )
+def _context() -> GitLabRuntimeContext:
+    if _runtime.context is None:
+        raise RuntimeError("GitLab runtime is not configured by the application bootstrap")
+    return _runtime.context
 
 
 def registry() -> GitLabProfileRegistry:
-    ttl = _cache_ttl_seconds()
-    fingerprint = _registry_fingerprint()
-    now = time.monotonic()
-
-    with _registry_lock:
-        cached = _registry_cache.value
-        if (
-            ttl > 0
-            and cached is not None
-            and cached[0] > now
-            and cached[1] == fingerprint
-        ):
-            return cached[2]
-
-        value = GitLabProfileRegistry.from_infisical()
-        _registry_cache.value = (now + ttl, fingerprint, value)
-        return value
+    return _context().registry()
 
 
 def client(profile_id: str) -> GitLabClient:
-    profile = registry().get(profile_id)
-    key = profile.profile_id.casefold()
-
-    with _registry_lock:
-        cached = _client_cache.get(key)
-        if cached is not None and cached.profile == profile:
-            return cached
-        value = GitLabClient(profile)
-        _client_cache[key] = value
-        return value
+    return _context().client(profile_id)
 
 
 def clear_runtime_cache() -> None:
-    with _registry_lock:
-        _registry_cache.value = None
-        _client_cache.clear()
+    if _runtime.context is not None:
+        _runtime.context.clear()

@@ -5,7 +5,7 @@ from contextlib import suppress
 
 from common.models import JsonObject
 
-from .file_primitives import FileError, max_extract_bytes, max_extract_files, upload_max_bytes
+from .file_primitives import FileError
 from .models import FileDeleteResponse, FileGcResponse, FileInfo, FileStoreStatus
 from .store_collections import FileCollectionStore
 
@@ -136,8 +136,8 @@ class FileLifecycleStore(FileCollectionStore):
             file_count=file_count,
             collection_count=collection_count,
             reference_count=reference_count,
-            upload_max_bytes=upload_max_bytes(),
-            max_extract_files=max_extract_files(),
-            max_extract_bytes=max_extract_bytes(),
+            upload_max_bytes=self.settings.upload_max_bytes,
+            max_extract_files=self.settings.max_extract_files,
+            max_extract_bytes=self.settings.max_extract_bytes,
             free_bytes=usage.free,
         ).to_json()

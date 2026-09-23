@@ -7,16 +7,21 @@ import urllib.parse
 
 import pytest
 
+from common.settings import FileSettings
 from modules.files.file_store import FileError, FileStore
 from modules.files.upload_manager import FileUploadManager
 
 
 @pytest.fixture
-def manager(tmp_path, monkeypatch) -> FileUploadManager:
-    monkeypatch.setenv("FILE_ROOT", str(tmp_path))
-    monkeypatch.setenv("FILE_UPLOAD_MAX_BYTES", str(16 * 1024 * 1024))
-    monkeypatch.setenv("FILE_UPLOAD_CHUNK_BYTES", str(64 * 1024))
-    value = FileUploadManager()
+def manager(tmp_path) -> FileUploadManager:
+    store = FileStore(
+        settings=FileSettings(
+            root=tmp_path,
+            upload_max_bytes=16 * 1024 * 1024,
+            upload_chunk_bytes=64 * 1024,
+        )
+    )
+    value = FileUploadManager(store)
     value.ensure()
     return value
 
@@ -50,7 +55,7 @@ def test_agent_upload_begin_write_finish(manager: FileUploadManager) -> None:
     assert finished["completed"] is True
     assert finished["already_committed"] is False
     assert file["file_id"] == f"sha256:{expected}"
-    assert FileStore().path_for(file["file_id"]).read_bytes() == payload
+    assert manager.store.path_for(file["file_id"]).read_bytes() == payload
 
     status = manager.status(begun["upload_id"])
     assert status["committed"] is True
@@ -76,14 +81,14 @@ def test_agent_upload_is_resumable_across_manager_instances(
     begun = manager.begin("resume.bin", size_bytes=len(payload))
     _write(manager, begun["upload_id"], 0, payload[:3])
 
-    resumed = FileUploadManager().status(begun["upload_id"])
+    resumed = FileUploadManager(manager.store).status(begun["upload_id"])
     assert resumed["bytes_received"] == 3
     assert resumed["next_offset"] == 3
     assert resumed["remaining_bytes"] == 3
 
-    _write(FileUploadManager(), begun["upload_id"], 3, payload[3:])
-    finished = FileUploadManager().finish(begun["upload_id"])
-    assert FileStore().path_for(
+    _write(FileUploadManager(manager.store), begun["upload_id"], 3, payload[3:])
+    finished = FileUploadManager(manager.store).finish(begun["upload_id"])
+    assert manager.store.path_for(
         finished["file"]["file_id"]
     ).read_bytes() == payload
 
@@ -105,7 +110,7 @@ def test_status_recovers_bytes_written_before_metadata_commit(
     assert recovered["complete"] is True
 
     finished = manager.finish(begun["upload_id"])
-    assert FileStore().path_for(
+    assert manager.store.path_for(
         finished["file"]["file_id"]
     ).read_bytes() == payload
 
@@ -158,7 +163,7 @@ def test_cancel_does_not_remove_committed_file(manager: FileUploadManager) -> No
 
     assert cancelled["already_committed"] is True
     assert cancelled["file_id"] == finished["file"]["file_id"]
-    assert FileStore().path_for(cancelled["file_id"]).read_bytes() == payload
+    assert manager.store.path_for(cancelled["file_id"]).read_bytes() == payload
 
 
 def test_agent_upload_deduplicates_identical_files(
@@ -173,7 +178,7 @@ def test_agent_upload_deduplicates_identical_files(
         file_ids.append(manager.finish(begun["upload_id"])["file"]["file_id"])
 
     assert file_ids[0] == file_ids[1]
-    info = FileStore().info(file_ids[0])
+    info = manager.store.info(file_ids[0])
     assert {alias["name"] for alias in info["aliases"]} == {"first.bin", "second.bin"}
 
 
@@ -240,8 +245,7 @@ def test_upload_cleanup_removes_only_stale_session_state(
         manager.status(stale_completed["upload_id"])
 
     file_id = committed["file"]["file_id"]
-    assert FileStore().path_for(file_id).read_bytes() == b"z"
-
+    assert manager.store.path_for(file_id).read_bytes() == b"z"
 
 
 class _FakeAttachmentResponse:
@@ -276,8 +280,9 @@ def test_attachment_ingress_streams_directly_to_file_store(
 ) -> None:
     from modules.files import file_ingress
 
-    monkeypatch.setenv("FILE_ROOT", str(tmp_path))
-    monkeypatch.setenv("FILE_UPLOAD_MAX_BYTES", str(16 * 1024 * 1024))
+    store = FileStore(
+        settings=FileSettings(root=tmp_path, upload_max_bytes=16 * 1024 * 1024)
+    )
 
     payload = b"chat-attachment-bytes"
     digest = hashlib.sha256(payload).hexdigest()
@@ -305,6 +310,7 @@ def test_attachment_ingress_streams_directly_to_file_store(
         },
         expected_size=len(payload),
         expected_sha256=digest,
+        store=store,
     )
 
     file = result["file"]
@@ -312,7 +318,7 @@ def test_attachment_ingress_streams_directly_to_file_store(
     assert file["file_id"] == f"sha256:{digest}"
     assert file["name"] == "Sofia"
     assert file["mime_type"] == "application/x-firmware"
-    assert FileStore().path_for(file["file_id"]).read_bytes() == payload
+    assert store.path_for(file["file_id"]).read_bytes() == payload
 
 
 def test_attachment_ingress_rejects_checksum_mismatch_without_committing(
@@ -321,8 +327,9 @@ def test_attachment_ingress_rejects_checksum_mismatch_without_committing(
 ) -> None:
     from modules.files import file_ingress
 
-    monkeypatch.setenv("FILE_ROOT", str(tmp_path))
-    monkeypatch.setenv("FILE_UPLOAD_MAX_BYTES", str(16 * 1024 * 1024))
+    store = FileStore(
+        settings=FileSettings(root=tmp_path, upload_max_bytes=16 * 1024 * 1024)
+    )
 
     payload = b"actual"
     monkeypatch.setattr(
@@ -345,20 +352,22 @@ def test_attachment_ingress_rejects_checksum_mismatch_without_committing(
             },
             expected_size=len(payload),
             expected_sha256=hashlib.sha256(b"different").hexdigest(),
+            store=store,
         )
 
-    assert FileStore().list()["total"] == 0
+    assert store.list()["total"] == 0
 
 
 def test_attachment_ingress_rejects_non_https_source(tmp_path, monkeypatch) -> None:
     from modules.files import file_ingress
 
-    monkeypatch.setenv("FILE_ROOT", str(tmp_path))
+    store = FileStore(settings=FileSettings(root=tmp_path))
     with pytest.raises(FileError, match="HTTPS attachment URL"):
         file_ingress.ingest_file(
             file={
                 "download_url": "/mnt/data/local.bin",
                 "file_id": "file-local",
                 "file_name": "local.bin",
-            }
+            },
+            store=store,
         )
