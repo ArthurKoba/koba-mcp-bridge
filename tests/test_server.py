@@ -32,37 +32,37 @@ async def test_bridge_build_info() -> None:
 
 
 @pytest.mark.asyncio
-async def test_artifact_tools_are_registered() -> None:
+async def test_file_tools_are_registered() -> None:
     async with Client(mcp) as client:
         tools = await client.list_tools()
 
     names = {tool.name for tool in tools}
     expected = {
-        "artifact_status",
-        "artifact_ingest_file",
-        "artifact_upload_begin",
-        "artifact_upload_list",
-        "artifact_upload_status",
-        "artifact_upload_write",
-        "artifact_upload_finish",
-        "artifact_upload_cleanup",
-        "artifact_upload_cancel",
-        "artifact_list",
-        "artifact_info",
-        "artifact_read",
-        "artifact_create_text",
-        "artifact_extract",
-        "artifact_collection_list",
-        "artifact_collection_delete",
-        "artifact_collection_resolve",
-        "artifact_references",
-        "artifact_release_reference",
-        "artifact_delete",
-        "artifact_gc",
-        "ghidra_import_artifact",
+        "file_status",
+        "file_ingest",
+        "file_upload_begin",
+        "file_upload_list",
+        "file_upload_status",
+        "file_upload_write",
+        "file_upload_finish",
+        "file_upload_cleanup",
+        "file_upload_cancel",
+        "file_list",
+        "file_info",
+        "file_read",
+        "file_create_text",
+        "file_extract",
+        "file_collection_list",
+        "file_collection_delete",
+        "file_collection_resolve",
+        "file_references",
+        "file_release_reference",
+        "file_delete",
+        "file_gc",
+        "ghidra_import_file",
         "ghidra_project_sources",
-        "ghidra_export_program_artifact",
-        "ghidra_archive_project_artifact",
+        "ghidra_export_program_file",
+        "ghidra_archive_project_file",
         "curl_presets",
         "curl_request",
         "curl_download",
@@ -70,7 +70,7 @@ async def test_artifact_tools_are_registered() -> None:
     }
     assert expected <= names
 
-    ingest_tool = next(tool for tool in tools if tool.name == "artifact_ingest_file")
+    ingest_tool = next(tool for tool in tools if tool.name == "file_ingest")
     descriptor = ingest_tool.model_dump(by_alias=True)
     assert descriptor["_meta"]["openai/fileParams"] == ["file"]
     assert descriptor["inputSchema"]["properties"]["file"]["type"] == "object"
@@ -79,14 +79,14 @@ async def test_artifact_tools_are_registered() -> None:
 
 @pytest.mark.asyncio
 async def test_agent_upload_round_trip_over_mcp(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("ARTIFACT_ROOT", str(tmp_path))
-    monkeypatch.setenv("ARTIFACT_UPLOAD_MAX_BYTES", str(16 * 1024 * 1024))
-    monkeypatch.setenv("ARTIFACT_UPLOAD_CHUNK_BYTES", str(64 * 1024))
+    monkeypatch.setenv("FILE_ROOT", str(tmp_path))
+    monkeypatch.setenv("FILE_UPLOAD_MAX_BYTES", str(16 * 1024 * 1024))
+    monkeypatch.setenv("FILE_UPLOAD_CHUNK_BYTES", str(64 * 1024))
     payload = b"mcp-agent-upload"
 
     async with Client(mcp) as client:
         begun = await client.call_tool(
-            "artifact_upload_begin",
+            "file_upload_begin",
             {
                 "name": "probe.bin",
                 "size_bytes": len(payload),
@@ -94,7 +94,7 @@ async def test_agent_upload_round_trip_over_mcp(tmp_path, monkeypatch) -> None:
         )
         upload_id = begun.data["upload_id"]
         written = await client.call_tool(
-            "artifact_upload_write",
+            "file_upload_write",
             {
                 "upload_id": upload_id,
                 "offset": 0,
@@ -104,13 +104,13 @@ async def test_agent_upload_round_trip_over_mcp(tmp_path, monkeypatch) -> None:
         assert written.data["complete"] is True
 
         finished = await client.call_tool(
-            "artifact_upload_finish",
+            "file_upload_finish",
             {"upload_id": upload_id},
         )
 
-    artifact = finished.data["artifact"]
-    assert artifact["artifact_id"].startswith("sha256:")
-    assert artifact["size_bytes"] == len(payload)
+    file = finished.data["file"]
+    assert file["file_id"].startswith("sha256:")
+    assert file["size_bytes"] == len(payload)
 
 
 
