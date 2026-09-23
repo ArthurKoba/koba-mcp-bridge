@@ -1,4 +1,3 @@
-import base64
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
@@ -8,28 +7,8 @@ import koba_mcp_bridge.github_agent as github_agent
 from koba_mcp_bridge.github_agent import (
     GitHubAgentError,
     GitHubAppClient,
-    _private_key_from_env,
     github_agent_configured,
 )
-
-
-def test_github_agent_configured_requires_only_app_id_and_key(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    for name in (
-        "GITHUB_AGENT_APP_ID",
-        "GITHUB_AGENT_PRIVATE_KEY",
-        "GITHUB_AGENT_PRIVATE_KEY_B64",
-        "GITHUB_AGENT_ALLOWED_REPOSITORIES",
-    ):
-        monkeypatch.delenv(name, raising=False)
-
-    assert github_agent_configured() is False
-
-    monkeypatch.setenv("GITHUB_AGENT_APP_ID", "123")
-    monkeypatch.setenv("GITHUB_AGENT_PRIVATE_KEY", "key-material")
-
-    assert github_agent_configured() is True
 
 
 def test_github_agent_loads_convention_config_from_infisical(
@@ -44,21 +23,10 @@ def test_github_agent_loads_convention_config_from_infisical(
         }[(path, name)],
     )
 
-    client = GitHubAppClient.from_env()
+    client = GitHubAppClient.from_infisical()
 
     assert client.app_id == "777"
     assert client.private_key == "pem-material"
-
-
-def test_private_key_can_be_loaded_from_base64(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("GITHUB_AGENT_PRIVATE_KEY", raising=False)
-    key_material = "multiline-key-material\nline-two\n"
-    monkeypatch.setenv(
-        "GITHUB_AGENT_PRIVATE_KEY_B64",
-        base64.b64encode(key_material.encode()).decode(),
-    )
-
-    assert _private_key_from_env() == key_material
 
 
 def test_repository_selector_only_validates_owner_name_shape() -> None:
@@ -409,8 +377,6 @@ def test_infisical_credential_failure_preserves_source(
         raise github_agent.SecretError("Infisical API HTTP 403: denied")
 
     monkeypatch.setattr(github_agent, "resolve_config_secret", fail_secret)
-    monkeypatch.delenv("GITHUB_AGENT_APP_ID", raising=False)
-
     with pytest.raises(GitHubAgentError, match="Infisical API HTTP 403"):
         github_agent._development_app_id()
 
