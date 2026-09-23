@@ -3,8 +3,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-import mcp_bridge.github_agent as github_agent
-from mcp_bridge.github_agent import (
+import github_mcp.github_agent as github_agent
+from github_mcp.github_agent import (
     GitHubAgentError,
     GitHubAppClient,
 )

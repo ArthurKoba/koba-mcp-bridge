@@ -1,7 +1,7 @@
 import pytest
 
-from mcp_bridge.github_agent import GitHubAgentError
-from mcp_bridge.github_workflow import GitHubDevClient
+from github_mcp.github_agent import GitHubAgentError
+from github_mcp.github_workflow import GitHubDevClient
 
 
 class CopyMoveClient(GitHubDevClient):

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from mcp_bridge.github_agent import GitHubAgentError
-from mcp_bridge.github_collab import GitHubCollabClient
+from github_mcp.github_agent import GitHubAgentError
+from github_mcp.github_collab import GitHubCollabClient
 
 
 class RecordingCollabClient(GitHubCollabClient):
