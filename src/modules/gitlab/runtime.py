@@ -5,25 +5,25 @@ from common.runtime_annotations import (
     READ_EXTERNAL,
     WRITE_EXTERNAL,
 )
-from common.runtime_common import build_private_mcp, private_http_app
-from common.secrets import configure_secrets
-from common.settings import GitLabSettings, InfisicalSettings, PrivateRuntimeSettings
+from common.runtime_common import build_private_mcp, control_plane_client, private_http_app
+from common.settings import (
+    ControlPlaneClientSettings,
+    GitLabSettings,
+    PrivateRuntimeSettings,
+)
 
 from .gitlab_tools import register_gitlab_tools
-from .tool_context import configure_runtime
+from .tool_context import GitLabRuntimeContext
 
-_secrets_settings = InfisicalSettings()
-configure_secrets(
-    _secrets_settings.config(),
-    cache_ttl_seconds=_secrets_settings.cache_ttl_seconds,
-)
 _private_settings = PrivateRuntimeSettings()
-configure_runtime(GitLabSettings())
+_control_plane = control_plane_client(ControlPlaneClientSettings())
+_context = GitLabRuntimeContext(_control_plane, GitLabSettings())
 
-mcp = build_private_mcp("gitlab")
+mcp = build_private_mcp("gitlab", _control_plane)
 
 register_gitlab_tools(
     mcp,
+    _context,
     READ_EXTERNAL,
     WRITE_EXTERNAL,
     DESTRUCTIVE_EXTERNAL,

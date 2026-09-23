@@ -20,20 +20,21 @@ async def _tool_names(mcp) -> set[str]:
 async def test_github_runtime_surface_is_isolated() -> None:
     names = await _tool_names(github)
 
+    assert "github_accounts" in names
     assert "github_agent_status" in names
     assert "github_agent_create_pull_request" in names
     assert "github_agent_workflow_runs" in names
     assert "file_status" not in names
     assert "curl_request" not in names
-    assert "profiles" not in names
+    assert "accounts" not in names
 
 
 @pytest.mark.asyncio
 async def test_gitlab_runtime_surface_is_isolated() -> None:
     names = await _tool_names(gitlab)
 
-    assert "profiles" in names
-    assert "profile_status" in names
+    assert "accounts" in names
+    assert "account_status" in names
     assert "create_merge_request" in names
     assert "github_agent_status" not in names
     assert "file_status" not in names
@@ -49,7 +50,7 @@ async def test_files_runtime_surface_is_isolated() -> None:
     assert "file_extract" in names
     assert "curl_request" not in names
     assert "github_agent_status" not in names
-    assert "profiles" not in names
+    assert "accounts" not in names
 
 
 @pytest.mark.asyncio
@@ -62,7 +63,7 @@ async def test_http_runtime_surface_is_isolated() -> None:
     assert "curl_stream_capture" in names
     assert "file_status" not in names
     assert "github_agent_status" not in names
-    assert "profiles" not in names
+    assert "accounts" not in names
 
 
 @pytest.mark.asyncio
@@ -75,4 +76,4 @@ async def test_analysis_runtime_surface_is_dynamic_and_isolated() -> None:
     assert "file_status" not in names
     assert "curl_request" not in names
     assert "github_agent_status" not in names
-    assert "profiles" not in names
+    assert "accounts" not in names

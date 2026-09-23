@@ -8,7 +8,6 @@ import time
 import urllib.parse
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Self
 
 import jwt
 
@@ -27,8 +26,6 @@ from common.models import (
     json_str,
     json_value,
 )
-from common.secrets import SecretError, resolve_config_secret
-from common.settings import GitHubPolicySettings
 
 _GITHUB_API = "https://api.github.com"
 _GITHUB_API_VERSION = "2026-03-10"
@@ -38,51 +35,11 @@ class GitHubAgentError(RuntimeError):
     """Raised when the GitHub App backend cannot complete a request."""
 
 
-def github_agent_configured() -> bool:
-    try:
-        return bool(
-            resolve_config_secret("github/development", "APP_ID").strip()
-            and resolve_config_secret(
-                "github/development",
-                "PRIVATE_KEY_PEM",
-            ).strip()
-        )
-    except SecretError:
-        return False
-
-
-def _development_app_id() -> str:
-    try:
-        value = resolve_config_secret("github/development", "APP_ID").strip()
-    except SecretError as exc:
-        raise GitHubAgentError(
-            f"unable to load GitHub development APP_ID from Infisical: {exc}"
-        ) from exc
-    if not value:
-        raise GitHubAgentError("GitHub development APP_ID is empty")
-    return value
-
-
-def _development_private_key() -> str:
-    try:
-        value = resolve_config_secret(
-            "github/development",
-            "PRIVATE_KEY_PEM",
-        ).replace("\\n", "\n").strip()
-    except SecretError as exc:
-        raise GitHubAgentError(
-            "unable to load GitHub development PRIVATE_KEY_PEM from Infisical: "
-            f"{exc}"
-        ) from exc
-    if not value:
-        raise GitHubAgentError("GitHub development PRIVATE_KEY_PEM is empty")
-    return value
-
-
 @dataclass
 class GitHubAppClient:
     app_id: str
     private_key: str
+    account_id: str = ""
     _installation_ids: dict[str, int] = field(default_factory=dict)
     _tokens: dict[int, tuple[str, float]] = field(default_factory=dict)
     repository_cache_ttl_seconds: float = 30.0
@@ -118,15 +75,6 @@ class GitHubAppClient:
             acquire_timeout=30,
         )
 
-    @classmethod
-    def from_infisical(cls, policy: GitHubPolicySettings) -> Self:
-        return cls(
-            app_id=_development_app_id(),
-            private_key=_development_private_key(),
-            protected_branches=policy.protected_branches,
-            required_checks=policy.required_checks,
-            required_reviewers=policy.required_reviewers,
-        )
 
     def _assert_allowed(self, repository: str) -> str:
         """Validate a repository selector; GitHub installation scope is the access policy."""

@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 def register_github_workflow_tools(
     mcp: FastMCP,
-    client_factory: Callable[[], GitHubActionsClient],
+    client_factory: Callable[[str], GitHubActionsClient],
     read_annotations: ToolAnnotations,
     write_annotations: ToolAnnotations,
     destructive_annotations: ToolAnnotations,

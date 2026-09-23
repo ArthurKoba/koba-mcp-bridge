@@ -1,21 +1,21 @@
-# Documentation index
+# Documentation
 
-MCP Bridge is a modular MCP monorepo. The public gateway, provider runtimes, shared
-infrastructure code, and native Ghidra boundary have separate source ownership.
-
-## Start here
+Current documentation map:
 
 - [Architecture overview](architecture/overview.md)
 - [Component catalog](architecture/components.md)
 - [Repository map](repository-map.md)
-- [Status and remaining work](roadmap.md)
+- [Account control plane](control-plane.md)
+- [Roadmap](roadmap.md)
 - [Architecture decisions](decisions/README.md)
+- [GitHub Actions](github-actions.md)
+- [GitHub history surface](github-history-surface.md)
+- [File service](file-service.md)
+- [Files migration](files-migration.md)
+- [OAuth / ChatGPT](oauth-chatgpt.md)
+- [Ghidra integration notes](ghidra-integration-notes.md)
 
-## Operational notes
-
-- [Files service architecture](file-service.md)
-- [Files production migration](files-migration.md)
-- [Infisical integration](infisical.md)
-- [GitHub Actions diagnostics](github-actions.md)
-- [GitHub history and policy surface](github-history-surface.md)
-- [ChatGPT OAuth flow](oauth-chatgpt.md)
+The architecture documents describe what exists now. The roadmap separates completed
+structural work from deployment acceptance and future architecture work. Architecture
+Decision Records should be added only for consequential choices that are not obvious from
+code or these canonical documents.

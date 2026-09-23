@@ -8,7 +8,6 @@ import urllib.parse
 from common.http_transport import HttpTransportError, PooledHttpTransport
 from common.models import JsonObject, JsonValue, json_loads, json_value
 
-from . import credentials
 from .errors import GitLabError
 from .models import GitLabProfile, GitLabResponse
 
@@ -21,18 +20,18 @@ class GitLabApiClient:
         max_connections: int = 4,
         protected_branches: frozenset[str] = frozenset({"main", "master"}),
     ) -> None:
-        profile.bind_token_resolver(credentials.resolve_config_secret)
         self.profile = profile
         self.max_connections = max(1, int(max_connections))
         self.protected_branches = protected_branches
         parsed = urllib.parse.urlsplit(profile.base_url)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             raise GitLabError(
-                f"profile {profile.profile_id!r} has invalid base_url"
+                f"account {profile.account_id!r} has invalid base_url"
             )
         self._scheme = parsed.scheme
         self._hostname = parsed.hostname
         self._port = parsed.port
+        self._base_path = parsed.path.rstrip("/")
         self._transport = PooledHttpTransport(
             self._new_connection,
             max_connections=self.max_connections,
@@ -44,8 +43,8 @@ class GitLabApiClient:
             return None
         if not self.profile.verify_tls:
             return ssl._create_unverified_context()
-        if self.profile.ca_file:
-            return ssl.create_default_context(cafile=self.profile.ca_file)
+        if self.profile.ca_cert_pem:
+            return ssl.create_default_context(cadata=self.profile.ca_cert_pem.replace("\\n", "\n"))
         return ssl.create_default_context()
 
     def _headers(self, has_body: bool = False) -> dict[str, str]:
@@ -82,7 +81,7 @@ class GitLabApiClient:
                 else:
                     pairs.append((key, str(value)))
         encoded = urllib.parse.urlencode(pairs, doseq=True)
-        return "/api/v4" + path + (f"?{encoded}" if encoded else "")
+        return self._base_path + "/api/v4" + path + (f"?{encoded}" if encoded else "")
 
     def _url(
         self,
@@ -109,17 +108,17 @@ class GitLabApiClient:
         detail = json.dumps(data, ensure_ascii=False)[:4096]
         if status == 401:
             return (
-                f"GitLab authentication failed for profile {self.profile.profile_id!r} "
+                f"GitLab authentication failed for profile {self.profile.account_id!r} "
                 f"(HTTP 401); check its {self.profile.auth_type} credential"
             )
         if status == 403:
             return (
-                f"GitLab denied the operation for profile {self.profile.profile_id!r} "
+                f"GitLab denied the operation for profile {self.profile.account_id!r} "
                 f"(HTTP 403); check token scopes, project membership, and role: {detail}"
             )
         if status == 429:
             return (
-                f"GitLab rate limit exceeded for profile {self.profile.profile_id!r} "
+                f"GitLab rate limit exceeded for profile {self.profile.account_id!r} "
                 f"(HTTP 429) on {target}"
             )
         return f"GitLab API HTTP {status}: {detail}"
@@ -170,7 +169,7 @@ class GitLabApiClient:
             )
         except HttpTransportError as exc:
             raise GitLabError(
-                f"GitLab API transport error for profile {self.profile.profile_id!r}: {exc}"
+                f"GitLab API transport error for profile {self.profile.account_id!r}: {exc}"
             ) from exc
         status, headers, raw = response.status, response.headers, response.body
         data = self._decode_response(raw, headers)
@@ -188,7 +187,7 @@ class GitLabApiClient:
             )
         except HttpTransportError as exc:
             raise GitLabError(
-                f"GitLab API transport error for profile {self.profile.profile_id!r}: {exc}"
+                f"GitLab API transport error for profile {self.profile.account_id!r}: {exc}"
             ) from exc
         status, headers, raw = response.status, response.headers, response.body
         text = raw.decode("utf-8", "replace")

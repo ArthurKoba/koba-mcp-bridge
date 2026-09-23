@@ -1,35 +1,9 @@
 import pytest
 
-import modules.github.github_agent as github_agent
-from common.settings import GitHubPolicySettings
 from modules.github.github_agent import (
     GitHubAgentError,
     GitHubAppClient,
 )
-
-
-def test_github_agent_loads_convention_config_from_infisical(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        github_agent,
-        "resolve_config_secret",
-        lambda path, name: {
-            ("github/development", "APP_ID"): "777",
-            ("github/development", "PRIVATE_KEY_PEM"): "pem-material",
-        }[(path, name)],
-    )
-
-    client = GitHubAppClient.from_infisical(
-        GitHubPolicySettings(
-            protected_branches=frozenset({"main", "master"}),
-            required_checks=("test", "docker"),
-            required_reviewers=(),
-        )
-    )
-
-    assert client.app_id == "777"
-    assert client.private_key == "pem-material"
 
 
 def test_repository_selector_only_validates_owner_name_shape() -> None:
@@ -210,15 +184,4 @@ def test_repository_metadata_is_cached_until_refresh() -> None:
     assert refreshed["repository"] == "owner/repo"
     assert client.calls == 2
 
-
-def test_infisical_credential_failure_preserves_source(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def fail_secret(path: str, name: str) -> str:
-        del path, name
-        raise github_agent.SecretError("Infisical API HTTP 403: denied")
-
-    monkeypatch.setattr(github_agent, "resolve_config_secret", fail_secret)
-    with pytest.raises(GitHubAgentError, match="Infisical API HTTP 403"):
-        github_agent._development_app_id()
 

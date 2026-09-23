@@ -12,11 +12,12 @@ from .github_actions import GitHubActionsClient
 
 def register_github_run_tools(
     mcp: FastMCP,
-    client_factory: Callable[[], GitHubActionsClient],
+    client_factory: Callable[[str], GitHubActionsClient],
     read_annotations: ToolAnnotations,
 ) -> None:
     @mcp.tool(title="GitHub agent workflow runs", annotations=read_annotations)
     def github_agent_workflow_runs(
+        account_id: str,
         repository: str,
         branch: str | None = None,
         status: str | None = None,
@@ -24,11 +25,11 @@ def register_github_run_tools(
         page: int = 1,
     ) -> JsonObject:
         """List GitHub Actions workflow runs."""
-        return client_factory().list_workflow_runs(
+        return client_factory(account_id).list_workflow_runs(
             repository, branch, status, per_page, page
         )
 
     @mcp.tool(title="GitHub agent workflow jobs", annotations=read_annotations)
-    def github_agent_workflow_jobs(repository: str, run_id: int) -> JsonObject:
+    def github_agent_workflow_jobs(account_id: str, repository: str, run_id: int) -> JsonObject:
         """List jobs for one GitHub Actions workflow run."""
-        return client_factory().list_workflow_jobs(repository, run_id)
+        return client_factory(account_id).list_workflow_jobs(repository, run_id)

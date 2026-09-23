@@ -6,8 +6,6 @@ from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from .secret_config import InfisicalConfig
-
 _DEFAULT_PRIVATE_HOSTS = (
     "localhost:*",
     "127.0.0.1:*",
@@ -98,6 +96,13 @@ class BridgeSettings(ProcessSettings):
         "https://mcp.koba-nexus.ru",
         validation_alias="OAUTH_BASE_URL",
     )
+    oauth_client_id: str = Field("", validation_alias="GITHUB_OAUTH_CLIENT_ID")
+    oauth_client_secret: str = Field("", validation_alias="GITHUB_OAUTH_CLIENT_SECRET")
+    oauth_jwt_signing_key: str = Field("", validation_alias="GITHUB_OAUTH_JWT_SIGNING_KEY")
+    oauth_allowed_users: Annotated[tuple[str, ...], NoDecode] = Field(
+        (),
+        validation_alias="GITHUB_OAUTH_ALLOWED_USERS",
+    )
     github_url: str = Field("http://github:8000/mcp", validation_alias="GITHUB_URL")
     gitlab_url: str = Field("http://gitlab:8000/mcp", validation_alias="GITLAB_URL")
     files_url: str = Field("http://files:8000/mcp", validation_alias="FILES_URL")
@@ -105,6 +110,10 @@ class BridgeSettings(ProcessSettings):
     analysis_url: str = Field(
         "http://analysis:8000/mcp",
         validation_alias="ANALYSIS_URL",
+    )
+    ghidra_url: str = Field(
+        "http://bridge:8081/mcp",
+        validation_alias="GHIDRA_MCP_URL",
     )
     build_sha: str = Field("unknown", validation_alias="BUILD_SHA")
     build_time: str = Field("unknown", validation_alias="BUILD_TIME")
@@ -119,11 +128,15 @@ class BridgeSettings(ProcessSettings):
 
     @field_validator(
         "oauth_base_url",
+        "oauth_client_id",
+        "oauth_client_secret",
+        "oauth_jwt_signing_key",
         "github_url",
         "gitlab_url",
         "files_url",
         "curl_url",
         "analysis_url",
+        "ghidra_url",
         "build_sha",
         "build_time",
         mode="before",
@@ -131,6 +144,14 @@ class BridgeSettings(ProcessSettings):
     @classmethod
     def _strip_strings(cls, value: object) -> object:
         return value.strip() if isinstance(value, str) else value
+
+    @field_validator("oauth_allowed_users", mode="before")
+    @classmethod
+    def _parse_oauth_users(cls, value: object) -> object:
+        parsed = _tuple_value(value)
+        if isinstance(parsed, tuple):
+            return tuple(item.casefold() for item in parsed)
+        return parsed
 
     @field_validator("allowed_hosts", "allowed_origins", mode="before")
     @classmethod
@@ -143,8 +164,9 @@ class BridgeSettings(ProcessSettings):
             "github": self.github_url or "http://github:8000/mcp",
             "gitlab": self.gitlab_url or "http://gitlab:8000/mcp",
             "files": self.files_url or "http://files:8000/mcp",
-            "http": self.curl_url or "http://curl:8000/mcp",
+            "web": self.curl_url or "http://curl:8000/mcp",
             "analysis": self.analysis_url or "http://analysis:8000/mcp",
+            "ghidra": self.ghidra_url or "http://bridge:8081/mcp",
         }
 
     @property
@@ -155,98 +177,73 @@ class BridgeSettings(ProcessSettings):
         )
 
 
-class InfisicalSettings(ProcessSettings):
-    host: str = Field("", validation_alias="INFISICAL_HOST")
-    project_id: str = Field("", validation_alias="INFISICAL_PROJECT_ID")
-    environment: str = Field("prod", validation_alias="INFISICAL_ENVIRONMENT")
-    base_path: str = Field("/", validation_alias="INFISICAL_BASE_PATH")
-    client_id: str = Field("", validation_alias="INFISICAL_CLIENT_ID")
-    client_id_file: str = Field("", validation_alias="INFISICAL_CLIENT_ID_FILE")
-    client_secret: str = Field("", validation_alias="INFISICAL_CLIENT_SECRET")
-    client_secret_file: str = Field(
-        "",
-        validation_alias="INFISICAL_CLIENT_SECRET_FILE",
+class ControlPlaneClientSettings(ProcessSettings):
+    url: str = Field("http://control-plane:8000", validation_alias="CONTROL_PLANE_URL")
+    service_token: str = Field("", validation_alias="CONTROL_PLANE_SERVICE_TOKEN")
+    timeout_seconds: float = Field(
+        10,
+        gt=0,
+        le=60,
+        validation_alias="CONTROL_PLANE_TIMEOUT_SECONDS",
     )
-    verify_tls: bool = Field(True, validation_alias="INFISICAL_VERIFY_TLS")
-    ca_file: str = Field("", validation_alias="INFISICAL_CA_FILE")
-    cache_ttl_seconds: float = Field(
-        60,
-        ge=0,
-        le=3600,
-        validation_alias="INFISICAL_CACHE_TTL_SECONDS",
+
+    @field_validator("url", "service_token", mode="before")
+    @classmethod
+    def _strip_values(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+
+class ControlPlaneSettings(ProcessSettings):
+    database_path: Path = Field(
+        Path("/control-plane/control-plane.sqlite3"),
+        validation_alias="CONTROL_PLANE_DATABASE_PATH",
+    )
+    encryption_key: str = Field("", validation_alias="CONTROL_PLANE_ENCRYPTION_KEY")
+    service_token: str = Field("", validation_alias="CONTROL_PLANE_SERVICE_TOKEN")
+    admin_username: str = Field("admin", validation_alias="CONTROL_PLANE_ADMIN_USERNAME")
+    admin_password: str = Field("", validation_alias="CONTROL_PLANE_ADMIN_PASSWORD")
+    session_secret: str = Field("", validation_alias="CONTROL_PLANE_SESSION_SECRET")
+    session_https_only: bool = Field(
+        True,
+        validation_alias="CONTROL_PLANE_SESSION_HTTPS_ONLY",
     )
 
     @field_validator(
-        "host",
-        "project_id",
-        "environment",
-        "base_path",
-        "client_id",
-        "client_id_file",
-        "client_secret",
-        "client_secret_file",
-        "ca_file",
+        "encryption_key",
+        "service_token",
+        "admin_username",
+        "admin_password",
+        "session_secret",
         mode="before",
     )
     @classmethod
-    def _strip_strings(cls, value: object) -> object:
+    def _strip_secrets(cls, value: object) -> object:
         return value.strip() if isinstance(value, str) else value
 
-    @staticmethod
-    def _bootstrap_value(
-        value: str,
-        file_value: str,
-        env_name: str,
-        file_env_name: str,
-    ) -> tuple[str, str]:
-        if value and file_value:
-            raise ValueError(f"configure only one of {env_name} or {file_env_name}")
-        if value:
-            return value, f"env:{env_name}"
-        if not file_value:
-            return "", ""
-        path = Path(file_value)
-        if not path.is_absolute():
-            raise ValueError(f"{file_env_name} must point to an absolute path")
-        try:
-            resolved = path.read_text(encoding="utf-8").strip()
-        except OSError as exc:
-            raise ValueError(f"unable to read {file_env_name}") from exc
-        if not resolved:
-            raise ValueError(f"{file_env_name} points to an empty file")
-        return resolved, f"file:{file_value}"
+    @field_validator("database_path")
+    @classmethod
+    def _absolute_database_path(cls, value: Path) -> Path:
+        if not value.is_absolute():
+            raise ValueError("CONTROL_PLANE_DATABASE_PATH must be absolute")
+        return value.resolve(strict=False)
 
-    def config(self) -> InfisicalConfig:
-        client_id, client_id_source = self._bootstrap_value(
-            self.client_id,
-            self.client_id_file,
-            "INFISICAL_CLIENT_ID",
-            "INFISICAL_CLIENT_ID_FILE",
-        )
-        client_secret, client_secret_source = self._bootstrap_value(
-            self.client_secret,
-            self.client_secret_file,
-            "INFISICAL_CLIENT_SECRET",
-            "INFISICAL_CLIENT_SECRET_FILE",
-        )
-        base_path = self.base_path or "/"
-        if not base_path.startswith("/"):
-            base_path = "/" + base_path
-        base_path = "/" + base_path.strip("/") if base_path.strip("/") else "/"
-        if self.ca_file and not Path(self.ca_file).is_absolute():
-            raise ValueError("INFISICAL_CA_FILE must be an absolute path")
-        return InfisicalConfig(
-            host=self.host.rstrip("/"),
-            project_id=self.project_id,
-            client_id=client_id,
-            client_secret=client_secret,
-            environment=self.environment or "prod",
-            base_path=base_path,
-            verify_tls=self.verify_tls,
-            ca_file=self.ca_file,
-            client_id_source=client_id_source,
-            client_secret_source=client_secret_source,
-        )
+    @property
+    def database_url(self) -> str:
+        return f"sqlite:///{self.database_path}"
+
+    def validate_bootstrap(self) -> None:
+        missing = [
+            name
+            for name, value in (
+                ("CONTROL_PLANE_ENCRYPTION_KEY", self.encryption_key),
+                ("CONTROL_PLANE_SERVICE_TOKEN", self.service_token),
+                ("CONTROL_PLANE_ADMIN_PASSWORD", self.admin_password),
+                ("CONTROL_PLANE_SESSION_SECRET", self.session_secret),
+            )
+            if not value
+        ]
+        if missing:
+            raise ValueError("missing control-plane bootstrap settings: " + ", ".join(missing))
 
 
 class AnalysisSettings(ProcessSettings):

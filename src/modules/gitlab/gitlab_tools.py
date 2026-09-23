@@ -2,11 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .gitlab_client import GitLabProfileRegistry
-from .tool_context import clear_runtime_cache as _clear_runtime_cache
-from .tool_context import client as _client
-from .tool_context import configure_runtime as _configure_runtime
-from .tool_context import registry as _registry
+from .tool_context import GitLabRuntimeContext
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
@@ -15,6 +11,7 @@ if TYPE_CHECKING:
 
 def register_gitlab_tools(
     mcp: FastMCP,
+    context: GitLabRuntimeContext,
     read_annotations: ToolAnnotations,
     write_annotations: ToolAnnotations,
     destructive_annotations: ToolAnnotations,
@@ -27,43 +24,33 @@ def register_gitlab_tools(
 
     register_gitlab_profile_tools(
         mcp,
-        _registry,
-        _client,
+        context.accounts,
+        context.client,
         read_annotations,
     )
     register_gitlab_repository_tools(
         mcp,
-        _client,
+        context.client,
         read_annotations,
         write_annotations,
         destructive_annotations,
     )
     register_gitlab_merge_request_tools(
         mcp,
-        _client,
+        context.client,
         read_annotations,
         write_annotations,
     )
     register_gitlab_issue_tools(
         mcp,
-        _client,
+        context.client,
         read_annotations,
         write_annotations,
     )
     register_gitlab_pipeline_tools(
         mcp,
-        _client,
+        context.client,
         read_annotations,
         write_annotations,
         destructive_annotations,
     )
-
-
-__all__ = [
-    "GitLabProfileRegistry",
-    "_clear_runtime_cache",
-    "_client",
-    "_configure_runtime",
-    "_registry",
-    "register_gitlab_tools",
-]

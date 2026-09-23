@@ -2,7 +2,9 @@
 
 ## Completed
 
-- self-hosted Infisical bootstrap and provider credential conventions;
+- private SQLite account control plane with encrypted GitHub/GitLab credentials;
+- explicit multi-account GitHub/GitLab provider selection;
+- self-hosted GitLab account support through per-account base URLs;
 - independent GitHub, GitLab, Files, HTTP and Analysis runtime services;
 - thin `bridge` gateway and provider-neutral `common` layer;
 - capability-oriented GitHub and GitLab clients and tool registrars;
@@ -14,15 +16,16 @@
 - Analysis terminology aliases with new names preferred and legacy Ghidra argument names accepted as fallback;
 - architecture tests preventing provider-to-provider imports and provider code from leaking into `bridge`/`common`;
 - one production `docker-compose.yaml` at repository root;
-- persistent `files-data` and `fastmcp-data` volumes.
+- persistent `files-data`, `fastmcp-data` and `control-plane-data` volumes.
 
 ## Remaining
 
 ### Production acceptance
 
 After the modular stack is deployed, verify every dedicated public surface, persistent
-Files reads/uploads, GitHub operations, GitLab discovery, HTTP/Files integration,
-OAuth persistence and Analysis-to-Ghidra connectivity.
+Files reads/uploads, multi-account GitHub operations, self-hosted GitLab discovery,
+control-plane admin/account onboarding, encrypted credential persistence, HTTP/Files
+integration, OAuth persistence and Analysis-to-Ghidra connectivity.
 
 ### Formatting
 

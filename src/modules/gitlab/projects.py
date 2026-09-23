@@ -13,7 +13,7 @@ class GitLabProjectClient(GitLabApiClient):
         if not isinstance(user, dict):
             raise GitLabError("unexpected GitLab /user response")
         return {
-            "profile": self.profile.public(),
+            "account": self.profile.public(),
             "authenticated_user": {
                 "id": user.get("id"),
                 "username": user.get("username"),
@@ -53,7 +53,7 @@ class GitLabProjectClient(GitLabApiClient):
         if not isinstance(response.data, list):
             raise GitLabError("unexpected GitLab project list response")
         return {
-            "profile_id": self.profile.profile_id,
+            "account_id": self.profile.account_id,
             "projects": response.data,
             "page": page,
             "per_page": per_page,
@@ -67,7 +67,7 @@ class GitLabProjectClient(GitLabApiClient):
         data = self.request("GET", f"/projects/{selector}").data
         if not isinstance(data, dict):
             raise GitLabError("unexpected GitLab project response")
-        return {"profile_id": self.profile.profile_id, "project": data}
+        return {"account_id": self.profile.account_id, "project": data}
 
 
 def _header_int(headers: dict[str, str], name: str) -> int | None:

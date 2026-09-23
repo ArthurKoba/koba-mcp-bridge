@@ -1,78 +1,54 @@
 from __future__ import annotations
 
 import threading
-import time
 
+from common.account_client import ControlPlaneClient
+from common.models import JsonObject
 from common.settings import GitLabSettings
 
-from .gitlab_client import GitLabClient, GitLabProfileRegistry
+from .gitlab_client import GitLabClient
+from .models import GitLabProfile
 
 
 class GitLabRuntimeContext:
-    def __init__(self, settings: GitLabSettings) -> None:
+    def __init__(
+        self,
+        control_plane: ControlPlaneClient,
+        settings: GitLabSettings,
+    ) -> None:
+        self.control_plane = control_plane
         self.settings = settings
         self._lock = threading.Lock()
-        self._registry_cache: tuple[float, GitLabProfileRegistry] | None = None
-        self._client_cache: dict[str, GitLabClient] = {}
+        self._client_cache: dict[str, tuple[str, GitLabClient]] = {}
 
-    def registry(self) -> GitLabProfileRegistry:
-        ttl = self.settings.registry_cache_ttl_seconds
-        now = time.monotonic()
+    def accounts(self) -> JsonObject:
+        return self.control_plane.list_accounts(provider="gitlab").to_json()
+
+    def client(self, account_id: str) -> GitLabClient:
+        account = self.control_plane.resolve_account(account_id, provider="gitlab")
         with self._lock:
-            cached = self._registry_cache
-            if ttl > 0 and cached is not None and cached[0] > now:
+            cached = self._client_cache.get(account.id)
+            if cached is not None and cached[0] == account.updated_at:
                 return cached[1]
-            value = GitLabProfileRegistry.from_infisical()
-            self._registry_cache = (now + ttl, value)
-            return value
-
-    def client(self, profile_id: str) -> GitLabClient:
-        profile = self.registry().get(profile_id)
-        key = profile.profile_id.casefold()
-        with self._lock:
-            cached = self._client_cache.get(key)
-            if cached is not None and cached.profile == profile:
-                return cached
-            value = GitLabClient(
+            profile = GitLabProfile.model_validate(
+                {
+                    "account_id": account.id,
+                    "alias": account.alias,
+                    "base_url": account.base_url,
+                    "auth_type": account.auth_type,
+                    "verify_tls": account.verify_tls,
+                    "ca_cert_pem": account.ca_cert_pem or "",
+                    "label": account.label or account.alias,
+                }
+            )
+            profile.bind_token(account.credential)
+            client = GitLabClient(
                 profile,
                 protected_branches=self.settings.protected_branches,
             )
-            self._client_cache[key] = value
-            return value
+            self._client_cache[account.id] = (account.updated_at, client)
+            return client
 
     def clear(self) -> None:
         with self._lock:
-            self._registry_cache = None
             self._client_cache.clear()
-
-
-class _RuntimeHolder:
-    def __init__(self) -> None:
-        self.context: GitLabRuntimeContext | None = None
-
-
-_runtime = _RuntimeHolder()
-
-
-def configure_runtime(settings: GitLabSettings) -> GitLabRuntimeContext:
-    _runtime.context = GitLabRuntimeContext(settings)
-    return _runtime.context
-
-
-def _context() -> GitLabRuntimeContext:
-    if _runtime.context is None:
-        raise RuntimeError("GitLab runtime is not configured by the application bootstrap")
-    return _runtime.context
-
-
-def registry() -> GitLabProfileRegistry:
-    return _context().registry()
-
-
-def client(profile_id: str) -> GitLabClient:
-    return _context().client(profile_id)
-
-
-def clear_runtime_cache() -> None:
-    if _runtime.context is not None:
-        _runtime.context.clear()

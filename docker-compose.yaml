@@ -1,17 +1,34 @@
-x-infisical: &infisical
-  INFISICAL_HOST: ${INFISICAL_HOST}
-  INFISICAL_PROJECT_ID: ${INFISICAL_PROJECT_ID}
-  INFISICAL_ENVIRONMENT: ${INFISICAL_ENVIRONMENT:-prod}
-  INFISICAL_BASE_PATH: ${INFISICAL_BASE_PATH:-/}
-  INFISICAL_CLIENT_ID: ${INFISICAL_CLIENT_ID}
-  INFISICAL_CLIENT_SECRET: ${INFISICAL_CLIENT_SECRET}
-  INFISICAL_VERIFY_TLS: ${INFISICAL_VERIFY_TLS:-true}
-
 x-runtime: &runtime
   image: ghcr.io/arthurkoba/mcp-bridge:latest
   restart: unless-stopped
 
+x-control-plane-client: &control-plane-client
+  CONTROL_PLANE_URL: ${CONTROL_PLANE_URL:-http://control-plane:8000}
+  CONTROL_PLANE_SERVICE_TOKEN: ${CONTROL_PLANE_SERVICE_TOKEN}
+
 services:
+  control-plane:
+    <<: *runtime
+    expose:
+      - "8000"
+    command:
+      - /app/.venv/bin/uvicorn
+      - control_plane.runtime:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    environment:
+      CONTROL_PLANE_DATABASE_PATH: /control-plane/control-plane.sqlite3
+      CONTROL_PLANE_ENCRYPTION_KEY: ${CONTROL_PLANE_ENCRYPTION_KEY}
+      CONTROL_PLANE_SERVICE_TOKEN: ${CONTROL_PLANE_SERVICE_TOKEN}
+      CONTROL_PLANE_ADMIN_USERNAME: ${CONTROL_PLANE_ADMIN_USERNAME:-admin}
+      CONTROL_PLANE_ADMIN_PASSWORD: ${CONTROL_PLANE_ADMIN_PASSWORD}
+      CONTROL_PLANE_SESSION_SECRET: ${CONTROL_PLANE_SESSION_SECRET}
+      CONTROL_PLANE_SESSION_HTTPS_ONLY: ${CONTROL_PLANE_SESSION_HTTPS_ONLY:-true}
+    volumes:
+      - control-plane-data:/control-plane
+
   gateway:
     <<: *runtime
     expose:
@@ -24,14 +41,20 @@ services:
       - --port
       - "8000"
     environment:
-      <<: *infisical
       OAUTH_ENABLED: "true"
       OAUTH_BASE_URL: ${OAUTH_BASE_URL:-https://mcp.koba-nexus.ru}
+      GITHUB_OAUTH_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID}
+      GITHUB_OAUTH_CLIENT_SECRET: ${GITHUB_OAUTH_CLIENT_SECRET}
+      GITHUB_OAUTH_JWT_SIGNING_KEY: ${GITHUB_OAUTH_JWT_SIGNING_KEY}
+      GITHUB_OAUTH_ALLOWED_USERS: ${GITHUB_OAUTH_ALLOWED_USERS}
+      CONTROL_PLANE_URL: ${CONTROL_PLANE_URL:-http://control-plane:8000}
+      GHIDRA_MCP_URL: ${GHIDRA_MCP_URL:-http://bridge:8081/mcp}
       MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-mcp.koba-nexus.ru,localhost:*,127.0.0.1:*}
       MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-https://mcp.koba-nexus.ru}
     volumes:
       - fastmcp-data:/data/fastmcp
     depends_on:
+      - control-plane
       - github
       - gitlab
       - files
@@ -53,7 +76,9 @@ services:
       - --port
       - "8000"
     environment:
-      <<: *infisical
+      <<: *control-plane-client
+    depends_on:
+      - control-plane
 
   gitlab:
     <<: *runtime
@@ -67,7 +92,9 @@ services:
       - --port
       - "8000"
     environment:
-      <<: *infisical
+      <<: *control-plane-client
+    depends_on:
+      - control-plane
 
   files:
     <<: *runtime
@@ -81,9 +108,12 @@ services:
       - --port
       - "8000"
     environment:
+      <<: *control-plane-client
       FILE_ROOT: /files
     volumes:
       - files-data:/files
+    depends_on:
+      - control-plane
 
   curl:
     <<: *runtime
@@ -97,9 +127,12 @@ services:
       - --port
       - "8000"
     environment:
+      <<: *control-plane-client
       FILE_ROOT: /files
     volumes:
       - files-data:/files
+    depends_on:
+      - control-plane
 
   analysis:
     <<: *runtime
@@ -113,6 +146,7 @@ services:
       - --port
       - "8000"
     environment:
+      <<: *control-plane-client
       FILE_ROOT: /files
       GHIDRA_MCP_URL: ${GHIDRA_MCP_URL:-http://bridge:8081/mcp}
     volumes:
@@ -120,8 +154,13 @@ services:
     networks:
       - default
       - coolify
+    depends_on:
+      - control-plane
 
 volumes:
+  control-plane-data:
+    external: true
+    name: control-plane-data
   files-data:
     external: true
     name: files-data

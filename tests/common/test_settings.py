@@ -8,10 +8,11 @@ from pydantic import ValidationError
 from common.settings import (
     AnalysisSettings,
     BridgeSettings,
+    ControlPlaneClientSettings,
+    ControlPlaneSettings,
     FileSettings,
     GitHubPolicySettings,
     GitLabSettings,
-    InfisicalSettings,
 )
 
 
@@ -54,6 +55,7 @@ def test_bridge_settings_use_canonical_backends_by_default(monkeypatch) -> None:
         "FILES_URL",
         "CURL_URL",
         "ANALYSIS_URL",
+        "GHIDRA_MCP_URL",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -61,57 +63,59 @@ def test_bridge_settings_use_canonical_backends_by_default(monkeypatch) -> None:
         "github": "http://github:8000/mcp",
         "gitlab": "http://gitlab:8000/mcp",
         "files": "http://files:8000/mcp",
-        "http": "http://curl:8000/mcp",
+        "web": "http://curl:8000/mcp",
         "analysis": "http://analysis:8000/mcp",
+        "ghidra": "http://bridge:8081/mcp",
     }
 
 
-def test_bridge_settings_allow_backend_overrides(monkeypatch) -> None:
-    monkeypatch.setenv("GITHUB_URL", "http://github-alt:9000/mcp")
-    monkeypatch.setenv("GITLAB_URL", "http://gitlab-alt:9000/mcp")
-    monkeypatch.setenv("FILES_URL", "http://files-alt:9000/mcp")
-    monkeypatch.setenv("CURL_URL", "http://curl-alt:9000/mcp")
-    monkeypatch.setenv("ANALYSIS_URL", "http://analysis-alt:9000/mcp")
+def test_gateway_oauth_bootstrap_is_typed(monkeypatch) -> None:
+    monkeypatch.setenv("GITHUB_OAUTH_CLIENT_ID", " client ")
+    monkeypatch.setenv("GITHUB_OAUTH_CLIENT_SECRET", " secret ")
+    monkeypatch.setenv("GITHUB_OAUTH_JWT_SIGNING_KEY", " jwt ")
+    monkeypatch.setenv("GITHUB_OAUTH_ALLOWED_USERS", "ArthurKoba, ReviewerBot")
 
-    assert BridgeSettings().backends == {
-        "github": "http://github-alt:9000/mcp",
-        "gitlab": "http://gitlab-alt:9000/mcp",
-        "files": "http://files-alt:9000/mcp",
-        "http": "http://curl-alt:9000/mcp",
-        "analysis": "http://analysis-alt:9000/mcp",
-    }
+    settings = BridgeSettings()
+
+    assert settings.oauth_client_id == "client"
+    assert settings.oauth_client_secret == "secret"
+    assert settings.oauth_jwt_signing_key == "jwt"
+    assert settings.oauth_allowed_users == ("arthurkoba", "reviewerbot")
 
 
-def test_infisical_bootstrap_files_are_resolved_at_composition_time(
-    monkeypatch,
-    tmp_path: Path,
-) -> None:
-    client_id = tmp_path / "client-id"
-    client_secret = tmp_path / "client-secret"
-    client_id.write_text("client-id-value\n", encoding="utf-8")
-    client_secret.write_text("secret-value\n", encoding="utf-8")
-
-    monkeypatch.setenv("INFISICAL_CLIENT_ID_FILE", str(client_id))
-    monkeypatch.setenv("INFISICAL_CLIENT_SECRET_FILE", str(client_secret))
-    monkeypatch.setenv("INFISICAL_BASE_PATH", "github")
-
-    config = InfisicalSettings().config()
-
-    assert config.client_id == "client-id-value"
-    assert config.client_secret == "secret-value"
-    assert config.client_id_source == f"file:{client_id}"
-    assert config.client_secret_source == f"file:{client_secret}"
-    assert config.base_path == "/github"
+def test_control_plane_client_settings_allow_import_without_bootstrap(monkeypatch) -> None:
+    monkeypatch.delenv("CONTROL_PLANE_SERVICE_TOKEN", raising=False)
+    settings = ControlPlaneClientSettings()
+    assert settings.url == "http://control-plane:8000"
+    assert settings.service_token == ""
 
 
-def test_infisical_bootstrap_rejects_duplicate_sources(monkeypatch, tmp_path: Path) -> None:
-    client_id = tmp_path / "client-id"
-    client_id.write_text("file-value", encoding="utf-8")
-    monkeypatch.setenv("INFISICAL_CLIENT_ID", "env-value")
-    monkeypatch.setenv("INFISICAL_CLIENT_ID_FILE", str(client_id))
+def test_control_plane_settings_validate_bootstrap(monkeypatch, tmp_path: Path) -> None:
+    db = tmp_path / "control.sqlite3"
+    monkeypatch.setenv("CONTROL_PLANE_DATABASE_PATH", str(db))
+    monkeypatch.setenv("CONTROL_PLANE_ENCRYPTION_KEY", "key")
+    monkeypatch.setenv("CONTROL_PLANE_SERVICE_TOKEN", "service")
+    monkeypatch.setenv("CONTROL_PLANE_ADMIN_PASSWORD", "admin")
+    monkeypatch.setenv("CONTROL_PLANE_SESSION_SECRET", "session")
 
-    with pytest.raises(ValueError, match="configure only one"):
-        InfisicalSettings().config()
+    settings = ControlPlaneSettings()
+    settings.validate_bootstrap()
+
+    assert settings.database_path == db
+    assert settings.database_url == f"sqlite:///{db}"
+
+
+def test_control_plane_settings_reject_missing_bootstrap(monkeypatch) -> None:
+    for name in (
+        "CONTROL_PLANE_ENCRYPTION_KEY",
+        "CONTROL_PLANE_SERVICE_TOKEN",
+        "CONTROL_PLANE_ADMIN_PASSWORD",
+        "CONTROL_PLANE_SESSION_SECRET",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    with pytest.raises(ValueError, match="missing control-plane bootstrap settings"):
+        ControlPlaneSettings().validate_bootstrap()
 
 
 def test_file_settings_are_frozen_and_validate_limits() -> None:

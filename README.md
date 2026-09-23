@@ -31,6 +31,7 @@ own packages.
 src/
 ├── bridge/
 ├── common/
+├── control_plane/
 └── modules/
     ├── github/
     ├── gitlab/
@@ -65,12 +66,14 @@ authenticated surfaces:
 /github/mcp
 /gitlab/mcp
 /files/mcp
-/http/mcp
+/web/mcp
 /analysis/mcp
+/ghidra/mcp
+/admin
 ```
 
 Deploying or restarting one private runtime does not require restarting the others.
-The raw Ghidra MCP remains native and is consumed only behind the analysis boundary.
+The raw Ghidra MCP remains native and is available directly at `/ghidra/mcp`; Analysis remains the terminology facade over the same backend.
 
 ## Files service
 
@@ -125,7 +128,9 @@ Consumers hold durable references to source files. Normal deletion refuses
 to remove referenced objects; garbage collection only targets objects with no
 consumer or collection references.
 
-## Curl HTTP client
+## Web tools
+
+`/web/mcp` currently exposes the structured curl tools. The Web surface is intentionally broader than curl so browser automation, Selenium and persistent web sessions can be added later without changing the public endpoint.
 
 The structured curl tools use the `chrome-desktop` HTTP header preset by
 default. This applies to `curl_request`, `curl_download`, and
@@ -161,245 +166,84 @@ to the canonical Ghidra argument keys and calls the original Ghidra tool.
 This keeps one implementation of the actual analysis behavior: Ghidra. MCP Bridge owns
 only the facade, terminology mapping, validation and result-envelope normalization.
 
-## Secrets / Infisical
+## Account control plane
 
-MCP Bridge uses self-hosted Infisical as the central provider for provider-specific
-credentials and configuration. Runtime workloads authenticate with an Infisical
-Machine Identity using Universal Auth and receive a short-lived access token.
+GitHub and GitLab accounts are managed by the private `control-plane` runtime. The
+control plane owns a persistent SQLite database through SQLAlchemy and Alembic. Provider
+runtimes never read the database directly; they use an authenticated internal HTTP API.
 
-Coolify only keeps the Infisical bootstrap and transport configuration:
+Account metadata and credentials are separate concerns. Credentials are encrypted before
+they are written to SQLite using a deployment Fernet master key. Plaintext credentials
+are returned only to authenticated private runtimes for the explicitly selected
+`account_id`; they are never exposed by MCP tools or the admin list/detail views.
 
-```text
-INFISICAL_HOST=https://secrets.koba-nexus.ru
-INFISICAL_PROJECT_ID=<project UUID>
-INFISICAL_ENVIRONMENT=prod
-INFISICAL_BASE_PATH=/
-INFISICAL_CLIENT_ID=<machine identity client id>
-INFISICAL_CLIENT_SECRET=<machine identity client secret>
-INFISICAL_VERIFY_TLS=true
-```
+Starlette Admin is owned by the private control-plane runtime and reverse-proxied by the gateway at `/admin` on the same public origin. It provides
+account creation/editing, write-only credential replacement, connection verification and a
+small account/invocation dashboard.
 
-Provider connectors resolve their credentials by convention below `INFISICAL_BASE_PATH`.
-GitHub and GitLab provider credentials are not read from legacy provider-specific
-environment variables or JSON profile files.
-
-Deployment and migration instructions are in
-[`docs/infisical.md`](docs/infisical.md).
-
-MCP diagnostics expose only provider/configuration status and redacted reference checks;
-there is intentionally no MCP tool that returns secret plaintext.
+See [docs/control-plane.md](docs/control-plane.md).
 
 ## GitLab connector
 
-GitLab is implemented as a reusable subserver rather than another monolithic block of
-gateway-only tools. The same GitLab tool provider is exposed in two ways:
+GitLab account selection is explicit. Each GitLab MCP operation accepts `account_id`,
+which can be either the stable account UUID or its unique human-readable alias.
 
-- the normal gateway endpoint at `/mcp`, where tools are namespaced as `gitlab_*`;
-- a dedicated GitLab-only endpoint at `/gitlab/mcp`, where the same tools are exposed
-  without the `gitlab_` namespace prefix.
+A GitLab account stores:
 
-Every GitLab operation requires an explicit `profile_id`. There is deliberately no
-process-global "current GitLab" or "current account", so concurrent agents can use
-different GitLab instances or different accounts on the same instance without switching
-each other's context.
+- alias and optional display label;
+- arbitrary HTTP(S) `base_url`, including self-hosted GitLab and URL prefixes;
+- auth mode: `private_token`, `bearer` or `job_token`;
+- encrypted token;
+- TLS verification flag and optional custom CA certificate PEM.
 
-GitLab profiles are discovered from Infisical folders below:
+There is no process-global current GitLab account. Concurrent agents can safely use
+different accounts or servers without switching shared process state.
 
-```text
-/gitlab/accounts/<profile_id>
-├── BASE_URL
-├── AUTH_TYPE
-├── TOKEN
-├── LABEL        # optional
-├── VERIFY_TLS   # optional, default true
-└── CA_FILE      # optional
-```
+## GitHub provider accounts
 
-Creating a new account folder makes the profile discoverable without adding provider
-credentials to Coolify. Infisical is the GitLab account registry.
+GitHub provider identities are also explicit accounts. GitHub App accounts use one of two
+roles:
 
-Supported authentication modes are:
+- `development` — mutation/repository workflow identity;
+- `reviewer` — independent read/review identity.
 
-- `private_token` -> GitLab `PRIVATE-TOKEN` header for personal/project/group access tokens;
-- `bearer` -> `Authorization: Bearer ...` for OAuth-compatible access tokens;
-- `job_token` -> `JOB-TOKEN` for endpoints that support CI/CD job-token authentication.
+The account record stores the GitHub App ID as `external_id`; the encrypted credential
+stores the App private key. Repository installation access remains GitHub's source of truth.
 
-The connector currently exposes profile/account validation, project discovery, repository
-file/tree/code-search operations, atomic commit actions, branches and compare, merge
-requests, issues, and CI pipelines/jobs/job traces with retry/cancel controls.
+All account-scoped GitHub tools require `account_id`. `github_accounts` is the
+discovery surface for configured identities.
 
-Direct writes to branches listed in `GITLAB_PROTECTED_BRANCHES` are blocked by the bridge
-(default: `main,master`). Feature branches can be created from protected branches and
-merge requests can target protected branches. GitLab's own protected branch, approval,
-role, and token-scope settings remain the authoritative server-side access controls.
+GitHub Enterprise Server API URLs are intentionally not enabled by the current account
+contract. GitHub provider accounts target `https://api.github.com`.
 
 ## GitHub OAuth
 
-When `OAUTH_ENABLED=true`, GitHub OAuth configuration is resolved from Infisical:
+GitHub OAuth protects the public MCP gateway and is deployment bootstrap configuration,
+not a provider account. Configure:
 
 ```text
-/github/oauth
-├── CLIENT_ID
-├── CLIENT_SECRET
-├── JWT_SIGNING_KEY
-└── ALLOWED_USERS
+GITHUB_OAUTH_CLIENT_ID
+GITHUB_OAUTH_CLIENT_SECRET
+GITHUB_OAUTH_JWT_SIGNING_KEY
+GITHUB_OAUTH_ALLOWED_USERS
 ```
 
-Only `OAUTH_ENABLED` and `OAUTH_BASE_URL` remain deployment variables. The
-public OAuth base URL defaults to `https://mcp.koba-nexus.ru`.
+Dynamic provider account credentials do not live in deployment environment variables.
 
-OAuth client registrations and token state are stored below `FASTMCP_HOME`, which
-defaults to `/data/fastmcp` in the container. Production deployments should keep
-that directory persistent.
+## Invocation telemetry
 
-## GitHub App development backend
+Private runtimes register a lightweight FastMCP middleware. Each tool call may append a
+best-effort event to the control plane containing module/tool name, selected account,
+provider, duration, status and error type. Argument values are not stored.
 
-The `github_agent_*` tools authenticate as a GitHub App installation. Automated repository activity is therefore attributed to the app identity rather than the human account used to log into the MCP bridge.
-
-The development identity is resolved from Infisical:
-
-```text
-/github/development
-├── APP_ID
-└── PRIVATE_KEY_PEM
-```
-
-The GitHub App installation is the single source of truth for repository access. There is no duplicated bridge-side repository allowlist. Adding or removing repositories in the GitHub App installation immediately changes the repository set visible to the bridge without changing Coolify environment variables.
-
-`github_agent_list_repositories` discovers the repositories directly from GitHub App installations and returns repository metadata and effective installation permissions. A direct operation against a repository that is not installed for the App is rejected by GitHub installation lookup.
-
-### Workflow policy
-
-The bridge has an additional development policy layer:
-
-```text
-GITHUB_AGENT_PROTECTED_BRANCHES=main,master
-GITHUB_AGENT_REQUIRED_CHECKS=test,docker
-GITHUB_AGENT_REQUIRED_REVIEWERS=koba-ai-reviewer[bot]
-```
-
-The protected-branch and required-check variables are optional and default to the values shown. `GITHUB_AGENT_REQUIRED_REVIEWERS` is optional and defaults to no identity-specific approval requirement; production PR-only workflows can set it once the independent reviewer App is installed and validated.
-
-Direct file writes, deletes, atomic commits, fast-forwards, branch deletion, and branch renames are rejected for protected branches. Work is expected to happen on feature branches and reach a protected branch through a pull request.
-
-Pull requests are restricted to branches inside the same repository. `owner:branch` / fork heads are rejected by the bridge, so the agent cannot use this backend for external contribution PRs.
-
-PR merge supports `merge`, `squash`, and `rebase`. Before merging, every name in `GITHUB_AGENT_REQUIRED_CHECKS` must have a completed successful check-run on the PR head SHA. When `GITHUB_AGENT_REQUIRED_REVIEWERS` is configured, the latest decisive review state for every listed login must also be `APPROVED`. A later `CHANGES_REQUESTED` or dismissed review blocks the merge again.
-
-### Development surface
-
-Core repository/files:
-
-- installation-backed repository discovery and repository status checks;
-- UTF-8 file read/write/delete;
-- directory listing;
-- binary file read/write using base64;
-- server-side copy/move of existing Git blobs between paths without serializing binary contents through MCP; copy may read from another ref, while atomic move/rename requires `source_ref` to resolve to the destination branch HEAD;
-- repository-scoped code search;
-- atomic multi-file commits through Git Data blobs/trees/commits;
-- atomic commit changes may use `operation: copy` to reuse an existing file blob from another ref without transporting its contents;
-- optimistic branch-head verification with `expected_head_sha`.
-
-Branches, commits, and tags:
-
-- branch list/create/delete/rename;
-- non-force fast-forward of non-protected branches;
-- guarded ancestor-only branch reset with expected-head CAS, dry-run by default, and explicit protected-branch override for intentional history repair;
-- working-branch merge while protected targets remain blocked;
-- ref comparison;
-- commit history filtered by ref/path;
-- individual commit metadata, patches, and changed-file statistics;
-- lightweight and annotated tag creation;
-- tag list/delete.
-
-Pull requests and review:
-
-- list/read/create/update same-repository PRs;
-- changed-file patches;
-- conversation comments;
-- submitted review list;
-- rich review submission (`COMMENT`, `APPROVE`, `REQUEST_CHANGES`) with inline file/line comments;
-- inline review-thread list/reply/update/resolve/unresolve;
-- reviewer request/remove operations;
-- draft PR ready-for-review transition;
-- PR branch update using GitHub GraphQL `MERGE` or true `REBASE` semantics;
-- check-run inspection and required-check validation;
-- merge with `merge`, `squash`, or `rebase` after required checks and configured independent approvals pass.
-
-Issues and CI:
-
-- list/read/create/update issues;
-- issue comments;
-- GitHub Actions workflow-run and job listing;
-- job-log diagnostics;
-- workflow file listing/download;
-- dispatch `workflow_dispatch` workflows with explicit refs/inputs;
-- rerun one job, rerun failed jobs, rerun a workflow run, and cancel a workflow run.
-
-### Development GitHub App permissions
-
-Configure the development GitHub App with only the repositories that agents are allowed to modify and grant:
-
-- **Contents: Read and write** — files, Git Data objects, refs, tags;
-- **Pull requests: Read and write** — PR lifecycle, reviews, merge;
-- **Issues: Read and write** — issue lifecycle and comments;
-- **Actions: Read and write** — workflow diagnostics plus dispatch/rerun/cancel controls;
-- **Checks: Read-only** — required-check gating.
-
-Do not grant organization/administration permissions to the app unless a later feature explicitly requires them. Branch/ruleset administration should remain a human-controlled GitHub setting.
-
-## Independent GitHub reviewer App
-
-A second GitHub App can be configured for independent review identity. This is intentionally separate from the development App so a development agent cannot satisfy an identity-specific approval requirement by approving its own PR as the same bot actor.
-
-The reviewer identity is resolved from Infisical:
-
-```text
-/github/reviewer
-├── APP_ID
-└── PRIVATE_KEY_PEM
-```
-
-The reviewer App installation is also the sole source of repository access. `github_reviewer_list_repositories` discovers its current installation repository set directly from GitHub. No reviewer repository list is duplicated in Coolify.
-
-When reviewer credentials are absent, no `github_reviewer_*` tools are registered. When configured, the reviewer surface intentionally exposes only read/review operations:
-
-- installation-backed repository discovery and status validation;
-- UTF-8 and base64 file reads;
-- directory, branches, tags, code-search, commit-history, commit and ref comparison reads;
-- PR list/metadata, changed files, comments, reviews and review-thread reads;
-- check-run, workflow-run/job and required-check reads;
-- job-log and workflow file diagnostics;
-- rich review submission with inline comments;
-- review-thread replies and resolve/unresolve operations.
-
-It does **not** expose file mutation, branch mutation, tag mutation, issue mutation, PR merge, or protected-branch operations.
-
-Recommended reviewer App permissions:
-
-- **Contents: Read-only**;
-- **Pull requests: Read and write**;
-- **Checks: Read-only**;
-- **Actions: Read-only**;
-- **Issues: Read-only** if PR conversation/issue-style metadata access requires it for the repository policy in use.
-
-A separate ChatGPT conversation by itself is not an independent GitHub identity. The second GitHub App is what makes the review actor distinct at GitHub level. A practical workflow is: development chat creates/updates the PR through `github_agent_*`; review chat inspects the diff and CI through `github_reviewer_*`; reviewer App submits `REQUEST_CHANGES` or `APPROVE`; the development App merge gate verifies the required reviewer bot login before allowing merge.
-
-## GitHub-side branch protection
-
-Bridge policy protects `main`/`master` from direct agent mutations, but GitHub itself should also enforce the rule so human tokens and other integrations cannot bypass the workflow. Configure a repository ruleset or branch protection for protected branches that requires:
-
-- changes through a pull request;
-- required CI checks such as `test` and `docker`;
-- at least one approving review;
-- dismissal/re-approval when new commits invalidate review, if desired;
-- conversation resolution before merge, if desired.
-
-Keep ruleset/branch-protection administration human-controlled rather than granting repository administration permission to either GitHub App.
+Telemetry uses a bounded background task set and does not block a successful tool call if
+the control plane is slow or unavailable.
 
 ## Project status
 
-The bridge is operational as an authenticated MCP gateway with Ghidra, a full GitHub App development workflow, and an optional independent GitHub reviewer identity.
+The bridge is operational as an authenticated MCP gateway with isolated provider runtimes,
+a persistent account control plane, explicit multi-account GitHub/GitLab selection, Files
+storage, structured curl and the Analysis facade over native Ghidra.
 
 ## License
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Literal
 
 from pydantic import Field, PrivateAttr, field_validator, model_validator
@@ -8,21 +7,15 @@ from pydantic import Field, PrivateAttr, field_validator, model_validator
 from common.models import JsonObject, JsonValue, StrictModel
 
 
-def _unbound_token_resolver(_path: str, _name: str) -> str:
-    raise RuntimeError("GitLab token resolver is not bound")
-
-
 class GitLabProfile(StrictModel):
-    _token_resolver: Callable[[str, str], str] = PrivateAttr(
-        default_factory=lambda: _unbound_token_resolver
-    )
+    _token: str = PrivateAttr(default="")
 
-    profile_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+    account_id: str = Field(min_length=1)
+    alias: str = Field(min_length=1)
     base_url: str = Field(min_length=1)
     auth_type: Literal["private_token", "bearer", "job_token"]
-    convention_path: str = Field(min_length=1)
     verify_tls: bool = True
-    ca_file: str = ""
+    ca_cert_pem: str = ""
     label: str = ""
 
     @field_validator("base_url")
@@ -31,51 +24,36 @@ class GitLabProfile(StrictModel):
         return value.rstrip("/")
 
     @property
+    def profile_id(self) -> str:
+        return self.account_id
+
+    @property
     def api_url(self) -> str:
         return self.base_url + "/api/v4"
 
-    def bind_token_resolver(
-        self,
-        resolver: Callable[[str, str], str],
-    ) -> None:
-        self._token_resolver = resolver
+    def bind_token(self, token: str) -> None:
+        value = token.strip()
+        if not value:
+            raise ValueError("GitLab credential is empty")
+        self._token = value
 
     def token(self) -> str:
-        return self._token_resolver(self.convention_path, "TOKEN")
+        if not self._token:
+            raise RuntimeError("GitLab credential is not bound")
+        return self._token
 
     def public(self) -> JsonObject:
-        return GitLabProfilePublic(
-            profile_id=self.profile_id,
-            label=self.label,
-            base_url=self.base_url,
-            api_url=self.api_url,
-            auth_type=self.auth_type,
-            credential_source={
-                "type": "infisical_convention",
-                "path": self.convention_path,
-                "secret": "TOKEN",
-            },
-            credential_configured=True,
-            verify_tls=self.verify_tls,
-            ca_file=self.ca_file or None,
-        ).to_json()
-
-
-class GitLabProfilePublic(StrictModel):
-    profile_id: str
-    label: str
-    base_url: str
-    api_url: str
-    auth_type: str
-    credential_source: JsonObject
-    credential_configured: bool
-    verify_tls: bool
-    ca_file: str | None
-
-
-class GitLabProfileListResponse(StrictModel):
-    profiles: list[GitLabProfilePublic]
-    count: int = Field(ge=0)
+        return {
+            "account_id": self.account_id,
+            "alias": self.alias,
+            "label": self.label,
+            "base_url": self.base_url,
+            "api_url": self.api_url,
+            "auth_type": self.auth_type,
+            "credential_configured": bool(self._token),
+            "verify_tls": self.verify_tls,
+            "ca_cert_pem_configured": bool(self.ca_cert_pem),
+        }
 
 
 class GitLabResponse(StrictModel):

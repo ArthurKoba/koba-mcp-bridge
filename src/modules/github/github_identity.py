@@ -3,6 +3,7 @@ from __future__ import annotations
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 
+from common.account_contracts import ResolvedAccount
 from common.models import (
     JsonContainer,
     JsonObject,
@@ -11,6 +12,7 @@ from common.models import (
     json_str,
     json_value,
 )
+from common.settings import GitHubPolicySettings
 
 from .github_actions import GitHubActionsClient
 from .github_agent import GitHubAgentError
@@ -19,6 +21,27 @@ _GITHUB_API = "https://api.github.com"
 
 
 class GitHubPrettyIdentityClient(GitHubActionsClient):
+    @classmethod
+    def from_account(
+        cls,
+        account: ResolvedAccount,
+        policy: GitHubPolicySettings,
+    ) -> GitHubPrettyIdentityClient:
+        app_id = (account.external_id or "").strip()
+        if not app_id:
+            raise GitHubAgentError("GitHub App account has no APP_ID")
+        private_key = account.credential.replace("\\n", "\n").strip()
+        if not private_key:
+            raise GitHubAgentError("GitHub App account has no private key")
+        return cls(
+            app_id=app_id,
+            private_key=private_key,
+            account_id=account.id,
+            protected_branches=policy.protected_branches,
+            required_checks=policy.required_checks,
+            required_reviewers=policy.required_reviewers,
+        )
+
     """Use the GitHub App display name for Git-authored objects.
 
     GitHub still exposes the immutable App actor login (for example
