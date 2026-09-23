@@ -324,7 +324,7 @@ def _body_source(
     if data is None:
         return None, None
     if len(data) > upload_max_bytes():
-        raise CurlError("request body exceeds ARTIFACT_UPLOAD_MAX_BYTES")
+        raise CurlError("request body exceeds FILE_UPLOAD_MAX_BYTES")
 
     store.ensure()
     fd, raw = tempfile.mkstemp(prefix="curl-body-", dir=store.tmp)
