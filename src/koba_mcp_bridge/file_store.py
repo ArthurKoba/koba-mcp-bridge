@@ -120,9 +120,12 @@ class FileStore:
         self.root = (root or _root()).resolve(strict=False)
         self.objects = self.root / "objects" / "sha256"
         self.tmp = self.root / "tmp"
-        self.database = self.root / "index.sqlite3"
+        self.database = self.root / "files.sqlite3"
+        self._previous_database = self.root / "index.sqlite3"
 
     def _migrate_pre_files_schema(self) -> None:
+        if not self.database.is_file() and self._previous_database.is_file():
+            os.replace(self._previous_database, self.database)
         if not self.database.is_file():
             return
         db = sqlite3.connect(self.database, timeout=30)
