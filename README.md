@@ -21,9 +21,22 @@ The documentation entry point is [docs/README.md](docs/README.md). It links the 
 architecture map, component catalog, repository map, roadmap, existing technical notes,
 and future architecture decision records.
 
-The documentation intentionally separates the current implementation from the target
-modular runtime direction so incremental migrations can be reviewed without treating
-the roadmap as already implemented.
+The repository is already split into independent source packages and runtime services.
+The gateway package stays intentionally small; provider implementations live in their
+own packages.
+
+## Repository layout
+
+```text
+src/
+├── mcp_bridge/      # public gateway only
+├── mcp_common/      # shared runtime/secrets primitives
+├── github_mcp/
+├── gitlab_mcp/
+├── files_mcp/
+├── http_mcp/
+└── analysis_mcp/
+```
 
 ## Architecture
 
@@ -162,7 +175,7 @@ GitHub and GitLab provider credentials are not read from legacy provider-specifi
 environment variables or JSON profile files.
 
 Deployment and migration instructions are in
-[`deploy/infisical/README.md`](deploy/infisical/README.md).
+[`docs/infisical.md`](docs/infisical.md).
 
 MCP diagnostics expose only provider/configuration status and redacted reference checks;
 there is intentionally no MCP tool that returns secret plaintext.
