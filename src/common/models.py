@@ -26,12 +26,18 @@ class StrictModel(BaseModel):
         validate_assignment=True,
     )
 
+    def to_json(self) -> JsonObject:
+        return json_object(self.model_dump(mode="json"), context=type(self).__name__)
+
 
 class ProviderModel(BaseModel):
     model_config = ConfigDict(
         extra="allow",
         strict=True,
     )
+
+    def to_json(self) -> JsonObject:
+        return json_object(self.model_dump(mode="json"), context=type(self).__name__)
 
 
 _JSON_VALUE = TypeAdapter(JsonValue)
