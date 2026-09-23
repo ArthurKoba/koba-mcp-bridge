@@ -3,11 +3,13 @@ from __future__ import annotations
 import os
 import threading
 import time
-from typing import Any
-
 from fastmcp import FastMCP
+from mcp.types import ToolAnnotations
+
+from common.models import JsonObject
 
 from .gitlab_client import GitLabClient, GitLabProfileRegistry
+from .models import GitLabCommitAction
 
 _registry_lock = threading.Lock()
 _registry_cache: tuple[float, tuple[object, ...], GitLabProfileRegistry] | None = None
@@ -85,17 +87,17 @@ def _clear_runtime_cache() -> None:
 
 def register_gitlab_tools(
     mcp: FastMCP,
-    read_annotations: Any,
-    write_annotations: Any,
-    destructive_annotations: Any,
+    read_annotations: ToolAnnotations,
+    write_annotations: ToolAnnotations,
+    destructive_annotations: ToolAnnotations,
 ) -> None:
     @mcp.tool(title="GitLab profiles", annotations=read_annotations)
-    def profiles() -> dict[str, Any]:
+    def profiles() -> JsonObject:
         """List configured GitLab connection/account profiles without exposing tokens."""
         return _registry().list()
 
     @mcp.tool(title="GitLab profile status", annotations=read_annotations)
-    def profile_status(profile_id: str) -> dict[str, Any]:
+    def profile_status(profile_id: str) -> JsonObject:
         """Verify one explicit GitLab profile and report the authenticated account."""
         return _client(profile_id).profile_status()
 
@@ -108,14 +110,14 @@ def register_gitlab_tools(
         min_access_level: int = 0,
         page: int = 1,
         per_page: int = 100,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """List projects visible to the selected GitLab profile/account."""
         return _client(profile_id).list_projects(
             search, membership, owned, min_access_level, page, per_page
         )
 
     @mcp.tool(title="GitLab project status", annotations=read_annotations)
-    def project_status(profile_id: str, project: str) -> dict[str, Any]:
+    def project_status(profile_id: str, project: str) -> JsonObject:
         """Read project metadata using a numeric project id or path_with_namespace."""
         return _client(profile_id).project_status(project)
 
@@ -125,7 +127,7 @@ def register_gitlab_tools(
         project: str,
         path: str,
         ref: str = "main",
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """Read one UTF-8 repository file."""
         return _client(profile_id).get_file(project, path, ref)
 
@@ -138,7 +140,7 @@ def register_gitlab_tools(
         recursive: bool = False,
         page: int = 1,
         per_page: int = 100,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """List repository tree entries."""
         return _client(profile_id).list_tree(
             project, path, ref, recursive, page, per_page
@@ -152,7 +154,7 @@ def register_gitlab_tools(
         ref: str = "",
         page: int = 1,
         per_page: int = 100,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """Search repository blobs inside one project."""
         return _client(profile_id).search_code(project, search, ref, page, per_page)
 
@@ -165,7 +167,7 @@ def register_gitlab_tools(
         branch: str,
         commit_message: str,
         last_commit_id: str = "",
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """Create or update one UTF-8 file on a non-protected branch."""
         return _client(profile_id).put_file(
             project, path, content, branch, commit_message, last_commit_id
@@ -179,7 +181,7 @@ def register_gitlab_tools(
         branch: str,
         commit_message: str,
         last_commit_id: str = "",
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """Delete one file on a non-protected branch."""
         return _client(profile_id).delete_file(
             project, path, branch, commit_message, last_commit_id
@@ -191,9 +193,9 @@ def register_gitlab_tools(
         project: str,
         branch: str,
         commit_message: str,
-        actions: list[dict[str, Any]],
+        actions: list[GitLabCommitAction],
         start_branch: str = "",
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """Create one atomic multi-file commit using GitLab repository commit actions."""
         return _client(profile_id).commit_actions(
             project, branch, commit_message, actions, start_branch
@@ -206,7 +208,7 @@ def register_gitlab_tools(
         search: str = "",
         page: int = 1,
         per_page: int = 100,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """List repository branches."""
         return _client(profile_id).list_branches(project, search, page, per_page)
 
@@ -216,7 +218,7 @@ def register_gitlab_tools(
         project: str,
         branch: str,
         ref: str,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """Create a non-protected branch from a ref."""
         return _client(profile_id).create_branch(project, branch, ref)
 
@@ -225,7 +227,7 @@ def register_gitlab_tools(
         profile_id: str,
         project: str,
         branch: str,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """Delete a non-protected repository branch."""
         return _client(profile_id).delete_branch(project, branch)
 
@@ -236,7 +238,7 @@ def register_gitlab_tools(
         from_ref: str,
         to_ref: str,
         straight: bool = False,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """Compare two repository refs."""
         return _client(profile_id).compare(project, from_ref, to_ref, straight)
 
@@ -249,7 +251,7 @@ def register_gitlab_tools(
         target_branch: str = "",
         page: int = 1,
         per_page: int = 100,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """List merge requests for one project."""
         return _client(profile_id).list_merge_requests(
             project,
@@ -265,7 +267,7 @@ def register_gitlab_tools(
         profile_id: str,
         project: str,
         iid: int,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """Read one merge request."""
         return _client(profile_id).get_merge_request(project, iid)
 
@@ -280,7 +282,7 @@ def register_gitlab_tools(
         remove_source_branch: bool = False,
         squash: bool = False,
         draft: bool = False,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """Create a merge request inside one GitLab project."""
         return _client(profile_id).create_merge_request(
             project,
@@ -304,7 +306,7 @@ def register_gitlab_tools(
         target_branch: str | None = None,
         remove_source_branch: bool | None = None,
         squash: bool | None = None,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """Update merge request metadata or state."""
         return _client(profile_id).update_merge_request(
             project,
@@ -328,7 +330,7 @@ def register_gitlab_tools(
         merge_when_pipeline_succeeds: bool = False,
         merge_commit_message: str = "",
         squash_commit_message: str = "",
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """Merge a merge request, optionally pinning the expected source SHA."""
         return _client(profile_id).merge_merge_request(
             project,
@@ -349,7 +351,7 @@ def register_gitlab_tools(
         search: str = "",
         page: int = 1,
         per_page: int = 100,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """List project issues."""
         return _client(profile_id).list_issues(project, state, search, page, per_page)
 
@@ -358,7 +360,7 @@ def register_gitlab_tools(
         profile_id: str,
         project: str,
         iid: int,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """Read one project issue."""
         return _client(profile_id).get_issue(project, iid)
 
@@ -369,7 +371,7 @@ def register_gitlab_tools(
         title: str,
         description: str = "",
         labels: list[str] | None = None,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """Create a project issue."""
         return _client(profile_id).create_issue(project, title, description, labels)
 
@@ -382,7 +384,7 @@ def register_gitlab_tools(
         description: str | None = None,
         state_event: str | None = None,
         labels: list[str] | None = None,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """Update project issue metadata or state."""
         return _client(profile_id).update_issue(
             project, iid, title, description, state_event, labels
@@ -394,7 +396,7 @@ def register_gitlab_tools(
         project: str,
         iid: int,
         body: str,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """Add a note/comment to an issue."""
         return _client(profile_id).add_issue_note(project, iid, body)
 
@@ -406,7 +408,7 @@ def register_gitlab_tools(
         status: str = "",
         page: int = 1,
         per_page: int = 100,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """List project pipelines."""
         return _client(profile_id).list_pipelines(project, ref, status, page, per_page)
 
@@ -417,7 +419,7 @@ def register_gitlab_tools(
         pipeline_id: int,
         page: int = 1,
         per_page: int = 100,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """List jobs for one pipeline."""
         return _client(profile_id).list_pipeline_jobs(
             project, pipeline_id, page, per_page
@@ -429,7 +431,7 @@ def register_gitlab_tools(
         project: str,
         job_id: int,
         max_chars: int = 100_000,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """Return the tail of one GitLab CI job trace."""
         return _client(profile_id).job_trace(project, job_id, max_chars)
 
@@ -438,7 +440,7 @@ def register_gitlab_tools(
         profile_id: str,
         project: str,
         pipeline_id: int,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """Retry failed/canceled jobs in a pipeline according to GitLab semantics."""
         return _client(profile_id).retry_pipeline(project, pipeline_id)
 
@@ -447,6 +449,6 @@ def register_gitlab_tools(
         profile_id: str,
         project: str,
         pipeline_id: int,
-    ) -> dict[str, Any]:
+    ) -> JsonObject:
         """Cancel a running GitLab pipeline."""
         return _client(profile_id).cancel_pipeline(project, pipeline_id)
