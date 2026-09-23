@@ -10,21 +10,12 @@ import ssl
 import threading
 import urllib.parse
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
-from .secrets import (
-    InfisicalConfig,
-    SecretError,
-    list_config_folders,
-    resolve_config_secret,
-    resolve_secret,
-)
+from .secrets import SecretError, list_config_folders, resolve_config_secret
 
 _PROFILE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
-_ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _ALLOWED_AUTH = {"private_token", "bearer", "job_token"}
-_DEFAULT_PROFILES_FILE = "/data/fastmcp/gitlab-profiles.json"
 
 
 class GitLabError(RuntimeError):
@@ -59,10 +50,7 @@ class GitLabProfile:
     profile_id: str
     base_url: str
     auth_type: str
-    token_env: str = ""
-    token_file: str = ""
-    secret_ref: str = ""
-    convention_path: str = ""
+    convention_path: str
     verify_tls: bool = True
     ca_file: str = ""
     label: str = ""
@@ -72,77 +60,26 @@ class GitLabProfile:
         return self.base_url.rstrip("/") + "/api/v4"
 
     def token(self) -> str:
-        if self.convention_path:
-            try:
-                return resolve_config_secret(self.convention_path, "TOKEN")
-            except SecretError as exc:
-                raise GitLabError(
-                    f"unable to resolve TOKEN for GitLab profile {self.profile_id!r} "
-                    f"from Infisical convention path {self.convention_path!r}: {exc}"
-                ) from exc
-        if self.secret_ref:
-            try:
-                return resolve_secret(self.secret_ref)
-            except SecretError as exc:
-                raise GitLabError(
-                    f"unable to resolve credential for GitLab profile "
-                    f"{self.profile_id!r}: {exc}"
-                ) from exc
-        if self.token_env:
-            value = os.getenv(self.token_env, "").strip()
-            if not value:
-                raise GitLabError(
-                    f"credential environment variable {self.token_env!r} is not configured "
-                    f"for GitLab profile {self.profile_id!r}"
-                )
-            return value
-        if self.token_file:
-            path = Path(self.token_file)
-            try:
-                value = path.read_text(encoding="utf-8").strip()
-            except OSError as exc:
-                raise GitLabError(
-                    f"credential file for profile {self.profile_id!r} cannot be read"
-                ) from exc
-            if not value:
-                raise GitLabError(
-                    f"credential file for profile {self.profile_id!r} is empty"
-                )
-            return value
-        raise GitLabError(f"profile {self.profile_id!r} has no credential source")
+        try:
+            return resolve_config_secret(self.convention_path, "TOKEN")
+        except SecretError as exc:
+            raise GitLabError(
+                f"unable to resolve TOKEN for GitLab profile {self.profile_id!r}: {exc}"
+            ) from exc
 
     def public(self) -> dict[str, Any]:
-        credential_configured = False
-        if self.token_env:
-            credential_configured = bool(os.getenv(self.token_env, "").strip())
-        elif self.token_file:
-            credential_configured = Path(self.token_file).is_file()
-        elif self.secret_ref or self.convention_path:
-            credential_configured = True
         return {
             "profile_id": self.profile_id,
             "label": self.label,
             "base_url": self.base_url,
             "api_url": self.api_url,
             "auth_type": self.auth_type,
-            "credential_source": (
-                {
-                    "type": "infisical_convention",
-                    "path": self.convention_path,
-                    "secret": "TOKEN",
-                }
-                if self.convention_path
-                else (
-                    {"type": "secret_ref", "reference": self.secret_ref}
-                    if self.secret_ref
-                    else (
-                        {"type": "env", "name": self.token_env}
-                        if self.token_env
-                        else {"type": "file", "path": self.token_file}
-                    )
-                )
-            ),
-            "credential_configured": credential_configured,
+            "credential_source": {
+                "type": "infisical_convention",
+                "path": self.convention_path,
+                "secret": "TOKEN",
+            },
+            "credential_configured": True,
             "verify_tls": self.verify_tls,
             "ca_file": self.ca_file or None,
         }
@@ -161,8 +98,6 @@ class GitLabProfileRegistry:
 
     @classmethod
     def _from_infisical(cls) -> list[GitLabProfile]:
-        if not InfisicalConfig.from_env().configured():
-            return []
         try:
             folders = list_config_folders("gitlab/accounts")
         except SecretError as exc:
@@ -215,34 +150,11 @@ class GitLabProfileRegistry:
         return profiles
 
     @classmethod
-    def from_env(cls) -> GitLabProfileRegistry:
-        profiles: dict[str, GitLabProfile] = {}
-
-        for profile in cls._from_infisical():
-            profiles[profile.profile_id.casefold()] = profile
-
-        items: list[dict[str, Any]] = []
-        path = os.getenv("GITLAB_PROFILES_FILE", _DEFAULT_PROFILES_FILE).strip()
-        if path and Path(path).is_file():
-            try:
-                loaded = json.loads(Path(path).read_text(encoding="utf-8"))
-            except Exception as exc:
-                raise GitLabError("GITLAB_PROFILES_FILE is not valid JSON") from exc
-            items.extend(_normalize_profile_list(loaded, "GITLAB_PROFILES_FILE"))
-
-        raw = os.getenv("GITLAB_PROFILES_JSON", "").strip()
-        if raw:
-            try:
-                loaded = json.loads(raw)
-            except json.JSONDecodeError as exc:
-                raise GitLabError("GITLAB_PROFILES_JSON is not valid JSON") from exc
-            items.extend(_normalize_profile_list(loaded, "GITLAB_PROFILES_JSON"))
-
-        for item in items:
-            profile = _parse_profile(item)
-            key = profile.profile_id.casefold()
-            if key not in profiles:
-                profiles[key] = profile
+    def from_infisical(cls) -> GitLabProfileRegistry:
+        profiles = {
+            profile.profile_id.casefold(): profile
+            for profile in cls._from_infisical()
+        }
         return cls(profiles)
 
     def list(self) -> dict[str, Any]:
@@ -258,75 +170,6 @@ class GitLabProfileRegistry:
         if profile is None:
             raise GitLabError(f"unknown GitLab profile_id: {profile_id}")
         return profile
-
-def _normalize_profile_list(value: object, source: str) -> list[dict[str, Any]]:
-    if isinstance(value, dict) and isinstance(value.get("profiles"), list):
-        value = value["profiles"]
-    if not isinstance(value, list):
-        raise GitLabError(f"{source} must contain a JSON array or {{\"profiles\": [...]}}")
-    result: list[dict[str, Any]] = []
-    for item in value:
-        if not isinstance(item, dict):
-            raise GitLabError(f"{source} profile entries must be JSON objects")
-        result.append(dict(item))
-    return result
-
-
-def _parse_profile(item: dict[str, Any]) -> GitLabProfile:
-    if "token" in item:
-        raise GitLabError(
-            "GitLab profile must not contain an inline token; use token_env or token_file"
-        )
-    profile_id = str(item.get("profile_id", "")).strip()
-    if not _PROFILE_ID_RE.fullmatch(profile_id):
-        raise GitLabError(
-            "profile_id must use letters, digits, dot, underscore or dash and be <= 128 chars"
-        )
-
-    base_url = str(item.get("base_url", "")).strip().rstrip("/")
-    parsed = urllib.parse.urlsplit(base_url)
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-        raise GitLabError(f"profile {profile_id!r} has invalid base_url")
-    if parsed.path not in {"", "/"}:
-        raise GitLabError(
-            f"profile {profile_id!r} base_url must be the GitLab origin without a path"
-        )
-
-    auth_type = str(item.get("auth_type", "private_token")).strip().casefold()
-    if auth_type not in _ALLOWED_AUTH:
-        raise GitLabError(
-            f"profile {profile_id!r} auth_type must be one of {sorted(_ALLOWED_AUTH)}"
-        )
-
-    token_env = str(item.get("token_env", "")).strip()
-    token_file = str(item.get("token_file", "")).strip()
-    secret_ref = str(item.get("secret_ref", "")).strip()
-    configured_sources = sum(bool(value) for value in (token_env, token_file, secret_ref))
-    if configured_sources != 1:
-        raise GitLabError(
-            f"profile {profile_id!r} must define exactly one credential source: "
-            "token_env, token_file, or secret_ref"
-        )
-    if token_env and not _ENV_NAME_RE.fullmatch(token_env):
-        raise GitLabError(f"profile {profile_id!r} token_env is not a valid env name")
-    if token_file and not Path(token_file).is_absolute():
-        raise GitLabError(f"profile {profile_id!r} token_file must be absolute")
-
-    verify_tls = bool(item.get("verify_tls", True))
-    ca_file = str(item.get("ca_file", "")).strip()
-    if ca_file and not Path(ca_file).is_absolute():
-        raise GitLabError(f"profile {profile_id!r} ca_file must be absolute")
-    return GitLabProfile(
-        profile_id=profile_id,
-        base_url=base_url,
-        auth_type=auth_type,
-        token_env=token_env,
-        token_file=token_file,
-        secret_ref=secret_ref,
-        verify_tls=verify_tls,
-        ca_file=ca_file,
-        label=str(item.get("label", "")).strip(),
-    )
 
 
 @dataclass
