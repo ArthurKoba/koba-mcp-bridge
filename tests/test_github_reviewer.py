@@ -11,7 +11,7 @@ from koba_mcp_bridge.github_agent import GitHubAgentError
 from koba_mcp_bridge.github_collab import GitHubCollabClient
 from koba_mcp_bridge.github_reviewer import (
     _reviewer_private_key_from_env,
-    github_reviewer_client_from_env,
+    github_reviewer_client,
     github_reviewer_configured,
 )
 from koba_mcp_bridge.github_reviewer_tools import register_github_reviewer_tools
@@ -50,7 +50,7 @@ def _unused_client() -> GitHubCollabClient:
 def test_reviewer_config_requires_only_distinct_app_credentials(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    github_reviewer_client_from_env.cache_clear()
+    github_reviewer_client.cache_clear()
     for name in (
         "GITHUB_REVIEWER_APP_ID",
         "GITHUB_REVIEWER_PRIVATE_KEY",
@@ -64,7 +64,7 @@ def test_reviewer_config_requires_only_distinct_app_credentials(
     monkeypatch.setenv("GITHUB_REVIEWER_APP_ID", "456")
     monkeypatch.setenv("GITHUB_REVIEWER_PRIVATE_KEY", "reviewer-key")
     assert github_reviewer_configured() is True
-    client = github_reviewer_client_from_env()
+    client = github_reviewer_client()
     assert client.app_id == "456"
     assert client.private_key == "reviewer-key"
 
@@ -73,7 +73,7 @@ def test_reviewer_config_requires_only_distinct_app_credentials(
 def test_reviewer_loads_convention_config_from_infisical(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    github_reviewer_client_from_env.cache_clear()
+    github_reviewer_client.cache_clear()
     monkeypatch.setattr(
         github_reviewer,
         "resolve_config_secret",
@@ -83,7 +83,7 @@ def test_reviewer_loads_convention_config_from_infisical(
         }[(path, name)],
     )
 
-    client = github_reviewer_client_from_env()
+    client = github_reviewer_client()
 
     assert client.app_id == "888"
     assert client.private_key == "reviewer-pem"
@@ -199,7 +199,7 @@ async def test_reviewer_tool_surface_excludes_development_mutations() -> None:
 def test_reviewer_infisical_failure_preserves_source(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    github_reviewer_client_from_env.cache_clear()
+    github_reviewer_client.cache_clear()
 
     def fail_secret(path: str, name: str) -> str:
         del path, name
