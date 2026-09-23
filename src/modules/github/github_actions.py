@@ -19,7 +19,7 @@ from common.models import (
 from .github_agent import GitHubAgentError
 from .github_collab import GitHubCollabClient, required_reviewer_logins_from_env
 from .github_history import GitHubHistoryMixin
-from .github_workflow import protected_branches_from_env
+from .policy import protected_branches_from_env
 
 _GITHUB_API = "https://api.github.com"
 _MAX_LOG_BYTES = 8 * 1024 * 1024

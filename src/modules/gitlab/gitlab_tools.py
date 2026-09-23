@@ -4,8 +4,11 @@ import os
 import threading
 import time
 
-from fastmcp import FastMCP
-from mcp.types import ToolAnnotations
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from fastmcp import FastMCP
+    from mcp.types import ToolAnnotations
 
 from common.models import JsonObject
 

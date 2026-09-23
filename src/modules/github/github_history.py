@@ -16,7 +16,7 @@ from common.models import (
 )
 
 from .github_agent import GitHubAgentError
-from .github_workflow import protected_branches_from_env
+from .policy import protected_branches_from_env
 
 _GITHUB_API = "https://api.github.com"
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import os
 import urllib.parse
 from collections.abc import Mapping, Sequence
 
@@ -18,12 +17,11 @@ from common.models import (
     json_member_object,
     json_str,
 )
-from common.secrets import SecretError, resolve_config_secret
 
 from .github_agent import GitHubAgentError, GitHubAppClient
 from .models import AtomicChange, CopySpec
+from .policy import protected_branches_from_env, require_mutable_branch
 
-_DEFAULT_PROTECTED_BRANCHES = "main,master"
 _DEFAULT_REQUIRED_CHECKS = "test,docker"
 
 
@@ -53,14 +51,7 @@ class GitHubDevClient(GitHubAppClient):
     """Development-oriented GitHub App client with repository policy guardrails."""
 
     def _assert_mutable_branch(self, branch: str) -> str:
-        branch = branch.strip()
-        if not branch:
-            raise GitHubAgentError("branch must not be empty")
-        if branch.casefold() in protected_branches_from_env():
-            raise GitHubAgentError(
-                f"direct mutation of protected branch is disabled: {branch}; use a pull request"
-            )
-        return branch
+        return require_mutable_branch(branch)
 
     @staticmethod
     def _quote(value: str) -> str:

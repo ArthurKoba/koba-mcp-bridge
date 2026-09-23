@@ -12,7 +12,7 @@ from common.models import (
 
 from .github_actions import GitHubActionsClient
 from .github_agent import GitHubAgentError
-from .github_workflow import protected_branches_from_env
+from .policy import protected_branches_from_env
 
 
 def _tree_sha(commit: JsonObject) -> str:

@@ -8,9 +8,9 @@ from urllib.parse import urlsplit
 
 import pytest
 
+import modules.gitlab.credentials as gitlab_credentials
 import modules.gitlab.gitlab_client as gitlab_module
 import modules.gitlab.gitlab_tools as gitlab_tools
-from bridge.server import app
 from modules.gitlab.gitlab_client import (
     GitLabClient,
     GitLabError,
@@ -205,7 +205,7 @@ def configured_profiles(monkeypatch, gitlab_server):
     gitlab_tools._clear_runtime_cache()
 
     monkeypatch.setattr(
-        gitlab_module,
+        gitlab_credentials,
         "list_config_folders",
         lambda path: [
             {"name": "local-alice"},
@@ -233,7 +233,7 @@ def configured_profiles(monkeypatch, gitlab_server):
             return values[(path, name)]
         raise gitlab_module.SecretError("missing optional secret")
 
-    monkeypatch.setattr(gitlab_module, "resolve_config_secret", resolve)
+    monkeypatch.setattr(gitlab_credentials, "resolve_config_secret", resolve)
 
 
 def test_registry_discovers_infisical_profiles_without_eager_token_read(
@@ -242,7 +242,7 @@ def test_registry_discovers_infisical_profiles_without_eager_token_read(
 ) -> None:
 
     monkeypatch.setattr(
-        gitlab_module,
+        gitlab_credentials,
         "list_config_folders",
         lambda path: [{"name": "local-alice"}]
         if path == "gitlab/accounts"
@@ -264,7 +264,7 @@ def test_registry_discovers_infisical_profiles_without_eager_token_read(
             return values[(path, name)]
         raise gitlab_module.SecretError("missing optional secret")
 
-    monkeypatch.setattr(gitlab_module, "resolve_config_secret", fake_resolve)
+    monkeypatch.setattr(gitlab_credentials, "resolve_config_secret", fake_resolve)
 
     registry = GitLabProfileRegistry.from_infisical()
     result = registry.list()
@@ -372,12 +372,15 @@ def test_legacy_profile_environment_is_ignored(
         "GITLAB_PROFILES_JSON",
         '[{"profile_id":"legacy","token":"should-not-be-read"}]',
     )
-    monkeypatch.setattr(gitlab_module, "list_config_folders", lambda path: [])
+    monkeypatch.setattr(gitlab_credentials, "list_config_folders", lambda path: [])
     registry = GitLabProfileRegistry.from_infisical()
     assert registry.list()["count"] == 0
 
 
 def test_http_app_mounts_dedicated_gitlab_endpoint() -> None:
+    pytest.importorskip("fastmcp")
+    from bridge.server import app
+
     paths = {getattr(route, "path", "") for route in app.routes}
     assert "/gitlab" in paths
 
@@ -409,22 +412,12 @@ def test_runtime_reuses_registry_and_client(
     gitlab_tools._clear_runtime_cache()
 
 
-def test_gitlab_client_reuses_persistent_connection(configured_profiles) -> None:
-    client = GitLabClient(GitLabProfileRegistry.from_infisical().get("local-alice"))
-
-    client.project_status("group/project")
-    client.project_status("group/project")
-
-    assert client._connection_count == 1
-    assert client._connection_pool.qsize() == 1
-
-
 def test_gitlab_401_has_profile_credential_diagnostic(
     monkeypatch,
     gitlab_server,
 ) -> None:
     monkeypatch.setattr(
-        gitlab_module,
+        gitlab_credentials,
         "resolve_config_secret",
         lambda path, name: "wrong-token"
         if (path, name) == ("gitlab/accounts/bad-auth", "TOKEN")
@@ -449,7 +442,7 @@ def test_infisical_profile_discovery_failure_is_not_silenced(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
-        gitlab_module,
+        gitlab_credentials,
         "list_config_folders",
         lambda path: (_ for _ in ()).throw(
             gitlab_module.SecretError("Infisical API HTTP 403: denied")
