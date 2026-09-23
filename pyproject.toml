@@ -11,9 +11,6 @@ dependencies = [
   "mcp[cli]>=2,<3",
   "PyJWT[crypto]>=2.10,<3",
   "uvicorn>=0.35,<1",
-  "opentelemetry-distro>=0.58b0,<1",
-  "opentelemetry-exporter-otlp-proto-grpc>=1.37,<2",
-  "opentelemetry-instrumentation-asgi>=0.58b0,<1",
 ]
 
 [dependency-groups]
@@ -29,13 +26,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = [
-  "src/mcp_bridge",
-  "src/mcp_common",
-  "src/github_mcp",
-  "src/gitlab_mcp",
-  "src/files_mcp",
-  "src/http_mcp",
-  "src/analysis_mcp",
+  "src/bridge",
+  "src/common",
+  "src/modules",
 ]
 
 [tool.pytest.ini_options]
@@ -50,4 +43,4 @@ target-version = "py313"
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.ruff.lint.per-file-ignores]
-"src/github_mcp/github_workflow.py" = ["E501"]
+"src/modules/github/github_workflow.py" = ["E501"]
