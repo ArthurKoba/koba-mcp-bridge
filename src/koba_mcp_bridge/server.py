@@ -66,19 +66,16 @@ def _build_auth() -> tuple[GitHubProvider | None, list[AuthMiddleware]]:
     return provider, [AuthMiddleware(auth=_github_user_allowed)]
 
 
-def _required_backend_url(name: str) -> str:
-    value = os.getenv(name, "").strip()
-    if not value:
-        raise RuntimeError(f"{name} is required")
-    return value
+def _backend_url(name: str, default: str) -> str:
+    return os.getenv(name, default).strip() or default
 
 
 def _configured_backends() -> dict[str, str]:
     return {
-        "github": _required_backend_url("GITHUB_MCP_URL"),
-        "files": _required_backend_url("FILES_MCP_URL"),
-        "http": _required_backend_url("HTTP_MCP_URL"),
-        "analysis": _required_backend_url("ANALYSIS_MCP_URL"),
+        "github": _backend_url("GITHUB_MCP_URL", "http://github-mcp:8000/mcp"),
+        "files": _backend_url("FILES_MCP_URL", "http://files-mcp:8000/mcp"),
+        "http": _backend_url("HTTP_MCP_URL", "http://http-mcp:8000/mcp"),
+        "analysis": _backend_url("ANALYSIS_MCP_URL", "http://analysis-mcp:8000/mcp"),
     }
 
 
@@ -116,7 +113,7 @@ gitlab_mcp = FastMCP(
 )
 
 gitlab_proxy = create_proxy(
-    _required_backend_url("GITLAB_MCP_URL"),
+    _backend_url("GITLAB_MCP_URL", "http://gitlab-mcp:8000/mcp"),
     name="gitlab-backend",
     mode="auto",
 )
