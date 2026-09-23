@@ -100,7 +100,7 @@ class GitHubAppClient:
     )
 
     @classmethod
-    def from_env(cls) -> GitHubAppClient:
+    def from_infisical(cls) -> GitHubAppClient:
         return cls(
             app_id=_development_app_id(),
             private_key=_development_private_key(),
