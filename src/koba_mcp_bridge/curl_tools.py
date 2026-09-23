@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from .artifact_store import ArtifactStore, upload_max_bytes
+from .file_store import FileStore, upload_max_bytes
 
 
 class CurlError(ValueError):
@@ -264,10 +264,10 @@ def _body_source(
     body_json: dict[str, Any] | list[Any] | None,
     body_form: dict[str, Any] | None,
     body_base64: str | None,
-    body_artifact_id: str | None,
+    body_file_id: str | None,
     body_content_type: str,
     headers: dict[str, str],
-    store: ArtifactStore,
+    store: FileStore,
 ) -> tuple[Path | None, Path | None]:
     supplied = sum(
         value is not None and value != ""
@@ -276,25 +276,25 @@ def _body_source(
             body_json,
             body_form,
             body_base64,
-            body_artifact_id,
+            body_file_id,
         )
     )
     if supplied > 1:
         raise CurlError(
             "only one body source may be used: body_text, body_json, body_form, "
-            "body_base64, or body_artifact_id"
+            "body_base64, or body_file_id"
         )
 
     content_type = body_content_type.strip()
-    if body_artifact_id:
-        artifact = store.info(body_artifact_id)
+    if body_file_id:
+        file = store.info(body_file_id)
         if content_type and not _has_header(headers, "Content-Type"):
             headers["Content-Type"] = content_type
         elif not _has_header(headers, "Content-Type"):
-            mime = str(artifact.get("mime_type", "")).strip()
+            mime = str(file.get("mime_type", "")).strip()
             if mime:
                 headers["Content-Type"] = mime
-        return store.path_for(body_artifact_id), None
+        return store.path_for(body_file_id), None
 
     data: bytes | None = None
     if body_json is not None:
@@ -452,7 +452,7 @@ def _preview(
     }
 
 
-def _safe_artifact_name(name: str) -> str:
+def _safe_file_name(name: str) -> str:
     value = Path(name.replace("\\", "/")).name.strip()
     value = "".join(ch for ch in value if ord(ch) >= 32 and ch not in {"/", "\\"})
     if not value:
@@ -467,17 +467,17 @@ def _response_filename(
     fallback: str,
 ) -> str:
     if explicit.strip():
-        return _safe_artifact_name(explicit)
+        return _safe_file_name(explicit)
     values = _header_values(block, "Content-Disposition")
     if values:
         message = Message()
         message["content-disposition"] = values[-1]
         filename = message.get_filename()
         if filename:
-            return _safe_artifact_name(filename)
+            return _safe_file_name(filename)
     path_name = Path(urlsplit(final_url).path).name
     if path_name:
-        return _safe_artifact_name(path_name)
+        return _safe_file_name(path_name)
     return fallback
 
 
@@ -575,7 +575,7 @@ def _execute_curl(
     body_json: dict[str, Any] | list[Any] | None,
     body_form: dict[str, Any] | None,
     body_base64: str | None,
-    body_artifact_id: str | None,
+    body_file_id: str | None,
     body_content_type: str,
     preset: str,
     follow_redirects: bool,
@@ -587,7 +587,7 @@ def _execute_curl(
     max_response_bytes: int,
     forward_sensitive_headers_on_redirect: bool,
 ) -> tuple[dict[str, Any], Path, Path]:
-    store = ArtifactStore()
+    store = FileStore()
     store.ensure()
     clean_method = _validate_method(method)
     final_request_url = _with_query(_validate_url(url), query)
@@ -597,7 +597,7 @@ def _execute_curl(
         body_json=body_json,
         body_form=body_form,
         body_base64=body_base64,
-        body_artifact_id=body_artifact_id,
+        body_file_id=body_file_id,
         body_content_type=body_content_type,
         headers=merged,
         store=store,
@@ -876,7 +876,7 @@ def curl_request_impl(
     body_json: dict[str, Any] | list[Any] | None = None,
     body_form: dict[str, Any] | None = None,
     body_base64: str | None = None,
-    body_artifact_id: str | None = None,
+    body_file_id: str | None = None,
     body_content_type: str = "",
     preset: str = DEFAULT_CURL_PRESET,
     follow_redirects: bool = True,
@@ -904,7 +904,7 @@ def curl_request_impl(
         body_json=body_json,
         body_form=body_form,
         body_base64=body_base64,
-        body_artifact_id=body_artifact_id,
+        body_file_id=body_file_id,
         body_content_type=body_content_type,
         preset=preset,
         follow_redirects=follow_redirects,
@@ -939,9 +939,9 @@ def curl_download_impl(
     body_json: dict[str, Any] | list[Any] | None = None,
     body_form: dict[str, Any] | None = None,
     body_base64: str | None = None,
-    body_artifact_id: str | None = None,
+    body_file_id: str | None = None,
     body_content_type: str = "",
-    artifact_name: str = "",
+    file_name: str = "",
     preset: str = DEFAULT_CURL_PRESET,
     follow_redirects: bool = True,
     max_redirects: int = 10,
@@ -964,7 +964,7 @@ def curl_download_impl(
         body_json=body_json,
         body_form=body_form,
         body_base64=body_base64,
-        body_artifact_id=body_artifact_id,
+        body_file_id=body_file_id,
         body_content_type=body_content_type,
         preset=preset,
         follow_redirects=follow_redirects,
@@ -998,27 +998,27 @@ def curl_download_impl(
             diagnostic = _http_status_diagnostic(status)
             hint = diagnostic["error_hint"] if diagnostic else f"HTTP {status}"
             raise CurlError(
-                f"HTTP response was not stored as an artifact: {hint}"
+                f"HTTP response was not stored as a file: {hint}"
             )
         size = output_path.stat().st_size
         if size > max_bytes:
             raise CurlError("download exceeded max_bytes")
         name = _response_filename(
-            artifact_name,
+            file_name,
             final_url,
             final_block,
             "download.bin",
         )
         ctype = _content_type(final_block, metadata)
-        store = ArtifactStore()
-        artifact = store.put_file(
+        store = FileStore()
+        file = store.put_file(
             output_path,
             name=name,
             mime_type=ctype,
             source="curl-download",
             consume=True,
         )
-        with store.path_for(str(artifact["artifact_id"])).open("rb") as handle:
+        with store.path_for(str(file["file_id"])).open("rb") as handle:
             data = handle.read(max(0, min(preview_bytes, 64 * 1024)))
         return {
             "status": status,
@@ -1031,7 +1031,7 @@ def curl_download_impl(
             "response_headers": (final_block or {}).get("headers", []),
             "set_cookies": _header_values(final_block, "Set-Cookie"),
             "content_type": ctype,
-            "artifact": artifact,
+            "file": file,
             "curl_exit_code": exit_code,
             "curl_error": str(metadata.get("curl_error") or ""),
             **_preview(data, final_block, metadata, preview_bytes),
@@ -1051,9 +1051,9 @@ def curl_stream_capture_impl(
     body_json: dict[str, Any] | list[Any] | None = None,
     body_form: dict[str, Any] | None = None,
     body_base64: str | None = None,
-    body_artifact_id: str | None = None,
+    body_file_id: str | None = None,
     body_content_type: str = "",
-    artifact_name: str = "",
+    file_name: str = "",
     preset: str = DEFAULT_CURL_PRESET,
     follow_redirects: bool = True,
     max_redirects: int = 10,
@@ -1072,7 +1072,7 @@ def curl_stream_capture_impl(
     if max_bytes <= 0 or max_bytes > upload_max_bytes():
         raise CurlError(f"max_bytes must be between 1 and {upload_max_bytes()}")
 
-    store = ArtifactStore()
+    store = FileStore()
     store.ensure()
     clean_method = _validate_method(method)
     request_url = _with_query(_validate_url(url), query)
@@ -1082,7 +1082,7 @@ def curl_stream_capture_impl(
         body_json=body_json,
         body_form=body_form,
         body_base64=body_base64,
-        body_artifact_id=body_artifact_id,
+        body_file_id=body_file_id,
         body_content_type=body_content_type,
         headers=merged,
         store=store,
@@ -1175,20 +1175,20 @@ def curl_stream_capture_impl(
 
     try:
         name = _response_filename(
-            artifact_name,
+            file_name,
             final_url,
             final_block,
             "stream-capture.bin",
         )
         ctype = _content_type(final_block, metadata)
-        artifact = store.put_file(
+        file = store.put_file(
             output_path,
             name=name,
             mime_type=ctype,
             source="curl-stream-capture",
             consume=True,
         )
-        with store.path_for(str(artifact["artifact_id"])).open("rb") as handle:
+        with store.path_for(str(file["file_id"])).open("rb") as handle:
             data = handle.read(max(0, min(preview_bytes, 64 * 1024)))
         return {
             "status": status,
@@ -1202,7 +1202,7 @@ def curl_stream_capture_impl(
             "response_headers": (final_block or {}).get("headers", []),
             "set_cookies": _header_values(final_block, "Set-Cookie"),
             "content_type": ctype,
-            "artifact": artifact,
+            "file": file,
             "curl_exit_code": int(proc.returncode or 0),
             "curl_error": stderr.strip(),
             "error": (
