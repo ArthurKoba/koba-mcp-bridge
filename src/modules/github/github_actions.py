@@ -6,6 +6,15 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from common.models import (
+    json_bool,
+    json_int,
+    json_member_array,
+    json_member_object,
+    json_object,
+    json_str,
+)
+
 from common.models import json_bool, json_int, json_member_array, json_member_object, json_str
 
 from .github_agent import GitHubAgentError
@@ -188,7 +197,7 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
             raise GitHubAgentError(f"GitHub download transport error: {exc.reason}") from exc
 
         with response:
-            data = response.read(max_bytes + 1)
+            data = bytes(response.read(max_bytes + 1))
         if len(data) > max_bytes:
             raise GitHubAgentError(
                 f"download exceeds MCP safety limit of {max_bytes} bytes"

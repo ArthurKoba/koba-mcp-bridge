@@ -2,6 +2,15 @@ from __future__ import annotations
 
 import os
 
+from common.models import (
+    json_bool,
+    json_int,
+    json_member_array,
+    json_member_object,
+    json_object,
+    json_str,
+)
+
 from common.models import json_int, json_member_array, json_member_object, json_str
 
 from .github_agent import GitHubAgentError
@@ -204,7 +213,7 @@ class GitHubCollabClient(GitHubReviewClient):
             raise GitHubAgentError("unexpected review comment update response")
         return {
             "repository": repository,
-            "comment_id": int(result.get("id", comment_id)),
+            "comment_id": json_int(result.get("id"), default=comment_id),
             "body": json_str(result.get("body")),
             "html_url": json_str(result.get("html_url")),
         }
@@ -229,7 +238,7 @@ class GitHubCollabClient(GitHubReviewClient):
             "repository": repository,
             "number": number,
             "comment_id": json_int(result.get("id")),
-            "in_reply_to_id": int(result.get("in_reply_to_id", comment_id)),
+            "in_reply_to_id": json_int(result.get("in_reply_to_id"), default=comment_id),
             "html_url": json_str(result.get("html_url")),
         }
 
