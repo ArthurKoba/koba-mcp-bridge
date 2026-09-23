@@ -12,11 +12,13 @@ from fastmcp.server.middleware import AuthMiddleware
 from starlette.applications import Starlette
 
 from common.config import env_bool, env_list
+from common.models import JsonObject
 from common.runtime_annotations import READ_EXTERNAL, READ_ONLY_LOCAL
 from common.secrets import SecretError, resolve_config_secret
 from common.secrets_tools import register_secrets_tools
 
 from . import __version__
+from .models import BridgeBuildInfo, BridgeCapabilities, BridgePing
 
 _STARTED_AT = datetime.now(UTC).isoformat()
 _CHATGPT_OAUTH_REDIRECT = "https://chatgpt.com/connector_platform_oauth_redirect"
@@ -151,32 +153,29 @@ _mount_aggregate_backends(mcp, _BACKENDS)
 
 
 @mcp.tool(title="Bridge ping", annotations=READ_ONLY_LOCAL)
-def bridge_ping() -> dict[str, str]:
-    return {
-        "status": "ok",
-        "service": "mcp-bridge",
-        "version": __version__,
-        "time": datetime.now(UTC).isoformat(),
-    }
+def bridge_ping() -> JsonObject:
+    return BridgePing(
+        version=__version__,
+        time=datetime.now(UTC).isoformat(),
+    ).to_json()
 
 
 @mcp.tool(title="Bridge build info", annotations=READ_ONLY_LOCAL)
-def bridge_build_info() -> dict[str, str]:
-    return {
-        "service": "mcp-bridge",
-        "version": __version__,
-        "commit": os.getenv("BUILD_SHA", "unknown"),
-        "built_at": os.getenv("BUILD_TIME", "unknown"),
-        "started_at": _STARTED_AT,
-        "python": platform.python_version(),
-    }
+def bridge_build_info() -> JsonObject:
+    return BridgeBuildInfo(
+        version=__version__,
+        commit=os.getenv("BUILD_SHA", "unknown"),
+        built_at=os.getenv("BUILD_TIME", "unknown"),
+        started_at=_STARTED_AT,
+        python=platform.python_version(),
+    ).to_json()
 
 
 @mcp.tool(title="Bridge capabilities", annotations=READ_ONLY_LOCAL)
-def bridge_capabilities() -> dict[str, object]:
-    return {
-        "backends": sorted(_BACKENDS),
-        "public_surfaces": [
+def bridge_capabilities() -> JsonObject:
+    return BridgeCapabilities(
+        backends=sorted(_BACKENDS),
+        public_surfaces=[
             "/mcp",
             "/github/mcp",
             "/gitlab/mcp",
@@ -184,7 +183,7 @@ def bridge_capabilities() -> dict[str, object]:
             "/http/mcp",
             "/analysis/mcp",
         ],
-        "features": [
+        features=[
             "mcp",
             "streamable-http",
             "gateway",
@@ -195,8 +194,7 @@ def bridge_capabilities() -> dict[str, object]:
             "curl",
             "analysis",
         ],
-        "status": "active",
-    }
+    ).to_json()
 
 
 register_secrets_tools(mcp, READ_EXTERNAL)

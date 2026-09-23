@@ -13,7 +13,7 @@ from .gitlab_client import GitLabClient, GitLabProfileRegistry
 from .models import GitLabCommitAction
 
 _registry_lock = threading.Lock()
-_registry_cache: tuple[float, tuple[object, ...], GitLabProfileRegistry] | None = None
+_registry_cache: tuple[float, tuple[str, ...], GitLabProfileRegistry] | None = None
 _client_cache: dict[str, GitLabClient] = {}
 
 
@@ -30,7 +30,7 @@ def _cache_ttl_seconds() -> float:
     return value
 
 
-def _registry_fingerprint() -> tuple[object, ...]:
+def _registry_fingerprint() -> tuple[str, ...]:
     return (
         os.getenv("INFISICAL_HOST", ""),
         os.getenv("INFISICAL_PROJECT_ID", ""),
