@@ -12,8 +12,8 @@ from fastmcp.server.auth.providers.github import GitHubProvider
 from fastmcp.server.middleware import AuthMiddleware
 
 from . import __version__
-from .file_tools import register_file_tools
 from .curl_mcp_tools import register_curl_tools
+from .file_tools import register_file_tools
 from .github_actions_tools import register_github_actions_tools
 from .github_agent import github_agent_configured
 from .github_collab_tools import register_github_collab_tools
