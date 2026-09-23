@@ -66,12 +66,12 @@ async def test_http_runtime_surface_is_isolated() -> None:
 
 
 @pytest.mark.asyncio
-async def test_analysis_runtime_surface_is_isolated() -> None:
+async def test_analysis_runtime_surface_is_dynamic_and_isolated() -> None:
     names = await _tool_names(analysis)
 
-    assert "ghidra_import_file" in names
-    assert "ghidra_project_sources" in names
-    assert "ghidra_export_program_file" in names
+    assert "ghidra_import_file" not in names
+    assert "ghidra_project_sources" not in names
+    assert "ghidra_export_program_file" not in names
     assert "file_status" not in names
     assert "curl_request" not in names
     assert "github_agent_status" not in names
