@@ -16,7 +16,6 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  COOLIFY_DEPLOY_WEBHOOK: https://coolify.koba-nexus.ru/api/v1/deploy?uuid=zrz6vt5ehhocswhv0kx8pboh&force=false
 
 jobs:
   publish:
@@ -67,18 +66,3 @@ jobs:
             BUILD_TIME=${{ steps.buildmeta.outputs.built_at }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-  deploy:
-    needs: publish
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy with Coolify
-        env:
-          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
-        shell: bash
-        run: |
-          curl --fail-with-body --silent --show-error \
-            --request POST \
-            --header "Authorization: Bearer ${COOLIFY_API_TOKEN}" \
-            --header "Accept: application/json" \
-            "${COOLIFY_DEPLOY_WEBHOOK}"
