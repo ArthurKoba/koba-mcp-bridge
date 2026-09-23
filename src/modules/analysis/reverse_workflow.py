@@ -110,7 +110,7 @@ def _backend_model[BackendModel: BackendStatus](
 
 
 class _ToolClient(Protocol):
-    async def call_tool(self, name: str, arguments: dict[str, object]) -> object: ...
+    async def call_tool(self, name: str, arguments: JsonObject) -> object: ...
 
 
 async def _cancel_stage(client: _ToolClient, project_id: str, stage_id: str) -> None:

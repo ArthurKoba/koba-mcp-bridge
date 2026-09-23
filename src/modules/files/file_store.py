@@ -460,7 +460,7 @@ class FileStore:
         if limit <= 0 or limit > 1000:
             raise FileError("limit must be between 1 and 1000")
         self.ensure()
-        params: list[object] = []
+        params: list[str | int] = []
         where = ""
         if query.strip():
             where = """
@@ -633,7 +633,7 @@ class FileStore:
     ) -> builtins.list[JsonObject]:
         self.ensure()
         clauses = []
-        params: list[object] = []
+        params: list[str | int] = []
         if consumer_type.strip():
             clauses.append("consumer_type = ?")
             params.append(consumer_type.strip())
@@ -792,7 +792,7 @@ class FileStore:
             raise FileError("invalid collection pagination")
         self.ensure()
         where = "collection_id = ?"
-        params: list[object] = [collection_id]
+        params: list[str | int] = [collection_id]
         if prefix.strip():
             where += " AND path LIKE ?"
             params.append(f"{prefix.strip()}%")

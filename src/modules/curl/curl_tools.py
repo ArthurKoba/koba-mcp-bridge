@@ -844,7 +844,7 @@ def _http_result(
     exit_code = _json_int(metadata.get("curl_exit_code"), field="curl_exit_code")
     truncated = bool(exit_code == 63 or size >= response_max_bytes)
     data = output_path.read_bytes() if output_path.is_file() else b""
-    result: dict[str, object] = {
+    result: JsonObject = {
         "status": status,
         "ok": 200 <= status < 400 and exit_code == 0,
         "final_url": final_url,

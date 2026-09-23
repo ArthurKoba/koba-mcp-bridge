@@ -471,7 +471,7 @@ class FileUploadManager:
 
         self.ensure()
         where = ""
-        params: list[object] = []
+        params: list[str | int] = []
         if clean_state:
             where = "WHERE state = ?"
             params.append(clean_state)
