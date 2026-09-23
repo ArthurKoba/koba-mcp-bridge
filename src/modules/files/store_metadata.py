@@ -5,8 +5,8 @@ import base64
 from common.models import JsonObject
 
 from .file_primitives import (
-    FileError,
     _DEFAULT_READ_CHUNK,
+    FileError,
     normalize_file_id,
     size_display,
 )
