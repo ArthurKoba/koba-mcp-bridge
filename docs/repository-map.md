@@ -26,7 +26,7 @@ koba-mcp-bridge/
 
 ### Server composition
 
-- `server.py` — authenticated gateway with embedded rollback mode and proxy mode for isolated runtimes.
+- `server.py` — authenticated edge gateway that proxies isolated runtimes and exposes aggregate/dedicated MCP surfaces.
 
 ### Files data plane
 
