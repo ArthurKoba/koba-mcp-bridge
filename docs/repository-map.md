@@ -5,7 +5,7 @@ This is a navigation guide for the current repository, not a permanent package l
 ## Top level
 
 ```text
-koba-mcp-bridge/
+mcp-bridge/
 ├── .github/              GitHub CI/CD and collaboration policy
 ├── deploy/               deployment/runtime support files
 ├── docs/                 architecture and operational documentation
@@ -82,7 +82,7 @@ A likely future monorepo shape is:
 
 ```text
 src/
-├── koba_common/
+├── mcp_common/
 ├── gateway/
 ├── secrets/
 └── connectors/
