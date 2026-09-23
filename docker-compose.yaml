@@ -1,21 +1,126 @@
+x-koba-environment: &koba-environment
+  FILE_ROOT: /files
+  INFISICAL_HOST: ${INFISICAL_HOST:-}
+  INFISICAL_PROJECT_ID: ${INFISICAL_PROJECT_ID:-}
+  INFISICAL_ENVIRONMENT: ${INFISICAL_ENVIRONMENT:-prod}
+  INFISICAL_BASE_PATH: ${INFISICAL_BASE_PATH:-/}
+  INFISICAL_CLIENT_ID: ${INFISICAL_CLIENT_ID:-}
+  INFISICAL_CLIENT_SECRET: ${INFISICAL_CLIENT_SECRET:-}
+  INFISICAL_VERIFY_TLS: ${INFISICAL_VERIFY_TLS:-true}
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+  OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+  OTEL_TRACES_EXPORTER: otlp
+  OTEL_METRICS_EXPORTER: otlp
+  OTEL_LOGS_EXPORTER: otlp
+  OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED: "true"
+
+x-koba-service: &koba-service
+  build: .
+  restart: unless-stopped
+  depends_on:
+    - otel-collector
+
 services:
-  bridge:
-    build: .
-    restart: unless-stopped
+  gateway:
+    <<: *koba-service
     ports:
       - "8000:8000"
+    command:
+      - /app/.venv/bin/opentelemetry-instrument
+      - /app/.venv/bin/uvicorn
+      - koba_mcp_bridge.server:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
     environment:
-      OTEL_SERVICE_NAME: koba-mcp-bridge
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
-      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
-      OTEL_TRACES_EXPORTER: otlp
-      OTEL_METRICS_EXPORTER: otlp
-      OTEL_LOGS_EXPORTER: otlp
-      OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED: "true"
+      <<: *koba-environment
+      OTEL_SERVICE_NAME: koba-mcp-gateway
+      KOBA_GATEWAY_MODE: proxy
+      GITHUB_MCP_URL: http://github-mcp:8000/mcp
+      GITLAB_MCP_URL: http://gitlab-mcp:8000/mcp
+      FILES_MCP_URL: http://files-mcp:8000/mcp
+      HTTP_MCP_URL: http://http-mcp:8000/mcp
+      GHIDRA_MCP_URL: ${GHIDRA_MCP_URL:-http://ghidra-mcp:8081/mcp}
+      OAUTH_ENABLED: ${OAUTH_ENABLED:-false}
+      OAUTH_BASE_URL: ${OAUTH_BASE_URL:-https://mcp.koba-nexus.ru}
     volumes:
       - koba-files:/files
+      - koba-fastmcp:/data/fastmcp
     depends_on:
+      - github-mcp
+      - gitlab-mcp
+      - files-mcp
+      - http-mcp
       - otel-collector
+
+  github-mcp:
+    <<: *koba-service
+    expose:
+      - "8000"
+    command:
+      - /app/.venv/bin/opentelemetry-instrument
+      - /app/.venv/bin/uvicorn
+      - koba_mcp_bridge.github_runtime:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    environment:
+      <<: *koba-environment
+      OTEL_SERVICE_NAME: koba-github-mcp
+
+  gitlab-mcp:
+    <<: *koba-service
+    expose:
+      - "8000"
+    command:
+      - /app/.venv/bin/opentelemetry-instrument
+      - /app/.venv/bin/uvicorn
+      - koba_mcp_bridge.gitlab_runtime:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    environment:
+      <<: *koba-environment
+      OTEL_SERVICE_NAME: koba-gitlab-mcp
+
+  files-mcp:
+    <<: *koba-service
+    expose:
+      - "8000"
+    command:
+      - /app/.venv/bin/opentelemetry-instrument
+      - /app/.venv/bin/uvicorn
+      - koba_mcp_bridge.files_runtime:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    environment:
+      <<: *koba-environment
+      OTEL_SERVICE_NAME: koba-files-mcp
+    volumes:
+      - koba-files:/files
+
+  http-mcp:
+    <<: *koba-service
+    expose:
+      - "8000"
+    command:
+      - /app/.venv/bin/opentelemetry-instrument
+      - /app/.venv/bin/uvicorn
+      - koba_mcp_bridge.http_runtime:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    environment:
+      <<: *koba-environment
+      OTEL_SERVICE_NAME: koba-http-mcp
+    volumes:
+      - koba-files:/files
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
@@ -27,3 +132,5 @@ services:
 volumes:
   koba-files:
     name: koba-files
+  koba-fastmcp:
+    name: koba-fastmcp
