@@ -11,7 +11,7 @@ The project is designed around a few core ideas:
 - expose local and self-hosted tools through one MCP endpoint;
 - aggregate other MCP servers behind a single OAuth boundary;
 - keep long-running or compute-heavy work outside the chat process;
-- persist task state, logs, artifacts, and errors so work can survive interrupted sessions;
+- persist task state, logs, files, and errors so work can survive interrupted sessions;
 - isolate workers and constrain CPU, memory, storage, network, and filesystem access;
 - make integrations modular so new development and analysis tools can be added over time.
 
@@ -40,12 +40,12 @@ koba-mcp-bridge
         +-- ghidra_* -> optional Ghidra MCP backend
         +-- future mounted MCP backends
         +-- task/state management
-        +-- workers / artifacts / automation
+        +-- workers / files / automation
 ```
 
 Mounted MCP backends are optional. The public bridge starts normally when none are configured. FastMCP proxy providers connect lazily, so a temporarily unavailable backend does not prevent the gateway itself from starting.
 
-## Artifact service
+## Files service
 
 Koba provides one universal persistent file service for every backend and worker.
 Files are immutable and content-addressed. The public identifier is:
@@ -57,44 +57,44 @@ sha256:<digest>
 Physical storage paths are private implementation details and are never used as
 cross-service identifiers.
 
-For client/chat attachments, agents should call `artifact_ingest_file` with the
+For client/chat attachments, agents should call `file_ingest` with the
 attachment/file argument itself. The tool marks `file` in
 `_meta["openai/fileParams"]`, so ChatGPT supplies a structured file payload
 containing `download_url`, `file_id`, and optional MIME/name metadata. Koba
 streams the authorized temporary URL directly into canonical storage and returns
-`artifact_id`. Attachment bytes never need to be serialized through
+`file_id`. Attachment bytes never need to be serialized through
 model-visible base64.
 
 For generic MCP clients that cannot provide a file-capable argument, Koba also
 provides a resumable fallback protocol:
 
-- `artifact_upload_begin` creates an upload session from file metadata;
-- `artifact_upload_write` appends one bounded base64 chunk at the exact next offset;
-- `artifact_upload_list` enumerates open/completed sessions for autonomous recovery;
-- `artifact_upload_status` resumes interrupted transfers from the server-confirmed offset;
-- `artifact_upload_finish` verifies size and optional SHA-256, commits the immutable
-  object, and returns its `artifact_id`;
-- `artifact_upload_cleanup` previews or removes stale upload-session state by age without deleting committed artifacts;
-- `artifact_upload_cancel` discards a specific unfinished transfer.
+- `file_upload_begin` creates an upload session from file metadata;
+- `file_upload_write` appends one bounded base64 chunk at the exact next offset;
+- `file_upload_list` enumerates open/completed sessions for autonomous recovery;
+- `file_upload_status` resumes interrupted transfers from the server-confirmed offset;
+- `file_upload_finish` verifies size and optional SHA-256, commits the immutable
+  object, and returns its `file_id`;
+- `file_upload_cleanup` previews or removes stale upload-session state by age without deleting committed files;
+- `file_upload_cancel` discards a specific unfinished transfer.
 
 The protocol is transport-only. The agent does not choose a Koba filesystem path
 and no backend-specific directory participates in upload. After commit, every
-consumer receives only the immutable `artifact_id`.
+consumer receives only the immutable `file_id`.
 
-The generic artifact surface also provides:
+The generic file surface also provides:
 
-- `artifact_status`, `artifact_list`, `artifact_info`, `artifact_read`;
-- `artifact_create_text`;
-- `artifact_extract`, `artifact_collection_list`,
-  `artifact_collection_resolve`, `artifact_collection_delete`;
-- `artifact_references`, `artifact_release_reference`;
-- `artifact_delete`, `artifact_gc`.
+- `file_status`, `file_list`, `file_info`, `file_read`;
+- `file_create_text`;
+- `file_extract`, `file_collection_list`,
+  `file_collection_resolve`, `file_collection_delete`;
+- `file_references`, `file_release_reference`;
+- `file_delete`, `file_gc`.
 
 Archive extraction creates a collection manifest whose members are themselves
-immutable artifacts. The same object can therefore be reused by multiple
-projects, workers, and backends without copying it again in the artifact store.
+immutable files. The same object can therefore be reused by multiple
+projects, workers, and backends without copying it again in the file store.
 
-Consumers hold durable references to source artifacts. Normal deletion refuses
+Consumers hold durable references to source files. Normal deletion refuses
 to remove referenced objects; garbage collection only targets objects with no
 consumer or collection references.
 
@@ -116,20 +116,20 @@ TLS fingerprints, or browser HTTP/2 settings.
 
 ## Ghidra integration
 
-Ghidra is a consumer of the artifact service, not the owner of uploaded files.
-`ghidra_import_artifact(artifact_id, ...)` resolves the immutable object
+Ghidra is a consumer of the files service, not the owner of uploaded files.
+`ghidra_import_file(file_id, ...)` resolves the immutable object
 internally, imports it into the currently open Ghidra project, and records a
 durable `ghidra-project` source reference.
 
 After import, Ghidra stores the program in its own project database under
-`/projects`. The canonical source artifact remains independently available for
+`/projects`. The canonical source file remains independently available for
 re-import, verification, or use by another backend. `ghidra_project_sources`
 lists the retained source objects for the current project.
 
-Ghidra outputs can be brought back into the same universal artifact store with:
+Ghidra outputs can be brought back into the same universal file store with:
 
-- `ghidra_export_program_artifact` for GZF;
-- `ghidra_archive_project_artifact` for GAR.
+- `ghidra_export_program_file` for GZF;
+- `ghidra_archive_project_file` for GAR.
 
 Set the runtime variable below to mount the internal Ghidra MCP server:
 
@@ -315,7 +315,7 @@ Issues and CI:
 - issue comments;
 - GitHub Actions workflow-run and job listing;
 - job-log diagnostics;
-- workflow artifact listing/download;
+- workflow file listing/download;
 - dispatch `workflow_dispatch` workflows with explicit refs/inputs;
 - rerun one job, rerun failed jobs, rerun a workflow run, and cancel a workflow run.
 
@@ -354,7 +354,7 @@ When reviewer credentials are absent, no `github_reviewer_*` tools are registere
 - directory, branches, tags, code-search, commit-history, commit and ref comparison reads;
 - PR list/metadata, changed files, comments, reviews and review-thread reads;
 - check-run, workflow-run/job and required-check reads;
-- job-log and workflow artifact diagnostics;
+- job-log and workflow file diagnostics;
 - rich review submission with inline comments;
 - review-thread replies and resolve/unresolve operations.
 
