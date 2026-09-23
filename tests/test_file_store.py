@@ -141,8 +141,9 @@ def test_collection_delete_releases_members_for_gc(store: FileStore, tmp_path) -
 
 def test_existing_database_is_migrated_to_files_schema(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("FILE_ROOT", str(tmp_path))
-    database = tmp_path / "index.sqlite3"
-    db = sqlite3.connect(database)
+    previous_database = tmp_path / "index.sqlite3"
+    database = tmp_path / "files.sqlite3"
+    db = sqlite3.connect(previous_database)
     db.executescript(
         """
         CREATE TABLE artifacts (
@@ -197,6 +198,9 @@ def test_existing_database_is_migrated_to_files_schema(tmp_path, monkeypatch) ->
 
     store = FileStore()
     store.ensure()
+
+    assert database.is_file()
+    assert not previous_database.exists()
 
     info = store.info(file_id)
     assert info["file_id"] == file_id
