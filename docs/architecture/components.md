@@ -9,7 +9,7 @@ This catalog covers only the platform components currently being stabilized.
 | GitHub | GitHub App development/reviewer workflows | Independent `github-mcp` runtime using shared policy/secrets libraries |
 | GitLab | Multi-profile GitLab REST connector | Independent `gitlab-mcp` runtime; explicit `profile_id` |
 | Ghidra | Project-scoped reverse-engineering backend | Keep independent backend; isolate adapters from gateway failure |
-| Files | Immutable content-addressed file/artifact storage and transfer | User-facing `files-mcp`; internal artifact IDs remain compatible |
+| Files | Immutable content-addressed file/file storage and transfer | User-facing `files-mcp`; internal file IDs remain compatible |
 | HTTP | Structured curl request/download/stream tools | Independent `http-mcp` runtime |
 
 ## Secrets
@@ -26,6 +26,6 @@ infisical://prod/path/to/folder#SECRET_NAME
 
 The first Infisical integration uses Universal Auth for runtime machine identities. Only the machine identity bootstrap credential remains in the deployment system.
 
-## Files versus artifacts
+## Files versus files
 
-The existing `artifact_id = sha256:...` model, collections and references remain useful. The planned change is primarily the public component/API naming toward Files, not a rewrite of content-addressed storage.
+The existing `file_id = sha256:...` model, collections and references remain useful. The planned change is primarily the public component/API naming toward Files, not a rewrite of content-addressed storage.
