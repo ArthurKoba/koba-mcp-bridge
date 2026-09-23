@@ -210,7 +210,7 @@ class GitLabClient:
         token = self.profile.token()
         headers = {
             "Accept": "application/json",
-            "User-Agent": "koba-mcp-bridge-gitlab",
+            "User-Agent": "mcp-bridge-gitlab",
         }
         if self.profile.auth_type == "private_token":
             headers["PRIVATE-TOKEN"] = token

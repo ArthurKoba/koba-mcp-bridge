@@ -16,7 +16,7 @@ def register_file_tools(
 ) -> None:
     @mcp.tool(title="File status", annotations=read_annotations)
     def file_status() -> dict[str, Any]:
-        """Inspect the universal persistent Koba file store and active uploads."""
+        """Inspect the universal persistent MCP Bridge file store and active uploads."""
         result = FileStore().status()
         result["active_uploads"] = FileUploadManager().active_count()
         return result
@@ -37,7 +37,7 @@ def register_file_tools(
 
         Pass the client-visible attachment/file as `file`. ChatGPT resolves this
         marked file parameter into a structured payload containing an authorized
-        temporary download URL plus file metadata. Koba streams the bytes server-side;
+        temporary download URL plus file metadata. MCP Bridge streams the bytes server-side;
         do not base64-encode chat attachments for this tool.
 
         Use file_upload_* only as the generic resumable fallback for clients that

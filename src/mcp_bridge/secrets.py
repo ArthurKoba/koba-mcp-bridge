@@ -14,7 +14,7 @@ from typing import Any
 
 
 class SecretError(RuntimeError):
-    """Raised when Koba cannot resolve a configured secret reference."""
+    """Raised when MCP Bridge cannot resolve a configured secret reference."""
 
 
 def _env_bool(name: str, default: bool = True) -> bool:
@@ -287,7 +287,7 @@ class InfisicalClient:
             headers={
                 "Accept": "application/json",
                 "Content-Type": "application/x-www-form-urlencoded",
-                "User-Agent": "koba-mcp-bridge",
+                "User-Agent": "mcp-bridge",
             },
         )
         _, data = self._json_request(request)
@@ -338,7 +338,7 @@ class InfisicalClient:
             headers={
                 "Accept": "application/json",
                 "Authorization": f"Bearer {self.access_token()}",
-                "User-Agent": "koba-mcp-bridge",
+                "User-Agent": "mcp-bridge",
             },
         )
         _, data = self._json_request(request)
@@ -383,7 +383,7 @@ class InfisicalClient:
             headers={
                 "Accept": "application/json",
                 "Authorization": f"Bearer {self.access_token()}",
-                "User-Agent": "koba-mcp-bridge",
+                "User-Agent": "mcp-bridge",
             },
         )
         _, data = self._json_request(request)

@@ -152,7 +152,7 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
             headers={
                 "Accept": "application/vnd.github+json",
                 "Authorization": f"Bearer {token}",
-                "User-Agent": "koba-mcp-bridge",
+                "User-Agent": "mcp-bridge",
                 "X-GitHub-Api-Version": "2026-03-10",
             },
         )
@@ -174,7 +174,7 @@ class GitHubActionsClient(GitHubHistoryMixin, GitHubCollabClient):
             redirected = urllib.request.Request(
                 location,
                 method="GET",
-                headers={"User-Agent": "koba-mcp-bridge"},
+                headers={"User-Agent": "mcp-bridge"},
             )
             try:
                 response = urllib.request.urlopen(redirected, timeout=60)

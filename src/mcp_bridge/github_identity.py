@@ -20,7 +20,7 @@ class GitHubPrettyIdentityClient(GitHubActionsClient):
     """
 
     def _app_identity(self) -> dict[str, object]:
-        cached = getattr(self, "_koba_app_identity_cache", None)
+        cached = getattr(self, "_app_identity_cache", None)
         if isinstance(cached, dict):
             return dict(cached)
 
@@ -59,7 +59,7 @@ class GitHubPrettyIdentityClient(GitHubActionsClient):
             "name": display_name,
             "email": f"{bot_id}+{login}@users.noreply.github.com",
         }
-        self._koba_app_identity_cache = dict(identity)
+        self._app_identity_cache = dict(identity)
         return identity
 
     def _agent_app_identity(self) -> dict[str, object]:

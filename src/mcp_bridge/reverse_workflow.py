@@ -355,7 +355,7 @@ def register_reverse_workflow_tools(
         auto_analyze: bool = True,
         dry_run: bool = False,
     ) -> dict[str, Any]:
-        """Import an immutable Koba file into the explicitly selected Ghidra project."""
+        """Import an immutable MCP Bridge file into the explicitly selected Ghidra project."""
         return await ghidra_import_file_impl(
             project_id,
             file_id,
@@ -377,7 +377,7 @@ def register_reverse_workflow_tools(
         program_name: str,
         file_name: str = "",
     ) -> dict[str, Any]:
-        """Export a Ghidra program as a GZF and register it as a Koba file."""
+        """Export a Ghidra program as a GZF and register it as an MCP Bridge file."""
         return await ghidra_export_program_file_impl(
             project_id,
             program_name,

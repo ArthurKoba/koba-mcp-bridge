@@ -111,7 +111,7 @@ _PRESETS: dict[str, dict[str, Any]] = {
     "json-api": {
         "description": "JSON API defaults.",
         "headers": {
-            "User-Agent": "Koba-Curl/1.0",
+            "User-Agent": "MCP-Bridge-Curl/1.0",
             "Accept": "application/json",
         },
     },
@@ -145,11 +145,11 @@ def _system_curl_binary() -> str:
 
 
 def _curl_binary() -> str:
-    configured = os.getenv("KOBA_CURL_BINARY", "").strip()
+    configured = os.getenv("CURL_BINARY", "").strip()
     if configured:
         path = Path(configured)
         if not path.is_file():
-            raise CurlError("KOBA_CURL_BINARY does not point to a file")
+            raise CurlError("CURL_BINARY does not point to a file")
         return str(path)
     return _system_curl_binary()
 

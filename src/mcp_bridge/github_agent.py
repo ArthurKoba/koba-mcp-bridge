@@ -242,7 +242,7 @@ class GitHubAppClient:
         body = None if payload is None else json.dumps(payload).encode("utf-8")
         headers = {
             "Accept": "application/vnd.github+json",
-            "User-Agent": "koba-mcp-bridge",
+            "User-Agent": "mcp-bridge",
             "X-GitHub-Api-Version": _GITHUB_API_VERSION,
         }
         if token:
