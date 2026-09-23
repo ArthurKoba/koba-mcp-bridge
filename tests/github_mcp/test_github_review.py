@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from mcp_bridge.github_agent import GitHubAgentError
-from mcp_bridge.github_review import GitHubReviewClient
+from github_mcp.github_agent import GitHubAgentError
+from github_mcp.github_review import GitHubReviewClient
 
 
 class RecordingClient(GitHubReviewClient):

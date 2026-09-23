@@ -1,8 +1,8 @@
 import pytest
 
-import mcp_bridge.github_workflow as github_workflow
-from mcp_bridge.github_agent import GitHubAgentError
-from mcp_bridge.github_workflow import (
+import github_mcp.github_workflow as github_workflow
+from github_mcp.github_agent import GitHubAgentError
+from github_mcp.github_workflow import (
     GitHubDevClient,
     protected_branches_from_env,
     required_checks_from_env,
