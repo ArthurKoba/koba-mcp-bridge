@@ -661,11 +661,11 @@ class FileStore:
         ]
 
     def extract(self, file_id: str) -> JsonObject:
-        source = self.info(file_id)
+        source = FileInfo.model_validate(self.info(file_id))
         archive_path = self.path_for(file_id)
         file_limit = max_extract_files()
         byte_limit = max_extract_bytes()
-        entries: list[JsonObject] = []
+        entries: list[CollectionItem] = []
         total_bytes = 0
 
         if zipfile.is_zipfile(archive_path):
@@ -688,15 +688,16 @@ class FileStore:
                         item = self.put_stream(
                             stream,
                             name=path,
-                            source=f"collection:{source['file_id']}",
+                            source=f"collection:{source.file_id}",
                             max_bytes=byte_limit,
                         )
+                    item_info = FileInfo.model_validate(item)
                     entries.append(
-                        {
-                            "path": path,
-                            "file_id": item["file_id"],
-                            "size_bytes": item["size_bytes"],
-                        }
+                        CollectionItem(
+                            path=path,
+                            file_id=item_info.file_id,
+                            size_bytes=item_info.size_bytes,
+                        )
                     )
         elif tarfile.is_tarfile(archive_path):
             with tarfile.open(archive_path, mode="r:*") as archive:
@@ -720,28 +721,32 @@ class FileStore:
                         item = self.put_stream(
                             stream,
                             name=path,
-                            source=f"collection:{source['file_id']}",
+                            source=f"collection:{source.file_id}",
                             max_bytes=byte_limit,
                         )
+                    item_info = FileInfo.model_validate(item)
                     entries.append(
-                        {
-                            "path": path,
-                            "file_id": item["file_id"],
-                            "size_bytes": item["size_bytes"],
-                        }
+                        CollectionItem(
+                            path=path,
+                            file_id=item_info.file_id,
+                            size_bytes=item_info.size_bytes,
+                        )
                     )
         else:
             raise FileError("file is not a supported tar or zip archive")
 
         manifest = json.dumps(
             sorted(
-                [{"path": item["path"], "file_id": item["file_id"]} for item in entries],
+                [
+                    {"path": item.path, "file_id": item.file_id}
+                    for item in entries
+                ],
                 key=lambda item: item["path"],
             ),
             sort_keys=True,
             separators=(",", ":"),
         ).encode("utf-8")
-        collection_identity = source["file_id"].encode("utf-8") + b"\0" + manifest
+        collection_identity = source.file_id.encode("utf-8") + b"\0" + manifest
         collection_id = f"collection:{hashlib.sha256(collection_identity).hexdigest()}"
 
         with self._connect() as db:
@@ -751,7 +756,7 @@ class FileStore:
                     (collection_id, source_file_id, created_at)
                 VALUES (?, ?, ?)
                 """,
-                (collection_id, source["file_id"], _now()),
+                (collection_id, source.file_id, _now()),
             )
             for item in entries:
                 db.execute(
@@ -760,17 +765,17 @@ class FileStore:
                         (collection_id, path, file_id)
                     VALUES (?, ?, ?)
                     """,
-                    (collection_id, item["path"], item["file_id"]),
+                    (collection_id, item.path, item.file_id),
                 )
 
-        return {
-            "collection_id": collection_id,
-            "source_file_id": source["file_id"],
-            "files": len(entries),
-            "total_bytes": total_bytes,
-            "items": entries[:100],
-            "items_truncated": len(entries) > 100,
-        }
+        return CollectionExtractResponse(
+            collection_id=collection_id,
+            source_file_id=source.file_id,
+            files=len(entries),
+            total_bytes=total_bytes,
+            items=entries[:100],
+            items_truncated=len(entries) > 100,
+        ).to_json()
 
     def collection_list(
         self,
@@ -812,15 +817,21 @@ class FileStore:
                 """,
                 [*params, limit, offset],
             ).fetchall()
-        return {
-            "collection_id": collection_id,
-            "source_file_id": str(exists["source_file_id"]),
-            "items": [dict(row) for row in rows],
-            "offset": offset,
-            "limit": limit,
-            "total": total,
-            "truncated": offset + len(rows) < total,
-        }
+        return CollectionListResponse(
+            collection_id=collection_id,
+            source_file_id=str(exists["source_file_id"]),
+            items=[
+                CollectionItem(
+                    path=str(row["path"]),
+                    file_id=str(row["file_id"]),
+                )
+                for row in rows
+            ],
+            offset=offset,
+            limit=limit,
+            total=total,
+            truncated=offset + len(rows) < total,
+        ).to_json()
 
     def collection_delete(self, collection_id: str) -> JsonObject:
         if not collection_id.startswith("collection:"):
@@ -836,10 +847,10 @@ class FileStore:
                 (collection_id,),
             ).fetchone()
             if row is None:
-                return {
-                    "collection_id": collection_id,
-                    "already_absent": True,
-                }
+                return CollectionDeleteResponse(
+                    collection_id=collection_id,
+                    already_absent=True,
+                ).to_json()
             item_count = int(
                 db.execute(
                     """
@@ -859,12 +870,12 @@ class FileStore:
                 "DELETE FROM collections WHERE collection_id = ?",
                 (collection_id,),
             )
-        return {
-            "collection_id": collection_id,
-            "source_file_id": source_file_id,
-            "released_items": item_count,
-            "deleted": True,
-        }
+        return CollectionDeleteResponse(
+            collection_id=collection_id,
+            source_file_id=source_file_id,
+            released_items=item_count,
+            deleted=True,
+        ).to_json()
 
     def collection_resolve(self, collection_id: str, path: str) -> JsonObject:
         safe = _safe_collection_path(path)
@@ -880,16 +891,18 @@ class FileStore:
             ).fetchone()
         if row is None:
             raise FileError("collection item does not exist")
-        result = self.info(str(row["file_id"]))
-        result["collection_id"] = collection_id
-        result["collection_path"] = safe
-        return result
+        info = FileInfo.model_validate(self.info(str(row["file_id"])))
+        return CollectionResolveResponse(
+            **info.model_dump(),
+            collection_id=collection_id,
+            collection_path=safe,
+        ).to_json()
 
     def delete(self, file_id: str, force: bool = False) -> JsonObject:
-        info = self.info(file_id)
-        normalized = str(info["file_id"])
-        refs = info["references"]
-        collections = info["collections"]
+        info = FileInfo.model_validate(self.info(file_id))
+        normalized = info.file_id
+        refs = info.references
+        collections = info.collections
         with self._connect() as db:
             source_collections = [
                 dict(row)
@@ -944,12 +957,16 @@ class FileStore:
             db.execute("DELETE FROM aliases WHERE file_id = ?", (normalized,))
             db.execute("DELETE FROM files WHERE file_id = ?", (normalized,))
 
-        path = self.path_for(normalized) if self._object_path(info["sha256"]).exists() else None
+        path = self.path_for(normalized) if self._object_path(info.sha256).exists() else None
         if path is not None and path.exists():
             path.unlink()
             with suppress(OSError):
                 path.parent.rmdir()
-        return {"file_id": normalized, "deleted": True, "forced": force}
+        return FileDeleteResponse(
+            file_id=normalized,
+            deleted=True,
+            forced=force,
+        ).to_json()
 
     def gc(self, dry_run: bool = True, limit: int = 1000) -> JsonObject:
         if limit <= 0 or limit > 10_000:
@@ -979,12 +996,20 @@ class FileStore:
             ).fetchall()
         candidates = [str(row["file_id"]) for row in rows]
         if dry_run:
-            return {"dry_run": True, "candidates": candidates, "count": len(candidates)}
+            return FileGcResponse(
+                dry_run=True,
+                candidates=candidates,
+                count=len(candidates),
+            ).to_json()
         deleted = []
         for file_id in candidates:
             self.delete(file_id)
             deleted.append(file_id)
-        return {"dry_run": False, "deleted": deleted, "count": len(deleted)}
+        return FileGcResponse(
+            dry_run=False,
+            deleted=deleted,
+            count=len(deleted),
+        ).to_json()
 
     def status(self) -> JsonObject:
         self.ensure()
