@@ -12,6 +12,7 @@ import tarfile
 import tempfile
 import uuid
 import zipfile
+from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
@@ -208,7 +209,7 @@ class FileStore:
             )
 
     @contextmanager
-    def _connect(self):
+    def _connect(self) -> Iterator[sqlite3.Connection]:
         self.root.mkdir(parents=True, exist_ok=True)
         db = sqlite3.connect(self.database, timeout=30)
         db.row_factory = sqlite3.Row

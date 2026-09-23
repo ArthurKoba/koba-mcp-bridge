@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from pydantic import Field, model_validator
 
-from common.models import JsonObject, StrictModel
-from modules.files.models import FileInfo
+from common.models import StrictModel
 
 
 class CurlPresetDefinition(StrictModel):

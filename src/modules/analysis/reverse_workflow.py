@@ -4,7 +4,7 @@ import base64
 import os
 import uuid
 from contextlib import suppress
-from typing import TypeVar, cast
+from typing import cast
 
 from fastmcp import Client, FastMCP
 from mcp.types import ToolAnnotations
@@ -27,8 +27,6 @@ from .models import (
     StageFinishResponse,
     StageWriteResponse,
 )
-
-BackendModel = TypeVar("BackendModel", bound=BackendStatus)
 
 
 def _ghidra_url() -> str:
@@ -100,7 +98,7 @@ def _require_backend_success(result: object, operation: str) -> JsonObject:
     return payload
 
 
-def _backend_model(
+def _backend_model[BackendModel: BackendStatus](
     result: object,
     operation: str,
     model: type[BackendModel],

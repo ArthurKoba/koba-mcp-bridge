@@ -242,7 +242,7 @@ def _merged_headers(preset: str, headers: dict[str, str] | None) -> dict[str, st
     for name, value in (headers or {}).items():
         clean_name, clean_value = _validate_header(str(name), str(value))
         result[clean_name.casefold()] = (clean_name, clean_value)
-    return {name: value for name, value in result.values()}
+    return dict(result.values())
 
 
 def _cookie_header(cookies: dict[str, str] | None) -> str:
@@ -427,7 +427,7 @@ def _charset(block: HeaderBlock | None) -> str:
 def _looks_textual(content_type: str, data: bytes) -> bool:
     if content_type.startswith("text/") or content_type in _TEXTUAL_TYPES:
         return True
-    if content_type.endswith("+json") or content_type.endswith("+xml"):
+    if content_type.endswith(("+json", "+xml")):
         return True
     if not data:
         return True

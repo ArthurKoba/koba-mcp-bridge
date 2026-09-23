@@ -381,9 +381,11 @@ class GitHubAppClient:
             )
             if not isinstance(result, list):
                 raise GitHubAgentError("unexpected GitHub App installation list response")
-            for item in result:
-                if isinstance(item, dict) and isinstance(item.get("id"), int):
-                    installation_ids.append(int(item["id"]))
+            installation_ids.extend(
+                int(item["id"])
+                for item in result
+                if isinstance(item, dict) and isinstance(item.get("id"), int)
+            )
             if len(result) < 100:
                 break
             page += 1

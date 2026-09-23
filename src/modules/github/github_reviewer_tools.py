@@ -5,6 +5,7 @@ from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 from .github_collab import GitHubCollabClient
+from .models import ReviewComment
 
 
 def register_github_reviewer_tools(

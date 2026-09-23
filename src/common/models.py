@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import ParamSpec, TypeVar, cast
+from typing import cast
 
 from pydantic import (
     BaseModel,
@@ -11,9 +11,6 @@ from pydantic import (
     ValidationError,
     validate_call,
 )
-
-P = ParamSpec("P")
-R = TypeVar("R")
 
 type JsonObject = dict[str, JsonValue]
 type JsonArray = list[JsonValue]
@@ -46,7 +43,7 @@ _JSON_ARRAY = TypeAdapter(JsonArray)
 _STRICT_CALL_CONFIG = ConfigDict(strict=True, arbitrary_types_allowed=True)
 
 
-def validated_call(function: Callable[P, R]) -> Callable[P, R]:
+def validated_call[**P, R](function: Callable[P, R]) -> Callable[P, R]:
     wrapped = validate_call(
         config=_STRICT_CALL_CONFIG,
         validate_return=True,

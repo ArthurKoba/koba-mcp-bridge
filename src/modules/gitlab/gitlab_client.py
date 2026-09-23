@@ -3,14 +3,13 @@ from __future__ import annotations
 import base64
 import http.client
 import json
-import os
 import queue
 import re
 import ssl
 import threading
 import urllib.parse
 
-from common.config import env_bool, env_list
+from common.config import env_list
 from common.models import JsonObject, JsonValue, json_loads
 from common.secrets import SecretError, list_config_folders, resolve_config_secret
 
@@ -318,15 +317,18 @@ class GitLabClient:
     def _decode_response(raw: bytes, headers: dict[str, str]) -> JsonValue:
         if not raw:
             return {}
-        content_type = ""
-        for key, value in headers.items():
-            if key.casefold() == "content-type":
-                content_type = value
-                break
+        content_type = next(
+            (
+                value
+                for key, value in headers.items()
+                if key.casefold() == "content-type"
+            ),
+            "",
+        )
         if "json" in content_type.casefold():
             try:
-                return json.loads(raw.decode("utf-8"))
-            except json.JSONDecodeError as exc:
+                return json_loads(raw, context="GitLab response")
+            except ValueError as exc:
                 raise GitLabError("GitLab returned invalid JSON") from exc
         return raw.decode("utf-8", "replace")
 

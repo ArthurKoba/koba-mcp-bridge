@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import http.client
 import hashlib
 import ipaddress
 import os
@@ -9,9 +10,12 @@ import sqlite3
 import urllib.parse
 import urllib.request
 import uuid
+from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import cast
+
 from common.models import JsonObject, validated_call
 
 from .file_store import FileError, FileStore, upload_max_bytes
@@ -119,20 +123,20 @@ def _validate_remote_file_url(file: str) -> urllib.parse.SplitResult:
 class _AttachmentRedirectHandler(urllib.request.HTTPRedirectHandler):
     def redirect_request(
         self,
-        req,
-        fp,
-        code,
-        msg,
-        headers,
-        newurl,
-    ):
+        req: urllib.request.Request,
+        fp: http.client.HTTPResponse,
+        code: int,
+        msg: str,
+        headers: http.client.HTTPMessage,
+        newurl: str,
+    ) -> urllib.request.Request | None:
         _validate_remote_file_url(str(newurl))
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-def _open_remote_file(request: urllib.request.Request):
+def _open_remote_file(request: urllib.request.Request) -> http.client.HTTPResponse:
     opener = urllib.request.build_opener(_AttachmentRedirectHandler())
-    return opener.open(request, timeout=60)
+    return cast(http.client.HTTPResponse, opener.open(request, timeout=60))
 
 
 def _attachment_name(parsed: urllib.parse.SplitResult, requested_name: str) -> str:
@@ -291,7 +295,7 @@ class FileUploadManager:
             )
 
     @contextmanager
-    def _connect(self):
+    def _connect(self) -> Iterator[sqlite3.Connection]:
         self.store.root.mkdir(parents=True, exist_ok=True)
         db = sqlite3.connect(self.database, timeout=30)
         db.row_factory = sqlite3.Row
