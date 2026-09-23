@@ -26,20 +26,17 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _github_oauth_value(secret_name: str, legacy_env: str) -> str:
+def _github_oauth_value(secret_name: str) -> str:
     try:
         return resolve_config_secret("github/oauth", secret_name).strip()
     except SecretError as exc:
-        legacy = os.getenv(legacy_env, "").strip()
-        if legacy:
-            return legacy
         raise RuntimeError(
             f"unable to load GitHub OAuth {secret_name!r} from Infisical: {exc}"
         ) from exc
 
 
 def _allowed_github_users() -> set[str]:
-    raw = _github_oauth_value("ALLOWED_USERS", "OAUTH_ALLOWED_GITHUB_USERS")
+    raw = _github_oauth_value("ALLOWED_USERS")
     return {item.strip().casefold() for item in raw.split(",") if item.strip()}
 
 
@@ -55,20 +52,11 @@ def _build_auth() -> tuple[GitHubProvider | None, list[AuthMiddleware]]:
         return None, []
 
     provider = GitHubProvider(
-        client_id=_github_oauth_value(
-            "CLIENT_ID",
-            "OAUTH_GITHUB_CLIENT_ID",
-        ),
-        client_secret=_github_oauth_value(
-            "CLIENT_SECRET",
-            "OAUTH_GITHUB_CLIENT_SECRET",
-        ),
+        client_id=_github_oauth_value("CLIENT_ID"),
+        client_secret=_github_oauth_value("CLIENT_SECRET"),
         base_url=os.getenv("OAUTH_BASE_URL", "https://mcp.koba-nexus.ru"),
         required_scopes=["read:user"],
-        jwt_signing_key=_github_oauth_value(
-            "JWT_SIGNING_KEY",
-            "OAUTH_JWT_SIGNING_KEY",
-        ),
+        jwt_signing_key=_github_oauth_value("JWT_SIGNING_KEY"),
         allowed_client_redirect_uris=[_CHATGPT_OAUTH_REDIRECT],
         require_authorization_consent="external",
         enable_cimd=False,
