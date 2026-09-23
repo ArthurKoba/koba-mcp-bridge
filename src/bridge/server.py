@@ -73,10 +73,10 @@ def _backend_url(name: str, default: str) -> str:
 
 def _configured_backends() -> dict[str, str]:
     return {
-        "github": _backend_url("GITHUB_MCP_URL", "http://github-mcp:8000/mcp"),
-        "gitlab": _backend_url("GITLAB_MCP_URL", "http://gitlab-mcp:8000/mcp"),
-        "files": _backend_url("FILES_MCP_URL", "http://files-mcp:8000/mcp"),
-        "http": _backend_url("HTTP_MCP_URL", "http://http-mcp:8000/mcp"),
+        "github": _backend_url("GITHUB_URL", "http://github:8000/mcp"),
+        "gitlab": _backend_url("GITLAB_URL", "http://gitlab:8000/mcp"),
+        "files": _backend_url("FILES_URL", "http://files:8000/mcp"),
+        "http": _backend_url("CURL_URL", "http://curl:8000/mcp"),
         "analysis": _backend_url(
             "ANALYSIS_MCP_URL",
             "http://analysis-mcp:8000/mcp",
@@ -126,28 +126,28 @@ mcp = FastMCP(
     middleware=_auth_middleware,
 )
 
-github_mcp = _public_facade(
-    "github-mcp",
+github_surface = _public_facade(
+    "github",
     "github",
     _BACKENDS["github"],
 )
-gitlab_mcp = _public_facade(
-    "gitlab-mcp",
+gitlab_surface = _public_facade(
+    "gitlab",
     "gitlab",
     _BACKENDS["gitlab"],
 )
-files_mcp = _public_facade(
-    "files-mcp",
+files_surface = _public_facade(
+    "files",
     "files",
     _BACKENDS["files"],
 )
-http_mcp = _public_facade(
-    "http-mcp",
+http_surface = _public_facade(
+    "curl",
     "http",
     _BACKENDS["http"],
 )
-analysis_mcp = _public_facade(
-    "analysis-mcp",
+analysis_surface = _public_facade(
+    "analysis",
     "analysis",
     _BACKENDS["analysis"],
 )
@@ -232,8 +232,8 @@ def _http_app(surface: FastMCP):
 
 
 app = _http_app(mcp)
-app.mount("/github", _http_app(github_mcp))
-app.mount("/gitlab", _http_app(gitlab_mcp))
-app.mount("/files", _http_app(files_mcp))
-app.mount("/http", _http_app(http_mcp))
-app.mount("/analysis", _http_app(analysis_mcp))
+app.mount("/github", _http_app(github_surface))
+app.mount("/gitlab", _http_app(gitlab_surface))
+app.mount("/files", _http_app(files_surface))
+app.mount("/http", _http_app(http_surface))
+app.mount("/analysis", _http_app(analysis_surface))
