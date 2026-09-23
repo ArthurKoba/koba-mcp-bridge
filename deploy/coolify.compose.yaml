@@ -27,7 +27,7 @@ services:
     command:
       - /app/.venv/bin/opentelemetry-instrument
       - /app/.venv/bin/uvicorn
-      - koba_mcp_bridge.server:app
+      - mcp_bridge.server:app
       - --host
       - 0.0.0.0
       - --port
@@ -56,7 +56,7 @@ services:
     command:
       - /app/.venv/bin/opentelemetry-instrument
       - /app/.venv/bin/uvicorn
-      - koba_mcp_bridge.github_runtime:app
+      - mcp_bridge.github_runtime:app
       - --host
       - 0.0.0.0
       - --port
@@ -72,7 +72,7 @@ services:
     command:
       - /app/.venv/bin/opentelemetry-instrument
       - /app/.venv/bin/uvicorn
-      - koba_mcp_bridge.gitlab_runtime:app
+      - mcp_bridge.gitlab_runtime:app
       - --host
       - 0.0.0.0
       - --port
@@ -88,7 +88,7 @@ services:
     command:
       - /app/.venv/bin/opentelemetry-instrument
       - /app/.venv/bin/uvicorn
-      - koba_mcp_bridge.files_runtime:app
+      - mcp_bridge.files_runtime:app
       - --host
       - 0.0.0.0
       - --port
@@ -107,7 +107,7 @@ services:
     command:
       - /app/.venv/bin/opentelemetry-instrument
       - /app/.venv/bin/uvicorn
-      - koba_mcp_bridge.http_runtime:app
+      - mcp_bridge.http_runtime:app
       - --host
       - 0.0.0.0
       - --port
@@ -126,7 +126,7 @@ services:
     command:
       - /app/.venv/bin/opentelemetry-instrument
       - /app/.venv/bin/uvicorn
-      - koba_mcp_bridge.analysis_runtime:app
+      - mcp_bridge.analysis_runtime:app
       - --host
       - 0.0.0.0
       - --port

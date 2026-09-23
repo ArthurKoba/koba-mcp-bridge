@@ -9,7 +9,7 @@ mcp-bridge/
 ├── .github/              GitHub CI/CD and collaboration policy
 ├── deploy/               deployment/runtime support files
 ├── docs/                 architecture and operational documentation
-├── src/koba_mcp_bridge/  current Python implementation
+├── src/mcp_bridge/  current Python implementation
 ├── tests/                unit/integration tests
 ├── Dockerfile
 ├── docker-compose.yaml
