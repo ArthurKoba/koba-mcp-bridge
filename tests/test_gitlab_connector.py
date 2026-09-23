@@ -7,7 +7,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
 import pytest
-from fastmcp import Client
 
 import koba_mcp_bridge.gitlab_client as gitlab_module
 import koba_mcp_bridge.gitlab_tools as gitlab_tools
@@ -16,7 +15,7 @@ from koba_mcp_bridge.gitlab_client import (
     GitLabError,
     GitLabProfileRegistry,
 )
-from koba_mcp_bridge.server import app, gitlab_mcp, mcp
+from koba_mcp_bridge.server import app
 
 
 class _GitLabHandler(BaseHTTPRequestHandler):
