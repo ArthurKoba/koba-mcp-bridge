@@ -4,7 +4,7 @@ import base64
 import os
 import uuid
 from contextlib import suppress
-from typing import cast
+from typing import Protocol, cast
 
 from fastmcp import Client, FastMCP
 from mcp.types import ToolAnnotations
@@ -109,7 +109,11 @@ def _backend_model[BackendModel: BackendStatus](
         raise FileError(f"Ghidra {operation} response is incomplete") from exc
 
 
-async def _cancel_stage(client: Client, project_id: str, stage_id: str) -> None:
+class _ToolClient(Protocol):
+    async def call_tool(self, name: str, arguments: dict[str, object]) -> object: ...
+
+
+async def _cancel_stage(client: _ToolClient, project_id: str, stage_id: str) -> None:
     if not stage_id:
         return
     with suppress(Exception):
@@ -120,7 +124,7 @@ async def _cancel_stage(client: Client, project_id: str, stage_id: str) -> None:
 
 
 async def _stage_file_for_ghidra(
-    client: Client,
+    client: _ToolClient,
     store: FileStore,
     file: FileInfo,
     project_id: str,
@@ -189,7 +193,7 @@ async def _stage_file_for_ghidra(
         raise
 
 
-async def _current_project(client: Client, project_id: str) -> ProjectInfo:
+async def _current_project(client: _ToolClient, project_id: str) -> ProjectInfo:
     result = await client.call_tool(
         "get_project_info",
         {"project_id": project_id},

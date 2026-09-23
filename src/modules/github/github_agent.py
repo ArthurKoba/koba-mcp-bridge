@@ -10,6 +10,7 @@ import time
 import urllib.parse
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Self
 
 import jwt
 
@@ -112,7 +113,7 @@ class GitHubAppClient:
     )
 
     @classmethod
-    def from_infisical(cls) -> GitHubAppClient:
+    def from_infisical(cls) -> Self:
         return cls(
             app_id=_development_app_id(),
             private_key=_development_private_key(),

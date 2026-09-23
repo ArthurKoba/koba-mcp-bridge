@@ -3,7 +3,14 @@ from __future__ import annotations
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 
-from common.models import JsonContainer, JsonObject, json_object
+from common.models import (
+    JsonContainer,
+    JsonObject,
+    json_int,
+    json_object,
+    json_str,
+    json_value,
+)
 
 from .github_actions import GitHubActionsClient
 from .github_agent import GitHubAgentError
@@ -33,8 +40,8 @@ class GitHubPrettyIdentityClient(GitHubActionsClient):
         if not isinstance(app, dict):
             raise GitHubAgentError("unexpected GitHub App response")
 
-        slug = str(app.get("slug", "")).strip()
-        display_name = str(app.get("name", "")).strip()
+        slug = json_str(app.get("slug")).strip()
+        display_name = json_str(app.get("name")).strip()
         if not slug:
             raise GitHubAgentError("GitHub App response has no slug")
         if not display_name:
@@ -45,10 +52,14 @@ class GitHubPrettyIdentityClient(GitHubActionsClient):
             "GET",
             f"{_GITHUB_API}/users/{urllib.parse.quote(login, safe='')}",
         )
-        if not isinstance(bot, dict) or not isinstance(bot.get("id"), int):
+        if not isinstance(bot, dict):
             raise GitHubAgentError("unable to resolve GitHub App bot identity")
-
-        bot_id = int(bot["id"])
+        try:
+            bot_id = json_int(bot.get("id"), field="bot.id")
+        except ValueError as exc:
+            raise GitHubAgentError("unable to resolve GitHub App bot identity") from exc
+        if bot_id <= 0:
+            raise GitHubAgentError("unable to resolve GitHub App bot identity")
         identity: dict[str, object] = {
             "source": "current_agent_app",
             "app_id": self.app_id,
@@ -56,7 +67,7 @@ class GitHubPrettyIdentityClient(GitHubActionsClient):
             "display_name": display_name,
             "login": login,
             "id": bot_id,
-            "type": str(bot.get("type", "Bot")) or "Bot",
+            "type": json_str(bot.get("type"), default="Bot") or "Bot",
             "name": display_name,
             "email": f"{bot_id}+{login}@users.noreply.github.com",
         }
@@ -101,12 +112,21 @@ class GitHubPrettyIdentityClient(GitHubActionsClient):
             or (method == "POST" and path == commit_path)
         )
 
-        if is_direct_commit:
-            signature = self._git_signature()
-            updated.setdefault("author", dict(signature))
-            updated.setdefault("committer", dict(signature))
+        if updated is not None and is_direct_commit:
+            signature = json_value(
+                self._git_signature(),
+                context="GitHub git signature",
+            )
+            updated.setdefault("author", signature)
+            updated.setdefault("committer", signature)
         elif updated is not None and method == "POST" and path == tag_path:
-            updated.setdefault("tagger", self._git_signature())
+            updated.setdefault(
+                "tagger",
+                json_value(
+                    self._git_signature(),
+                    context="GitHub tagger signature",
+                ),
+            )
 
         return super()._repo_request(
             repository,
