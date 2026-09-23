@@ -5,6 +5,7 @@ import urllib.parse
 from common.models import (
     JsonObject,
     json_array,
+    json_bool,
     json_int,
     json_member_array,
     json_member_object,
@@ -49,6 +50,22 @@ class GitHubPullClient(GitHubRepositoryClientBase):
                 if isinstance(item, dict)
             ],
             "page": page,
+        }
+
+    @staticmethod
+    def _compact_pull(item: JsonObject) -> JsonObject:
+        head = json_member_object(item, "head")
+        base = json_member_object(item, "base")
+        return {
+            "number": json_int(item.get("number")),
+            "title": json_str(item.get("title")),
+            "state": json_str(item.get("state")),
+            "draft": json_bool(item.get("draft")),
+            "head": json_str(head.get("ref")),
+            "head_sha": json_str(head.get("sha")),
+            "base": json_str(base.get("ref")),
+            "merged": json_bool(item.get("merged")),
+            "html_url": json_str(item.get("html_url")),
         }
 
     def get_pull_request(self, repository: str, number: int) -> JsonObject:

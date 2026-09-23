@@ -44,6 +44,16 @@ class GitHubIssueClient(GitHubRepositoryClientBase):
             "page": page,
         }
 
+    @staticmethod
+    def _compact_issue(item: JsonObject) -> JsonObject:
+        return {
+            "number": json_int(item.get("number")),
+            "title": json_str(item.get("title")),
+            "state": json_str(item.get("state")),
+            "body": json_str(item.get("body")),
+            "html_url": json_str(item.get("html_url")),
+        }
+
     def get_issue(self, repository: str, number: int) -> JsonObject:
         repository = self._assert_allowed(repository)
         _, result = self._repo_request(
