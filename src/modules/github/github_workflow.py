@@ -3,19 +3,15 @@ from __future__ import annotations
 import base64
 import os
 import urllib.parse
-from typing import Any
-
+from common.config import env_list
+from common.models import JsonObject
 from common.secrets import SecretError, resolve_config_secret
 
 from .github_agent import GitHubAgentError, GitHubAppClient
+from .models import AtomicChange, CopySpec
 
 _DEFAULT_PROTECTED_BRANCHES = "main,master"
 _DEFAULT_REQUIRED_CHECKS = "test,docker"
-
-
-def _split_env(name: str, default: str = "") -> list[str]:
-    raw = os.getenv(name, default)
-    return [item.strip() for item in raw.split(",") if item.strip()]
 
 
 def protected_branches_from_env() -> set[str]:
@@ -37,7 +33,7 @@ def protected_branches_from_env() -> set[str]:
 
 
 def required_checks_from_env() -> list[str]:
-    return _split_env("GITHUB_AGENT_REQUIRED_CHECKS", _DEFAULT_REQUIRED_CHECKS)
+    return env_list("GITHUB_AGENT_REQUIRED_CHECKS", _DEFAULT_REQUIRED_CHECKS)
 
 
 class GitHubDevClient(GitHubAppClient):
@@ -223,7 +219,7 @@ class GitHubDevClient(GitHubAppClient):
         source_ref: str,
         branch: str,
         message: str,
-        copies: list[dict[str, Any]],
+        copies: list[CopySpec],
         expected_head_sha: str | None = None,
         operation: str = "copy",
         overwrite: bool = False,
@@ -304,12 +300,12 @@ class GitHubDevClient(GitHubAppClient):
         for item in copies:
             source_path = "/".join(
                 part
-                for part in str(item.get("source_path", "")).strip("/").split("/")
+                for part in item.source_path.strip("/").split("/")
                 if part
             )
             destination_path = "/".join(
                 part
-                for part in str(item.get("destination_path", "")).strip("/").split("/")
+                for part in item.destination_path.strip("/").split("/")
                 if part
             )
             if not source_path or not destination_path:
@@ -345,7 +341,7 @@ class GitHubDevClient(GitHubAppClient):
                 raise GitHubAgentError(
                     f"source blob is missing sha or mode: {source_path}"
                 )
-            mode = str(item.get("mode") or source_mode)
+            mode = item.mode or source_mode
 
             destination = self._tree_entry_at_path(
                 repository,
@@ -461,7 +457,7 @@ class GitHubDevClient(GitHubAppClient):
         repository: str,
         branch: str,
         message: str,
-        changes: list[dict[str, Any]],
+        changes: list[AtomicChange],
         expected_head_sha: str | None = None,
     ) -> dict[str, object]:
         repository = self._assert_allowed(repository)
@@ -499,23 +495,17 @@ class GitHubDevClient(GitHubAppClient):
         tree_entries: list[dict[str, object]] = []
         copy_ref_cache: dict[str, str] = {}
         for change in changes:
-            path = str(change.get("path", "")).strip("/")
-            if not path:
-                raise GitHubAgentError("every change requires a path")
-            operation = str(change.get("operation", "upsert")).casefold()
-            mode = str(change.get("mode", "100644"))
+            path = change.path.strip("/")
+            operation = change.operation
+            mode = change.mode
             if operation == "delete":
                 tree_entries.append(
                     {"path": path, "mode": mode, "type": "blob", "sha": None}
                 )
                 continue
             if operation == "copy":
-                source_path = str(change.get("source_path", "")).strip("/")
-                source_ref = str(change.get("source_ref", "")).strip()
-                if not source_path or not source_ref:
-                    raise GitHubAgentError(
-                        "copy changes require source_path and source_ref"
-                    )
+                source_path = (change.source_path or "").strip("/")
+                source_ref = (change.source_ref or "").strip()
 
                 source_sha = copy_ref_cache.get(source_ref)
                 if source_sha is None:
@@ -563,12 +553,8 @@ class GitHubDevClient(GitHubAppClient):
             if operation not in {"upsert", "create", "update"}:
                 raise GitHubAgentError(f"unsupported change operation: {operation}")
 
-            text = change.get("content")
-            encoded = change.get("content_base64")
-            if (text is None) == (encoded is None):
-                raise GitHubAgentError(
-                    "upsert changes require exactly one of content or content_base64"
-                )
+            text = change.content
+            encoded = change.content_base64
             if encoded is not None:
                 blob_payload = {"content": str(encoded), "encoding": "base64"}
             else:
@@ -622,7 +608,7 @@ class GitHubDevClient(GitHubAppClient):
             "previous_head_sha": head_sha,
             "commit_sha": commit_sha,
             "tree_sha": tree_sha,
-            "changed_paths": [str(change.get("path", "")) for change in changes],
+            "changed_paths": [change.path for change in changes],
         }
 
     def list_commits(
@@ -990,7 +976,7 @@ class GitHubDevClient(GitHubAppClient):
         }
 
     @staticmethod
-    def _compact_pull(item: dict[str, Any]) -> dict[str, object]:
+    def _compact_pull(item: JsonObject) -> dict[str, object]:
         head = item.get("head") if isinstance(item.get("head"), dict) else {}
         base = item.get("base") if isinstance(item.get("base"), dict) else {}
         return {
@@ -1368,7 +1354,7 @@ class GitHubDevClient(GitHubAppClient):
         return {"repository": repository, "issues": issues, "page": page}
 
     @staticmethod
-    def _compact_issue(item: dict[str, Any]) -> dict[str, object]:
+    def _compact_issue(item: JsonObject) -> dict[str, object]:
         return {
             "number": int(item.get("number", 0)),
             "title": str(item.get("title", "")),
