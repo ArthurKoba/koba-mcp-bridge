@@ -8,7 +8,7 @@ from mcp.types import ToolAnnotations
 from .github_actions import GitHubActionsClient
 from .github_admin import repoint_reserved_branch
 from .github_history_graph import rewrite_branch_identity_graph
-from .github_reviewer import github_reviewer_client_from_env, github_reviewer_configured
+from .github_reviewer import github_reviewer_client, github_reviewer_configured
 
 
 def register_github_actions_tools(
@@ -230,7 +230,7 @@ def register_github_actions_tools(
             max_chars: int = 100_000,
         ) -> dict[str, object]:
             """Read the tail of one Actions job log using reviewer identity."""
-            return github_reviewer_client_from_env().get_workflow_job_log(
+            return github_reviewer_client().get_workflow_job_log(
                 repository,
                 job_id,
                 max_chars,
@@ -244,7 +244,7 @@ def register_github_actions_tools(
             page: int = 1,
         ) -> dict[str, object]:
             """List workflow files using reviewer identity."""
-            return github_reviewer_client_from_env().list_workflow_files(
+            return github_reviewer_client().list_workflow_files(
                 repository,
                 run_id,
                 per_page,
@@ -261,7 +261,7 @@ def register_github_actions_tools(
             max_bytes: int = 8 * 1024 * 1024,
         ) -> dict[str, object]:
             """Download a small workflow file ZIP using reviewer identity."""
-            return github_reviewer_client_from_env().download_workflow_file(
+            return github_reviewer_client().download_workflow_file(
                 repository,
                 workflow_file_id,
                 max_bytes,
