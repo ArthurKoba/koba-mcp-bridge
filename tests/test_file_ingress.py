@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import io
+import sqlite3
 import urllib.parse
 
 import pytest
@@ -362,3 +363,43 @@ def test_attachment_ingress_rejects_non_https_source(tmp_path, monkeypatch) -> N
                 "file_name": "local.bin",
             }
         )
+
+
+def test_existing_upload_database_is_migrated_to_file_id(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("FILE_ROOT", str(tmp_path))
+    FileStore().ensure()
+    database = tmp_path / "uploads.sqlite3"
+
+    db = sqlite3.connect(database)
+    db.executescript(
+        """
+        CREATE TABLE upload_sessions (
+            upload_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            mime_type TEXT NOT NULL,
+            expected_size INTEGER NOT NULL,
+            expected_sha256 TEXT NOT NULL,
+            bytes_received INTEGER NOT NULL,
+            state TEXT NOT NULL,
+            artifact_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            completed_at TEXT NOT NULL
+        );
+        """
+    )
+    db.commit()
+    db.close()
+
+    manager = FileUploadManager()
+    manager.ensure()
+
+    db = sqlite3.connect(database)
+    columns = {
+        row[1]
+        for row in db.execute("PRAGMA table_info(upload_sessions)").fetchall()
+    }
+    db.close()
+
+    assert "file_id" in columns
+    assert "artifact_id" not in columns
