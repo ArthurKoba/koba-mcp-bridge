@@ -9,7 +9,7 @@ import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import IO
+from typing import IO, Protocol, cast
 
 from common.models import JsonObject
 
@@ -21,6 +21,10 @@ from .file_primitives import (
     now_iso,
     upload_max_bytes,
 )
+
+
+class _MetadataLookup(Protocol):
+    def info(self, file_id: str) -> JsonObject: ...
 
 
 class FileStoreCore:
@@ -148,7 +152,7 @@ class FileStoreCore:
                 """,
                 (file_id, name, source, created_at),
             )
-        return self.info(file_id)
+        return cast(_MetadataLookup, self).info(file_id)
 
     def put_bytes(
         self,
