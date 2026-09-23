@@ -22,7 +22,7 @@ async def test_github_runtime_surface_is_isolated() -> None:
     assert "github_agent_status" in names
     assert "github_agent_create_pull_request" in names
     assert "github_agent_workflow_runs" in names
-    assert "artifact_status" not in names
+    assert "file_status" not in names
     assert "curl_request" not in names
     assert "profiles" not in names
 
@@ -35,7 +35,7 @@ async def test_gitlab_runtime_surface_is_isolated() -> None:
     assert "profile_status" in names
     assert "create_merge_request" in names
     assert "github_agent_status" not in names
-    assert "artifact_status" not in names
+    assert "file_status" not in names
     assert "curl_request" not in names
 
 
@@ -43,9 +43,9 @@ async def test_gitlab_runtime_surface_is_isolated() -> None:
 async def test_files_runtime_surface_is_isolated() -> None:
     names = await _tool_names(files_mcp)
 
-    assert "artifact_status" in names
-    assert "artifact_ingest_file" in names
-    assert "artifact_extract" in names
+    assert "file_status" in names
+    assert "file_ingest" in names
+    assert "file_extract" in names
     assert "curl_request" not in names
     assert "github_agent_status" not in names
     assert "profiles" not in names
@@ -59,6 +59,6 @@ async def test_http_runtime_surface_is_isolated() -> None:
     assert "curl_request" in names
     assert "curl_download" in names
     assert "curl_stream_capture" in names
-    assert "artifact_status" not in names
+    assert "file_status" not in names
     assert "github_agent_status" not in names
     assert "profiles" not in names
