@@ -7,13 +7,13 @@ from mcp.types import ToolAnnotations
 
 from common.models import JsonObject
 
-from .github_workflow import GitHubDevClient
+from .github_actions import GitHubActionsClient
 from .models import AtomicChange, CopySpec
 
 
 def register_github_workflow_tools(
     mcp: FastMCP,
-    client_factory: Callable[[], GitHubDevClient],
+    client_factory: Callable[[], GitHubActionsClient],
     read_annotations: ToolAnnotations,
     write_annotations: ToolAnnotations,
     destructive_annotations: ToolAnnotations,
