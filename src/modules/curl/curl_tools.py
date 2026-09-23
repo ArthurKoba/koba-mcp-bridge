@@ -460,15 +460,15 @@ def _preview(
         except LookupError:
             charset = "utf-8"
             text = sample.decode("utf-8", errors="replace")
-        return {
-            "body_is_text": True,
-            "body_encoding": charset,
-            "body_preview_text": text,
-        }
-    return {
-        "body_is_text": False,
-        "body_preview_hex": sample[:512].hex(),
-    }
+        return BodyPreview(
+            body_is_text=True,
+            body_encoding=charset,
+            body_preview_text=text,
+        ).to_json()
+    return BodyPreview(
+        body_is_text=False,
+        body_preview_hex=sample[:512].hex(),
+    ).to_json()
 
 
 def _safe_file_name(name: str) -> str:
@@ -505,10 +505,12 @@ def _metadata_from_stdout(stdout: str) -> JsonObject:
     if not text:
         return {}
     try:
-        value = json.loads(text)
-    except json.JSONDecodeError:
+        value = json_loads(text, context="curl --write-out")
+    except ValueError:
         return {"raw_write_out": text}
-    return value if isinstance(value, dict) else {"write_out": value}
+    if isinstance(value, dict):
+        return json_object(value, context="curl --write-out")
+    return {"write_out": value}
 
 
 def _build_curl_command(
@@ -746,23 +748,18 @@ def _curl_failure_diagnostic(
         code,
         ("curl", "curl failed before completing the HTTP request"),
     )
-    result = {
-        "error_type": error_type,
-        "error_hint": hint,
-    }
     clean_error = error.strip()
-    if clean_error:
-        result["error_detail"] = clean_error[:2048]
-
     meta = metadata or {}
     if code == 28:
         connect = meta.get("time_connect")
         total = meta.get("time_total")
         if connect is not None or total is not None:
-            result["error_hint"] += (
-                f"; time_connect={connect!s}, time_total={total!s}"
-            )
-    return result
+            hint += f"; time_connect={connect!s}, time_total={total!s}"
+    return CurlDiagnostic(
+        error_type=error_type,
+        error_hint=hint,
+        error_detail=clean_error[:2048] if clean_error else None,
+    ).to_json()
 
 
 def _http_status_diagnostic(status: int) -> dict[str, str] | None:
@@ -770,34 +767,34 @@ def _http_status_diagnostic(status: int) -> dict[str, str] | None:
     if code < 400:
         return None
     if code == 401:
-        return {
-            "error_type": "http_authentication",
-            "error_hint": "the server rejected authentication credentials (HTTP 401)",
-        }
+        return CurlDiagnostic(
+            error_type="http_authentication",
+            error_hint="the server rejected authentication credentials (HTTP 401)",
+        ).to_json()
     if code == 403:
-        return {
-            "error_type": "http_forbidden",
-            "error_hint": "the server understood the request but denied permission (HTTP 403)",
-        }
+        return CurlDiagnostic(
+            error_type="http_forbidden",
+            error_hint="the server understood the request but denied permission (HTTP 403)",
+        ).to_json()
     if code == 407:
-        return {
-            "error_type": "proxy_authentication",
-            "error_hint": "the configured proxy requires authentication (HTTP 407)",
-        }
+        return CurlDiagnostic(
+            error_type="proxy_authentication",
+            error_hint="the configured proxy requires authentication (HTTP 407)",
+        ).to_json()
     if code == 429:
-        return {
-            "error_type": "http_rate_limit",
-            "error_hint": "the server rate-limited the request (HTTP 429)",
-        }
+        return CurlDiagnostic(
+            error_type="http_rate_limit",
+            error_hint="the server rate-limited the request (HTTP 429)",
+        ).to_json()
     if 500 <= code <= 599:
-        return {
-            "error_type": "http_server",
-            "error_hint": f"the remote server returned HTTP {code}",
-        }
-    return {
-        "error_type": "http_client",
-        "error_hint": f"the remote server returned HTTP {code}",
-    }
+        return CurlDiagnostic(
+            error_type="http_server",
+            error_hint=f"the remote server returned HTTP {code}",
+        ).to_json()
+    return CurlDiagnostic(
+        error_type="http_client",
+        error_hint=f"the remote server returned HTTP {code}",
+    ).to_json()
 
 
 def _http_result(
@@ -810,7 +807,7 @@ def _http_result(
 ) -> JsonObject:
     blocks = _parse_header_blocks(header_path)
     final_block = blocks[-1] if blocks else None
-    status = int(metadata.get("http_code") or (final_block or {}).get("status") or 0)
+    status = int(metadata.get("http_code") or (final_block.status if final_block else 0) or 0)
     final_url = str(metadata.get("url_effective") or metadata.get("request_url") or "")
     size = output_path.stat().st_size if output_path.is_file() else 0
     truncated = bool(metadata.get("curl_exit_code") == 63 or size >= response_max_bytes)
@@ -823,7 +820,7 @@ def _http_result(
             metadata.get("num_redirects") or max(0, len(blocks) - 1)
         ),
         "response_chain": blocks,
-        "response_headers": (final_block or {}).get("headers", []),
+        "response_headers": (final_block.headers if final_block else []),
         "set_cookies": _header_values(final_block, "Set-Cookie"),
         "content_type": _content_type(final_block, metadata),
         "body_size_bytes": size,
@@ -997,7 +994,7 @@ def curl_download_impl(
     )
     blocks = _parse_header_blocks(header_path)
     final_block = blocks[-1] if blocks else None
-    status = int(metadata.get("http_code") or (final_block or {}).get("status") or 0)
+    status = int(metadata.get("http_code") or (final_block.status if final_block else 0) or 0)
     final_url = str(metadata.get("url_effective") or metadata.get("request_url") or "")
     exit_code = int(metadata.get("curl_exit_code") or 0)
     try:
@@ -1047,7 +1044,7 @@ def curl_download_impl(
                 metadata.get("num_redirects") or max(0, len(blocks) - 1)
             ),
             "response_chain": blocks,
-            "response_headers": (final_block or {}).get("headers", []),
+            "response_headers": (final_block.headers if final_block else []),
             "set_cookies": _header_values(final_block, "Set-Cookie"),
             "content_type": ctype,
             "file": file,
@@ -1179,7 +1176,7 @@ def curl_stream_capture_impl(
     metadata["curl_error"] = stderr.strip()
     blocks = _parse_header_blocks(header_path)
     final_block = blocks[-1] if blocks else None
-    status = int(metadata.get("http_code") or (final_block or {}).get("status") or 0)
+    status = int(metadata.get("http_code") or (final_block.status if final_block else 0) or 0)
     final_url = str(metadata.get("url_effective") or request_url)
     size = output_path.stat().st_size if output_path.exists() else 0
 
@@ -1218,7 +1215,7 @@ def curl_stream_capture_impl(
             "max_bytes": max_bytes,
             "duration_seconds": duration_seconds,
             "response_chain": blocks,
-            "response_headers": (final_block or {}).get("headers", []),
+            "response_headers": (final_block.headers if final_block else []),
             "set_cookies": _header_values(final_block, "Set-Cookie"),
             "content_type": ctype,
             "file": file,
