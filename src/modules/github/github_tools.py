@@ -5,6 +5,8 @@ from collections.abc import Callable
 from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
+from common.models import JsonObject
+
 from .github_workflow import GitHubDevClient
 from .models import AtomicChange, CopySpec
 
@@ -23,7 +25,7 @@ def register_github_workflow_tools(
         repository: str,
         path: str = "",
         ref: str | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """List one repository directory at an optional ref."""
         return client_factory().list_directory(repository, path, ref)
 
@@ -32,7 +34,7 @@ def register_github_workflow_tools(
         repository: str,
         path: str,
         ref: str | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Read one repository file as base64 without UTF-8 conversion."""
         return client_factory().get_binary_file(repository, path, ref)
 
@@ -43,7 +45,7 @@ def register_github_workflow_tools(
         content_base64: str,
         message: str,
         branch: str,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Create or replace one binary file from base64 content."""
         return client_factory().put_binary_file(
             repository,
@@ -66,7 +68,7 @@ def register_github_workflow_tools(
         expected_head_sha: str | None = None,
         operation: str = "copy",
         overwrite: bool = False,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Copy or move existing Git blobs between paths/refs without transferring bytes."""
         return client_factory().copy_files(
             repository,
@@ -86,7 +88,7 @@ def register_github_workflow_tools(
         message: str,
         changes: list[AtomicChange],
         expected_head_sha: str | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Commit multiple text/binary file changes atomically using Git Data objects."""
         return client_factory().commit_files(
             repository,
@@ -103,17 +105,17 @@ def register_github_workflow_tools(
         path: str | None = None,
         per_page: int = 50,
         page: int = 1,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """List commit history, optionally filtered by ref and path."""
         return client_factory().list_commits(repository, ref, path, per_page, page)
 
     @mcp.tool(title="GitHub agent get commit", annotations=read_annotations)
-    def github_agent_get_commit(repository: str, ref: str) -> dict[str, object]:
+    def github_agent_get_commit(repository: str, ref: str) -> JsonObject:
         """Read one commit including changed-file statistics and patches when available."""
         return client_factory().get_commit(repository, ref)
 
     @mcp.tool(title="GitHub agent delete branch", annotations=destructive_annotations)
-    def github_agent_delete_branch(repository: str, branch: str) -> dict[str, object]:
+    def github_agent_delete_branch(repository: str, branch: str) -> JsonObject:
         """Delete a non-protected branch."""
         return client_factory().delete_branch(repository, branch)
 
@@ -122,7 +124,7 @@ def register_github_workflow_tools(
         repository: str,
         branch: str,
         new_name: str,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Rename a non-protected branch to another non-protected name."""
         return client_factory().rename_branch(repository, branch, new_name)
 
@@ -134,7 +136,7 @@ def register_github_workflow_tools(
         expected_head_sha: str,
         allow_protected_branch: bool = False,
         dry_run: bool = True,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Reset a branch to an existing ancestor commit after CAS validation.
 
         Protected branches require explicit allow_protected_branch=true. The operation
@@ -154,7 +156,7 @@ def register_github_workflow_tools(
         repository: str,
         per_page: int = 100,
         page: int = 1,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """List repository tags."""
         return client_factory().list_tags(repository, per_page, page)
 
@@ -164,12 +166,12 @@ def register_github_workflow_tools(
         tag: str,
         target_ref: str,
         message: str | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Create a lightweight or annotated tag at a commit/ref."""
         return client_factory().create_tag(repository, tag, target_ref, message)
 
     @mcp.tool(title="GitHub agent delete tag", annotations=destructive_annotations)
-    def github_agent_delete_tag(repository: str, tag: str) -> dict[str, object]:
+    def github_agent_delete_tag(repository: str, tag: str) -> JsonObject:
         """Delete one repository tag ref."""
         return client_factory().delete_tag(repository, tag)
 
@@ -179,7 +181,7 @@ def register_github_workflow_tools(
         query: str,
         per_page: int = 30,
         page: int = 1,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Search code only inside one allowlisted repository."""
         return client_factory().search_code(repository, query, per_page, page)
 
@@ -189,12 +191,12 @@ def register_github_workflow_tools(
         state: str = "open",
         per_page: int = 50,
         page: int = 1,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """List same-repository pull requests."""
         return client_factory().list_pull_requests(repository, state, per_page, page)
 
     @mcp.tool(title="GitHub agent get pull request", annotations=read_annotations)
-    def github_agent_get_pull_request(repository: str, number: int) -> dict[str, object]:
+    def github_agent_get_pull_request(repository: str, number: int) -> JsonObject:
         """Read pull request metadata."""
         return client_factory().get_pull_request(repository, number)
 
@@ -206,7 +208,7 @@ def register_github_workflow_tools(
         base: str,
         body: str = "",
         draft: bool = False,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Create a pull request whose head/base branches are in the same repository."""
         return client_factory().create_pull_request(
             repository,
@@ -225,7 +227,7 @@ def register_github_workflow_tools(
         body: str | None = None,
         state: str | None = None,
         base: str | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Update title/body/state/base of a same-repository pull request."""
         return client_factory().update_pull_request(
             repository,
@@ -237,7 +239,7 @@ def register_github_workflow_tools(
         )
 
     @mcp.tool(title="GitHub agent pull request files", annotations=read_annotations)
-    def github_agent_pull_files(repository: str, number: int) -> dict[str, object]:
+    def github_agent_pull_files(repository: str, number: int) -> JsonObject:
         """List changed files and patches for a pull request."""
         return client_factory().list_pull_files(repository, number)
 
@@ -246,12 +248,12 @@ def register_github_workflow_tools(
         repository: str,
         number: int,
         body: str,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Add a top-level conversation comment to a pull request."""
         return client_factory().add_pull_comment(repository, number, body)
 
     @mcp.tool(title="GitHub agent list reviews", annotations=read_annotations)
-    def github_agent_list_reviews(repository: str, number: int) -> dict[str, object]:
+    def github_agent_list_reviews(repository: str, number: int) -> JsonObject:
         """List submitted reviews for a pull request."""
         return client_factory().list_reviews(repository, number)
 
@@ -261,7 +263,7 @@ def register_github_workflow_tools(
         number: int,
         event: str,
         body: str,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Submit APPROVE, REQUEST_CHANGES, or COMMENT review feedback."""
         return client_factory().create_review(repository, number, event, body)
 
@@ -270,17 +272,17 @@ def register_github_workflow_tools(
         repository: str,
         number: int,
         expected_head_sha: str | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Update a pull request branch with changes from its base branch."""
         return client_factory().update_pull_branch(repository, number, expected_head_sha)
 
     @mcp.tool(title="GitHub agent check runs", annotations=read_annotations)
-    def github_agent_check_runs(repository: str, ref: str) -> dict[str, object]:
+    def github_agent_check_runs(repository: str, ref: str) -> JsonObject:
         """List check-runs for a commit/ref."""
         return client_factory().check_runs(repository, ref)
 
     @mcp.tool(title="GitHub agent required checks", annotations=read_annotations)
-    def github_agent_required_checks(repository: str, ref: str) -> dict[str, object]:
+    def github_agent_required_checks(repository: str, ref: str) -> JsonObject:
         """Verify configured required check-runs are completed successfully."""
         return client_factory().assert_required_checks(repository, ref)
 
@@ -291,7 +293,7 @@ def register_github_workflow_tools(
         merge_method: str = "squash",
         commit_title: str | None = None,
         commit_message: str | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Merge a same-repository PR only after configured required checks pass."""
         return client_factory().merge_pull_request(
             repository,
@@ -307,12 +309,12 @@ def register_github_workflow_tools(
         state: str = "open",
         per_page: int = 50,
         page: int = 1,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """List issues, excluding pull requests."""
         return client_factory().list_issues(repository, state, per_page, page)
 
     @mcp.tool(title="GitHub agent get issue", annotations=read_annotations)
-    def github_agent_get_issue(repository: str, number: int) -> dict[str, object]:
+    def github_agent_get_issue(repository: str, number: int) -> JsonObject:
         """Read one issue."""
         return client_factory().get_issue(repository, number)
 
@@ -322,7 +324,7 @@ def register_github_workflow_tools(
         title: str,
         body: str = "",
         labels: list[str] | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Create an issue inside an allowlisted repository."""
         return client_factory().create_issue(repository, title, body, labels)
 
@@ -334,7 +336,7 @@ def register_github_workflow_tools(
         body: str | None = None,
         state: str | None = None,
         labels: list[str] | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Update an issue inside an allowlisted repository."""
         return client_factory().update_issue(
             repository,
@@ -350,7 +352,7 @@ def register_github_workflow_tools(
         repository: str,
         number: int,
         body: str,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Add a comment to an issue."""
         return client_factory().add_issue_comment(repository, number, body)
 
@@ -361,7 +363,7 @@ def register_github_workflow_tools(
         status: str | None = None,
         per_page: int = 30,
         page: int = 1,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """List GitHub Actions workflow runs."""
         return client_factory().list_workflow_runs(
             repository,
@@ -372,6 +374,6 @@ def register_github_workflow_tools(
         )
 
     @mcp.tool(title="GitHub agent workflow jobs", annotations=read_annotations)
-    def github_agent_workflow_jobs(repository: str, run_id: int) -> dict[str, object]:
+    def github_agent_workflow_jobs(repository: str, run_id: int) -> JsonObject:
         """List jobs for one GitHub Actions workflow run."""
         return client_factory().list_workflow_jobs(repository, run_id)

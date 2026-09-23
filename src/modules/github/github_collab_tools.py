@@ -5,6 +5,8 @@ from collections.abc import Callable
 from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
+from common.models import JsonObject
+
 from .github_collab import GitHubCollabClient
 
 
@@ -22,7 +24,7 @@ def register_github_collab_tools(
         base: str,
         head: str,
         commit_message: str | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Merge one ref into a non-protected working branch."""
         return client_factory().merge_branch(repository, base, head, commit_message)
 
@@ -32,7 +34,7 @@ def register_github_collab_tools(
         number: int,
         reviewers: list[str] | None = None,
         team_reviewers: list[str] | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Request users or teams to review a pull request."""
         return client_factory().request_reviewers(
             repository,
@@ -47,7 +49,7 @@ def register_github_collab_tools(
         number: int,
         reviewers: list[str] | None = None,
         team_reviewers: list[str] | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Remove user/team review requests from a pull request."""
         return client_factory().remove_requested_reviewers(
             repository,
@@ -61,7 +63,7 @@ def register_github_collab_tools(
         repository: str,
         comment_id: int,
         body: str,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Replace the body of an inline review comment."""
         return client_factory().update_review_comment(repository, comment_id, body)
 
@@ -71,7 +73,7 @@ def register_github_collab_tools(
         number: int,
         comment_id: int,
         body: str,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Reply inside an inline review comment thread."""
         return client_factory().reply_to_review_comment(
             repository,
@@ -84,7 +86,7 @@ def register_github_collab_tools(
     def github_agent_list_review_threads(
         repository: str,
         number: int,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """List inline review threads including resolved/outdated state."""
         return client_factory().list_review_threads(repository, number)
 
@@ -93,7 +95,7 @@ def register_github_collab_tools(
         repository: str,
         thread_id: str,
         resolved: bool,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Resolve or unresolve one inline review thread."""
         return client_factory().set_review_thread_resolved(
             repository,
@@ -105,7 +107,7 @@ def register_github_collab_tools(
     def github_agent_mark_pull_ready_for_review(
         repository: str,
         number: int,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Mark a draft pull request ready for review."""
         return client_factory().mark_pull_ready_for_review(repository, number)
 
@@ -113,7 +115,7 @@ def register_github_collab_tools(
     def github_agent_required_reviews(
         repository: str,
         number: int,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Verify configured independent reviewer approvals before merge."""
         return client_factory().assert_required_reviews(repository, number)
 

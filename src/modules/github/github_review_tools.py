@@ -5,6 +5,8 @@ from collections.abc import Callable
 from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
+from common.models import JsonObject
+
 from .github_review import GitHubReviewClient
 from .models import ReviewComment
 
@@ -23,7 +25,7 @@ def register_github_review_tools(
         number: int,
         method: str = "MERGE",
         expected_head_sha: str | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Update a PR branch using MERGE or true REBASE through GitHub GraphQL."""
         return client_factory().update_pull_branch_graphql(
             repository,
@@ -40,7 +42,7 @@ def register_github_review_tools(
         body: str,
         comments: list[ReviewComment] | None = None,
         commit_id: str | None = None,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Submit a PR review with optional inline file/line comments."""
         return client_factory().create_review_with_comments(
             repository,
@@ -55,7 +57,7 @@ def register_github_review_tools(
     def github_agent_list_conversation_comments(
         repository: str,
         number: int,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """List top-level issue/PR conversation comments."""
         return client_factory().list_conversation_comments(repository, number)
 
@@ -63,6 +65,6 @@ def register_github_review_tools(
     def github_agent_list_review_comments(
         repository: str,
         number: int,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """List inline review comments for a pull request."""
         return client_factory().list_review_comments(repository, number)

@@ -5,6 +5,8 @@ from collections.abc import Callable
 from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
+from common.models import JsonObject
+
 from .github_actions import GitHubActionsClient
 from .github_admin import repoint_reserved_branch
 from .github_history_graph import rewrite_branch_identity_graph
@@ -21,7 +23,7 @@ def register_github_actions_tools(
     """Register GitHub capability/history controls plus Actions diagnostics."""
 
     @mcp.tool(title="GitHub agent capabilities", annotations=read_annotations)
-    def github_agent_capabilities(repository: str) -> dict[str, object]:
+    def github_agent_capabilities(repository: str) -> JsonObject:
         """Inspect effective GitHub App permissions, identity, and bridge policy."""
         return client_factory().capabilities(
             repository,
@@ -43,7 +45,7 @@ def register_github_actions_tools(
         base_sha: str | None = None,
         max_commits: int = 100,
         dry_run: bool = True,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Rewrite linear branch history to the current Agent App Git identity.
 
         The operation is identity-only: messages and trees must be preserved. It
@@ -78,7 +80,7 @@ def register_github_actions_tools(
         preserve_author_dates: bool = True,
         max_commits: int = 500,
         dry_run: bool = True,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Rewrite a reachable merge DAG to the current Agent App Git identity.
 
         Parent ordering/topology, commit trees, messages, and optional original Git
@@ -110,7 +112,7 @@ def register_github_actions_tools(
         expected_head_sha: str,
         target_sha: str,
         dry_run: bool = True,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Repoint a Bridge-reserved branch without changing its repository tree.
 
         This is a narrow maintenance primitive, not a general force-ref operation.
@@ -134,7 +136,7 @@ def register_github_actions_tools(
         repository: str,
         job_id: int,
         max_chars: int = 100_000,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Download and return the tail of one GitHub Actions job log."""
         return client_factory().get_workflow_job_log(repository, job_id, max_chars)
 
@@ -144,7 +146,7 @@ def register_github_actions_tools(
         run_id: int,
         per_page: int = 100,
         page: int = 1,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """List files produced by one GitHub Actions workflow run."""
         return client_factory().list_workflow_files(
             repository,
@@ -158,7 +160,7 @@ def register_github_actions_tools(
         repository: str,
         workflow_file_id: int,
         max_bytes: int = 8 * 1024 * 1024,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Download a small workflow file ZIP as base64 with SHA-256."""
         return client_factory().download_workflow_file(
             repository,
@@ -170,7 +172,7 @@ def register_github_actions_tools(
     def github_agent_enable_workflow(
         repository: str,
         workflow_id: str,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Enable one GitHub Actions workflow."""
         return client_factory().enable_workflow(repository, workflow_id)
 
@@ -179,8 +181,8 @@ def register_github_actions_tools(
         repository: str,
         workflow_id: str,
         ref: str,
-        inputs: dict[str, object] | None = None,
-    ) -> dict[str, object]:
+        inputs: JsonObject | None = None,
+    ) -> JsonObject:
         """Dispatch a workflow_dispatch workflow with an explicit ref and inputs."""
         return client_factory().dispatch_workflow(
             repository,
@@ -193,7 +195,7 @@ def register_github_actions_tools(
     def github_agent_rerun_workflow_job(
         repository: str,
         job_id: int,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Re-run one GitHub Actions job."""
         return client_factory().rerun_workflow_job(repository, job_id)
 
@@ -201,7 +203,7 @@ def register_github_actions_tools(
     def github_agent_rerun_failed_workflow_jobs(
         repository: str,
         run_id: int,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Re-run only failed jobs in one workflow run."""
         return client_factory().rerun_failed_workflow_jobs(repository, run_id)
 
@@ -209,7 +211,7 @@ def register_github_actions_tools(
     def github_agent_rerun_workflow_run(
         repository: str,
         run_id: int,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Re-run every job in one workflow run."""
         return client_factory().rerun_workflow_run(repository, run_id)
 
@@ -217,7 +219,7 @@ def register_github_actions_tools(
     def github_agent_cancel_workflow_run(
         repository: str,
         run_id: int,
-    ) -> dict[str, object]:
+    ) -> JsonObject:
         """Cancel an in-progress GitHub Actions workflow run."""
         return client_factory().cancel_workflow_run(repository, run_id)
 
@@ -228,7 +230,7 @@ def register_github_actions_tools(
             repository: str,
             job_id: int,
             max_chars: int = 100_000,
-        ) -> dict[str, object]:
+        ) -> JsonObject:
             """Read the tail of one Actions job log using reviewer identity."""
             return github_reviewer_client().get_workflow_job_log(
                 repository,
@@ -242,7 +244,7 @@ def register_github_actions_tools(
             run_id: int,
             per_page: int = 100,
             page: int = 1,
-        ) -> dict[str, object]:
+        ) -> JsonObject:
             """List workflow files using reviewer identity."""
             return github_reviewer_client().list_workflow_files(
                 repository,
@@ -259,7 +261,7 @@ def register_github_actions_tools(
             repository: str,
             workflow_file_id: int,
             max_bytes: int = 8 * 1024 * 1024,
-        ) -> dict[str, object]:
+        ) -> JsonObject:
             """Download a small workflow file ZIP using reviewer identity."""
             return github_reviewer_client().download_workflow_file(
                 repository,
