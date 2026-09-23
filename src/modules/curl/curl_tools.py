@@ -673,7 +673,10 @@ def _execute_curl(
     metadata["elapsed_ms"] = round((time.monotonic() - started) * 1000, 3)
     metadata["request_method"] = clean_method
     metadata["request_url"] = final_request_url
-    metadata["request_headers"] = _redacted_request_headers(merged)
+    metadata["request_headers"] = json_value(
+        _redacted_request_headers(merged),
+        context="curl request headers",
+    )
     metadata["preset"] = preset
     metadata["redirect_follow_requested"] = follow_redirects
     metadata["redirect_follow_blocked_sensitive"] = bool(
@@ -682,11 +685,38 @@ def _execute_curl(
     return metadata, header_path, output_path
 
 
+def _json_int(value: JsonValue | None, *, default: int = 0, field: str = "value") -> int:
+    if value is None or value == "":
+        return default
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float, str)):
+        try:
+            return int(value)
+        except (TypeError, ValueError) as exc:
+            raise CurlError(f"{field} is not an integer") from exc
+    raise CurlError(f"{field} is not a scalar integer value")
+
+
+def _header_blocks_json(blocks: list[HeaderBlock]) -> JsonValue:
+    return json_value(
+        [block.to_json() for block in blocks],
+        context="curl response headers",
+    )
+
+
+def _header_fields_json(block: HeaderBlock | None) -> JsonValue:
+    return json_value(
+        [field.to_json() for field in block.headers] if block else [],
+        context="curl response header fields",
+    )
+
+
 def _curl_failure_diagnostic(
     exit_code: int,
     error: str,
     metadata: JsonObject | None = None,
-) -> dict[str, str] | None:
+) -> JsonObject | None:
     code = int(exit_code)
     if code == 0:
         return None
@@ -759,7 +789,7 @@ def _curl_failure_diagnostic(
     ).to_json()
 
 
-def _http_status_diagnostic(status: int) -> dict[str, str] | None:
+def _http_status_diagnostic(status: int) -> JsonObject | None:
     code = int(status)
     if code < 400:
         return None
@@ -804,25 +834,32 @@ def _http_result(
 ) -> JsonObject:
     blocks = _parse_header_blocks(header_path)
     final_block = blocks[-1] if blocks else None
-    status = int(metadata.get("http_code") or (final_block.status if final_block else 0) or 0)
+    status = _json_int(
+        metadata.get("http_code"),
+        default=final_block.status if final_block else 0,
+        field="http_code",
+    )
     final_url = str(metadata.get("url_effective") or metadata.get("request_url") or "")
     size = output_path.stat().st_size if output_path.is_file() else 0
-    truncated = bool(metadata.get("curl_exit_code") == 63 or size >= response_max_bytes)
+    exit_code = _json_int(metadata.get("curl_exit_code"), field="curl_exit_code")
+    truncated = bool(exit_code == 63 or size >= response_max_bytes)
     data = output_path.read_bytes() if output_path.is_file() else b""
-    result = {
+    result: dict[str, object] = {
         "status": status,
-        "ok": 200 <= status < 400 and int(metadata.get("curl_exit_code") or 0) == 0,
+        "ok": 200 <= status < 400 and exit_code == 0,
         "final_url": final_url,
-        "redirect_count": int(
-            metadata.get("num_redirects") or max(0, len(blocks) - 1)
+        "redirect_count": _json_int(
+            metadata.get("num_redirects"),
+            default=max(0, len(blocks) - 1),
+            field="num_redirects",
         ),
-        "response_chain": blocks,
-        "response_headers": (final_block.headers if final_block else []),
+        "response_chain": _header_blocks_json(blocks),
+        "response_headers": _header_fields_json(final_block),
         "set_cookies": _header_values(final_block, "Set-Cookie"),
         "content_type": _content_type(final_block, metadata),
         "body_size_bytes": size,
         "body_truncated": truncated,
-        "curl_exit_code": int(metadata.get("curl_exit_code") or 0),
+        "curl_exit_code": exit_code,
         "curl_error": str(metadata.get("curl_error") or ""),
         "redirect_follow_blocked_sensitive": bool(
             metadata.get("redirect_follow_blocked_sensitive")
@@ -860,7 +897,7 @@ def _http_result(
         },
     }
     diagnostic = _curl_failure_diagnostic(
-        int(metadata.get("curl_exit_code") or 0),
+        exit_code,
         str(metadata.get("curl_error") or ""),
         metadata,
     )
@@ -868,15 +905,16 @@ def _http_result(
         diagnostic = _http_status_diagnostic(status)
     if diagnostic is not None:
         result["error"] = diagnostic
-    result.update(_preview(data, final_block, metadata, preview_bytes))
-    if result["body_is_text"] and not truncated:
-        charset = str(result.get("body_encoding") or "utf-8")
+    preview = _preview(data, final_block, metadata, preview_bytes)
+    result.update(preview)
+    if preview.get("body_is_text") is True and not truncated:
+        charset = str(preview.get("body_encoding") or "utf-8")
         try:
             result["body_text"] = data.decode(charset, errors="replace")
         except LookupError:
             result["body_encoding"] = "utf-8"
             result["body_text"] = data.decode("utf-8", errors="replace")
-    return result
+    return json_object(result, context="curl request response")
 
 
 def curl_request_impl(
@@ -991,9 +1029,13 @@ def curl_download_impl(
     )
     blocks = _parse_header_blocks(header_path)
     final_block = blocks[-1] if blocks else None
-    status = int(metadata.get("http_code") or (final_block.status if final_block else 0) or 0)
+    status = _json_int(
+        metadata.get("http_code"),
+        default=final_block.status if final_block else 0,
+        field="http_code",
+    )
     final_url = str(metadata.get("url_effective") or metadata.get("request_url") or "")
-    exit_code = int(metadata.get("curl_exit_code") or 0)
+    exit_code = _json_int(metadata.get("curl_exit_code"), field="curl_exit_code")
     try:
         if exit_code != 0:
             diagnostic = _curl_failure_diagnostic(
@@ -1037,11 +1079,13 @@ def curl_download_impl(
             "status": status,
             "ok": 200 <= status < 400,
             "final_url": final_url,
-            "redirect_count": int(
-                metadata.get("num_redirects") or max(0, len(blocks) - 1)
+            "redirect_count": _json_int(
+                metadata.get("num_redirects"),
+                default=max(0, len(blocks) - 1),
+                field="num_redirects",
             ),
-            "response_chain": blocks,
-            "response_headers": (final_block.headers if final_block else []),
+            "response_chain": _header_blocks_json(blocks),
+            "response_headers": _header_fields_json(final_block),
             "set_cookies": _header_values(final_block, "Set-Cookie"),
             "content_type": ctype,
             "file": file,
@@ -1173,7 +1217,11 @@ def curl_stream_capture_impl(
     metadata["curl_error"] = stderr.strip()
     blocks = _parse_header_blocks(header_path)
     final_block = blocks[-1] if blocks else None
-    status = int(metadata.get("http_code") or (final_block.status if final_block else 0) or 0)
+    status = _json_int(
+        metadata.get("http_code"),
+        default=final_block.status if final_block else 0,
+        field="http_code",
+    )
     final_url = str(metadata.get("url_effective") or request_url)
     size = output_path.stat().st_size if output_path.exists() else 0
 
@@ -1211,8 +1259,8 @@ def curl_stream_capture_impl(
             "captured_bytes": size,
             "max_bytes": max_bytes,
             "duration_seconds": duration_seconds,
-            "response_chain": blocks,
-            "response_headers": (final_block.headers if final_block else []),
+            "response_chain": _header_blocks_json(blocks),
+            "response_headers": _header_fields_json(final_block),
             "set_cookies": _header_values(final_block, "Set-Cookie"),
             "content_type": ctype,
             "file": file,
