@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from .file_tools import register_file_tools
 from mcp_common.runtime_annotations import (
     DESTRUCTIVE_LOCAL,
     READ_ONLY_LOCAL,
     WRITE_LOCAL,
 )
 from mcp_common.runtime_common import build_private_mcp, private_http_app
+
+from .file_tools import register_file_tools
 
 mcp = build_private_mcp("files-mcp")
 

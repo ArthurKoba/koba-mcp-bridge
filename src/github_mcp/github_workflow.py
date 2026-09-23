@@ -5,8 +5,9 @@ import os
 import urllib.parse
 from typing import Any
 
-from .github_agent import GitHubAgentError, GitHubAppClient
 from mcp_common.secrets import SecretError, resolve_config_secret
+
+from .github_agent import GitHubAgentError, GitHubAppClient
 
 _DEFAULT_PROTECTED_BRANCHES = "main,master"
 _DEFAULT_REQUIRED_CHECKS = "test,docker"
