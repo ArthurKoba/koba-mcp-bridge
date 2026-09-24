@@ -93,9 +93,6 @@ GITHUB_OAUTH_JWT_SIGNING_KEY=<gateway signing key>
 GITHUB_OAUTH_ALLOWED_USERS=<comma-separated logins>
 ```
 
-During the live rename, Compose accepts existing `CONTROL_PLANE_*` deployment values as
-fallbacks. New configuration should use the `MANAGEMENT_*` names.
-
 After deployment, create provider accounts through the private admin UI instead of adding
 provider credentials to Coolify environment variables.
 

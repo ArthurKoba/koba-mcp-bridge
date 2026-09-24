@@ -280,7 +280,6 @@ def _dashboard(engine: Engine) -> CustomView:
     return CustomView(
         menu_label="Dashboard",
         icon="fa fa-home",
-        path="/dashboard",
         widget=CardRowWidget(
             children=[
                 StatWidget(title="Active accounts", value_callback=count_accounts),
