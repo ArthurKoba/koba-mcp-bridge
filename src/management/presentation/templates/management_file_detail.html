@@ -1,11 +1,20 @@
 {% extends "layout.html" %}
 {% block content %}
 <div class="container-xl">
-  <div class="page-header d-print-none"><div class="row align-items-center"><div class="col"><h2 class="page-title">File details</h2></div><div class="col-auto"><a class="btn" href="{{ base_url }}">Back</a></div></div></div>
+  <div class="page-header d-print-none mb-3">
+    <div class="row align-items-center">
+      <div class="col"><h2 class="page-title">File details</h2></div>
+      <div class="col-auto">
+        <a class="btn btn-sm" href="{{ base_url }}">Back</a>
+        <a class="btn btn-sm btn-primary" href="{{ base_url }}/download/{{ info['file_id'] }}">Download</a>
+      </div>
+    </div>
+  </div>
   <div class="card"><div class="card-body">
-    <dl class="row">
+    <dl class="row mb-0">
     {% for key, value in info.items() %}
-      <dt class="col-sm-3">{{ key }}</dt><dd class="col-sm-9"><pre class="mb-2 text-wrap">{{ value | tojson(indent=2) if value is mapping or value is sequence and value is not string else value }}</pre></dd>
+      <dt class="col-sm-3 text-secondary">{{ key }}</dt>
+      <dd class="col-sm-9"><pre class="mb-2 text-wrap">{{ value | tojson if value is mapping or value is sequence and value is not string else value }}</pre></dd>
     {% endfor %}
     </dl>
   </div></div>

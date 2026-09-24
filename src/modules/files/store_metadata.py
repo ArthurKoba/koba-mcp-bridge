@@ -95,11 +95,49 @@ class FileMetadataStore(FileStoreCore):
             present=self.path_for(normalized).is_file(),
         ).to_json()
 
-    def list(self, query: str = "", offset: int = 0, limit: int = 100) -> JsonObject:
+    def stats(self) -> JsonObject:
+        self.ensure()
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT COUNT(*) AS file_count, COALESCE(SUM(size_bytes), 0) AS total_bytes FROM files"
+            ).fetchone()
+            reference_count = int(
+                db.execute("SELECT COUNT(*) FROM file_refs").fetchone()[0]
+            )
+        file_count = int(row["file_count"])
+        total_bytes = int(row["total_bytes"])
+        return {
+            "files": file_count,
+            "size_bytes": total_bytes,
+            "size_display": size_display(total_bytes),
+            "references": reference_count,
+        }
+
+    def list(
+        self,
+        query: str = "",
+        offset: int = 0,
+        limit: int = 100,
+        sort_by: str = "created_at",
+        sort_order: str = "desc",
+    ) -> JsonObject:
         if offset < 0:
             raise FileError("offset must be non-negative")
         if limit <= 0 or limit > 1000:
             raise FileError("limit must be between 1 and 1000")
+        sort_columns = {
+            "name": "a.name COLLATE NOCASE",
+            "mime_type": "a.mime_type COLLATE NOCASE",
+            "size_bytes": "a.size_bytes",
+            "created_at": "a.created_at",
+            "reference_count": "reference_count",
+        }
+        if sort_by not in sort_columns:
+            raise FileError("unsupported file sort column")
+        normalized_order = sort_order.casefold()
+        if normalized_order not in {"asc", "desc"}:
+            raise FileError("sort_order must be asc or desc")
+        order_by = f"{sort_columns[sort_by]} {normalized_order.upper()}, a.file_id"
         self.ensure()
         params: list[str | int] = []
         where = ""
@@ -128,7 +166,7 @@ class FileMetadataStore(FileStoreCore):
                         WHERE r.file_id = a.file_id) AS reference_count
                 FROM files a
                 {where}
-                ORDER BY a.created_at DESC, a.file_id
+                ORDER BY {order_by}
                 LIMIT ? OFFSET ?
                 """,
                 [*params, limit, offset],

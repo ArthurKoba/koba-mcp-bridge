@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import urllib.parse
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -19,6 +20,7 @@ from starlette_admin import (
     CustomView,
     EnumField,
     PasswordField,
+    RowActionsDisplayType,
     StatWidget,
     TextAreaField,
     action,
@@ -30,6 +32,7 @@ from starlette_admin.auth import AdminUser, AuthProvider, LoginFailed
 from starlette_admin.contrib.sqla import Admin, ModelView
 from starlette_admin.exceptions import ActionFailed
 from starlette_admin.fields import BaseField
+from starlette_admin.theme import ClassMap, DefaultTheme
 
 from common.settings import ManagementSettings
 from management.application.services import AccountService, TelemetryService
@@ -43,6 +46,24 @@ from management.infrastructure.database import (
     ManagementConfigRecord,
 )
 from management.infrastructure.files import FileAdminStore
+
+
+class _CompactClasses(ClassMap):
+    classes = {
+        "list.search_button": "btn btn-sm",
+        "list.create_button": "btn btn-sm btn-primary ms-1",
+        "list.import_button": "btn btn-sm",
+        "list.columns_toggle": "btn btn-sm dropdown-toggle",
+        "list.goto_page_button": "btn btn-sm",
+        "filter.toggle_button": "btn btn-sm dropdown-toggle",
+        "action.button": "btn btn-sm",
+        "action.dropdown_toggle": "btn btn-sm dropdown-toggle",
+    }
+
+
+class _CompactTheme(DefaultTheme):
+    def get_class_map(self) -> ClassMap:
+        return _CompactClasses()
 
 
 class ManagementAuthProvider(AuthProvider):
@@ -76,6 +97,10 @@ class ManagementAuthProvider(AuthProvider):
 
 class _BaseAccountView(ModelView):
     row_actions = ("view", "edit", "test_connection", "delete")
+    row_actions_display_type = RowActionsDisplayType.KEBAB
+    page_size = 25
+    page_size_options = [25, 50, 100]
+    search_auto_submit = True
     exclude_fields_from_create = ("id", "encrypted_credential", "created_at", "updated_at")
     exclude_fields_from_edit = ("id", "encrypted_credential", "created_at", "updated_at")
 
@@ -260,6 +285,9 @@ class GitLabAccountView(_BaseAccountView):
 
 
 class InvocationView(ModelView):
+    row_actions_display_type = RowActionsDisplayType.KEBAB
+    page_size = 50
+    page_size_options = [25, 50, 100]
     fields = cast(
         Sequence[BaseField],
         (
@@ -283,7 +311,12 @@ class InvocationView(ModelView):
     actions = ("clear_all", "delete")
 
     def __init__(self, model: type[InvocationRecord], telemetry: TelemetryService) -> None:
-        super().__init__(model, icon="fa fa-list")
+        super().__init__(
+            model,
+            icon="fa fa-chart-line",
+            menu_label="MCP Calls",
+            display_name="MCP Call",
+        )
         self.telemetry = telemetry
 
     def can_create(self, _request: Request) -> bool:
@@ -305,6 +338,9 @@ class InvocationView(ModelView):
 
 
 class ManagementConfigView(ModelView):
+    row_actions_display_type = RowActionsDisplayType.KEBAB
+    page_size = 1
+    page_size_options = [1]
     fields = cast(
         Sequence[BaseField],
         (
@@ -386,15 +422,40 @@ class FilesView(CustomView):
     @route("")
     async def index(self, request: Request) -> Response:
         query = request.query_params.get("q", "")
-        listing = await asyncio.to_thread(self.files.list, query=query, limit=250)
+        sort_by = request.query_params.get("sort", "created_at")
+        sort_order = request.query_params.get("order", "desc").casefold()
+        allowed_sorts = {"name", "mime_type", "size_bytes", "created_at", "reference_count"}
+        if sort_by not in allowed_sorts:
+            sort_by = "created_at"
+        if sort_order not in {"asc", "desc"}:
+            sort_order = "desc"
+        listing, stats = await asyncio.gather(
+            asyncio.to_thread(
+                self.files.list,
+                query=query,
+                limit=250,
+                sort_by=sort_by,
+                sort_order=sort_order,
+            ),
+            asyncio.to_thread(self.files.stats),
+        )
+        base_url = "/admin/files"
+        sort_urls = {
+            field: f"{base_url}?{urllib.parse.urlencode({'q': query, 'sort': field, 'order': 'desc' if sort_by == field and sort_order == 'asc' else 'asc'})}"
+            for field in allowed_sorts
+        }
         return self.templates.TemplateResponse(
             request=request,
             name="management_files.html",
             context={
                 "title": "Files",
                 "listing": listing,
+                "stats": stats,
                 "query": query,
-                "base_url": "/admin/files",
+                "sort_by": sort_by,
+                "sort_order": sort_order,
+                "sort_urls": sort_urls,
+                "base_url": base_url,
             },
         )
 
@@ -483,7 +544,7 @@ class FilesView(CustomView):
         return RedirectResponse("/admin/files", status_code=303)
 
 
-def _dashboard(engine: Engine) -> CustomView:
+def _dashboard(engine: Engine, files: FileAdminStore) -> CustomView:
     async def count(model: type[object], *_filters: object) -> int:
         statement = select(func.count()).select_from(model)
         for criterion in _filters:
@@ -516,6 +577,18 @@ def _dashboard(engine: Engine) -> CustomView:
             select(func.avg(InvocationRecord.duration_ms)),
         )
 
+    async def stored_files(_request: Request) -> int:
+        stats = await asyncio.to_thread(files.stats)
+        return int(stats.get("files", 0))
+
+    async def storage_used(_request: Request) -> str:
+        stats = await asyncio.to_thread(files.stats)
+        return str(stats.get("size_display", "0 B"))
+
+    async def error_rate(_request: Request) -> float:
+        calls, errors = await asyncio.gather(count_calls(_request), count_errors(_request))
+        return round((errors / calls) * 100, 1) if calls else 0.0
+
     return CustomView(
         menu_label="Dashboard",
         icon="fa fa-home",
@@ -526,7 +599,10 @@ def _dashboard(engine: Engine) -> CustomView:
                 StatWidget(title="GitLab accounts", value_callback=count_gitlab),
                 StatWidget(title="MCP calls", value_callback=count_calls),
                 StatWidget(title="Errors", value_callback=count_errors),
+                StatWidget(title="Error rate (%)", value_callback=error_rate),
                 StatWidget(title="Average duration (ms)", value_callback=average_duration),
+                StatWidget(title="Stored files", value_callback=stored_files),
+                StatWidget(title="Storage used", value_callback=storage_used),
             ]
         ),
     )
@@ -554,9 +630,11 @@ def build_admin(
         base_url="/admin",
         auth_provider=ManagementAuthProvider(settings),
         secret_key=settings.session_secret,
-        index_view=_dashboard(engine),
+        index_view=_dashboard(engine, files),
+        theme=_CompactTheme(),
         templates_dir=str(Path(__file__).with_name("templates")),
     )
+    admin.add_view(FilesView(files))
     admin.add_view(
         GitHubAccountView(
             GitHubAccountRecord,
@@ -577,5 +655,4 @@ def build_admin(
     )
     admin.add_view(InvocationView(InvocationRecord, telemetry))
     admin.add_view(ManagementConfigView(ManagementConfigRecord, telemetry))
-    admin.add_view(FilesView(files))
     return admin

@@ -8,6 +8,7 @@ from typing import Protocol, cast
 
 from fastmcp import Client
 from fastmcp.server.providers import Provider
+from fastmcp.utilities.components import FastMCPComponent
 from fastmcp.tools import FunctionTool, Tool
 
 from common.models import JsonObject, JsonValue, json_object
@@ -116,6 +117,10 @@ class AnalysisToolProvider(Provider):
         if not value:
             raise AnalysisProviderError("analysis backend URL is not configured")
         return value
+
+    async def get_tasks(self) -> Sequence[FastMCPComponent]:
+        """Analysis tools are dynamic RPC facades, not background-task registrations."""
+        return []
 
     async def _list_tools(self) -> Sequence[Tool]:
         ttl = self.settings.schema_cache_ttl_seconds

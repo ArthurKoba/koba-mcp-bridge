@@ -17,8 +17,25 @@ class FileAdminStore:
         self.store = FileStore(settings)
         self.store.ensure()
 
-    def list(self, *, query: str = "", offset: int = 0, limit: int = 100) -> JsonObject:
-        return self.store.list(query=query, offset=offset, limit=limit)
+    def list(
+        self,
+        *,
+        query: str = "",
+        offset: int = 0,
+        limit: int = 100,
+        sort_by: str = "created_at",
+        sort_order: str = "desc",
+    ) -> JsonObject:
+        return self.store.list(
+            query=query,
+            offset=offset,
+            limit=limit,
+            sort_by=sort_by,
+            sort_order=sort_order,
+        )
+
+    def stats(self) -> JsonObject:
+        return self.store.stats()
 
     def info(self, file_id: str) -> JsonObject:
         return self.store.info(file_id)
