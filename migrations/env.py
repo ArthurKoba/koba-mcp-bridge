@@ -3,7 +3,7 @@ from __future__ import annotations
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from control_plane.infrastructure.database import Base
+from management.infrastructure.database import Base
 
 config = context.config
 target_metadata = Base.metadata
