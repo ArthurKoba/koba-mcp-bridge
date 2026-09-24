@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 from starlette.requests import Request
@@ -39,6 +40,32 @@ class AdminProxy:
         )
         return headers
 
+    def _without_backend_origin(self, value: str) -> str:
+        backend = urlsplit(self.base_url)
+        candidate = urlsplit(value)
+        if (candidate.scheme, candidate.netloc) != (backend.scheme, backend.netloc):
+            return value
+
+        base_path = backend.path.rstrip("/")
+        if base_path and not candidate.path.startswith(base_path + "/"):
+            return value
+        path = candidate.path[len(base_path) :] if base_path else candidate.path
+        return urlunsplit(("", "", path or "/", candidate.query, candidate.fragment))
+
+    def _rewrite_location(self, location: str) -> str:
+        rewritten = self._without_backend_origin(location)
+        parsed = urlsplit(rewritten)
+        if not parsed.query:
+            return rewritten
+
+        query = parse_qsl(parsed.query, keep_blank_values=True)
+        normalized = [(key, self._without_backend_origin(value)) for key, value in query]
+        if normalized == query:
+            return rewritten
+        return urlunsplit(
+            (parsed.scheme, parsed.netloc, parsed.path, urlencode(normalized), parsed.fragment)
+        )
+
     def _response_headers(self, headers: Mapping[str, str]) -> dict[str, str]:
         forwarded = {
             key: value
@@ -46,8 +73,8 @@ class AdminProxy:
             if key.casefold() not in _HOP_BY_HOP | {"content-length"}
         }
         location = forwarded.get("location")
-        if location is not None and location.startswith(self.base_url):
-            forwarded["location"] = location[len(self.base_url) :] or "/"
+        if location is not None:
+            forwarded["location"] = self._rewrite_location(location)
         return forwarded
 
     async def handle(self, request: Request) -> Response:

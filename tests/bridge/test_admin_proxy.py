@@ -66,3 +66,61 @@ async def test_admin_proxy_rewrites_internal_redirect(monkeypatch: pytest.Monkey
 
     assert response.status_code == 307
     assert response.headers["location"] == "/admin/"
+
+
+@pytest.mark.asyncio
+async def test_admin_proxy_rewrites_backend_origin_inside_next_param(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeClient:
+        async def __aenter__(self) -> FakeClient:
+            return self
+
+        async def __aexit__(
+            self,
+            exc_type: object,
+            exc: object,
+            traceback: object,
+        ) -> None:
+            return None
+
+        async def request(self, *args: object, **kwargs: object) -> httpx.Response:
+            request = httpx.Request("GET", "http://control-plane:8000/admin/")
+            return httpx.Response(
+                303,
+                headers={
+                    "location": (
+                        "/admin/login?"
+                        "next=http%3A%2F%2Fcontrol-plane%3A8000%2Fadmin%2F"
+                    )
+                },
+                request=request,
+            )
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: FakeClient())
+
+    proxy = AdminProxy("http://control-plane:8000")
+
+    async def receive() -> dict[str, object]:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "scheme": "https",
+            "path": "/admin/",
+            "raw_path": b"/admin/",
+            "query_string": b"",
+            "headers": [(b"host", b"mcp.koba-nexus.ru")],
+            "client": ("127.0.0.1", 1234),
+            "server": ("mcp.koba-nexus.ru", 443),
+            "http_version": "1.1",
+        },
+        receive=receive,
+    )
+
+    response = await proxy.handle(request)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/admin/login?next=%2Fadmin%2F"
