@@ -20,7 +20,7 @@ class ManagementClient:
         self.service_token = settings.service_token
         self.timeout_seconds = settings.timeout_seconds
         if not self.url:
-            raise ValueError("CONTROL_PLANE_URL is required")
+            raise ValueError("MANAGEMENT_URL is required")
 
     def _request(
         self,
