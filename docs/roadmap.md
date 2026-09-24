@@ -2,7 +2,7 @@
 
 ## Completed
 
-- private SQLite account control plane with encrypted GitHub/GitLab credentials;
+- private SQLite account management service with encrypted GitHub/GitLab credentials;
 - explicit multi-account GitHub/GitLab provider selection;
 - self-hosted GitLab account support through per-account base URLs;
 - independent GitHub, GitLab, Files, HTTP and Analysis runtime services;
@@ -24,7 +24,7 @@
 
 After the modular stack is deployed, verify every dedicated public surface, persistent
 Files reads/uploads, multi-account GitHub operations, self-hosted GitLab discovery,
-control-plane admin/account onboarding, encrypted credential persistence, HTTP/Files
+management admin/account onboarding, encrypted credential persistence, HTTP/Files
 integration, OAuth persistence and Analysis-to-Ghidra connectivity.
 
 ### Formatting
