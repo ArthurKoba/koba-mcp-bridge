@@ -85,3 +85,14 @@ The root `/mcp` surface does not mount provider tool namespaces. It exposes only
 diagnostics plus `bridge_backends`, `bridge_tools` and `bridge_call`. Clients can
 inspect backend availability and signatures on demand or forward a call through the bridge,
 while dedicated provider MCP endpoints remain directly addressable.
+
+
+## Production deployment isolation
+
+Production deployment units are intentionally finer-grained than the repository. Gateway,
+Management and every MCP backend use separate Dockerfile targets and should be configured as
+separate Coolify applications on the shared internal network. This prevents an unrelated
+provider change from rebuilding or restarting the edge or other providers.
+
+The root `docker-compose.yaml` remains the integration/local topology. Production split
+configuration and Watch Paths are documented in `deploy/coolify/README.md`.

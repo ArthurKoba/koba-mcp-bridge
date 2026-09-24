@@ -1,7 +1,8 @@
+x-build: &build
+  context: .
+  dockerfile: Dockerfile
+
 x-runtime: &runtime
-  build:
-    context: .
-    dockerfile: Dockerfile
   restart: unless-stopped
 
 x-management-client: &management-client
@@ -11,8 +12,6 @@ x-management-client: &management-client
 
 x-private-service: &private-service
   <<: *runtime
-  depends_on:
-    - management
 
 x-file-settings: &file-settings
   <<: *management-client
@@ -29,6 +28,9 @@ x-file-service: &file-service
 services:
   management:
     <<: *runtime
+    build:
+      <<: *build
+      target: management
     environment:
       ASGI_APP: management.runtime:app
       ASGI_FORWARDED_ALLOW_IPS: "*"
@@ -45,6 +47,9 @@ services:
 
   gateway:
     <<: *runtime
+    build:
+      <<: *build
+      target: gateway
     ports:
       - "${GATEWAY_PORT:-8092}:8000"
     environment:
@@ -66,8 +71,12 @@ services:
       MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-https://mcp.koba-nexus.ru}
     volumes:
       - fastmcp-data:/data/fastmcp
+
   github:
     <<: *private-service
+    build:
+      <<: *build
+      target: github
     environment:
       <<: *management-client
       ASGI_APP: modules.github.runtime:app
@@ -77,6 +86,9 @@ services:
 
   gitlab:
     <<: *private-service
+    build:
+      <<: *build
+      target: gitlab
     environment:
       <<: *management-client
       ASGI_APP: modules.gitlab.runtime:app
@@ -85,12 +97,18 @@ services:
 
   files:
     <<: *file-service
+    build:
+      <<: *build
+      target: files
     environment:
       <<: *file-settings
       ASGI_APP: modules.files.runtime:app
 
   curl:
     <<: *file-service
+    build:
+      <<: *build
+      target: curl
     environment:
       <<: *file-settings
       ASGI_APP: modules.curl.runtime:app
@@ -98,6 +116,9 @@ services:
 
   analysis:
     <<: *private-service
+    build:
+      <<: *build
+      target: analysis
     environment:
       <<: *management-client
       ASGI_APP: modules.analysis.runtime:app
@@ -106,6 +127,9 @@ services:
 
   ghidra:
     <<: *private-service
+    build:
+      <<: *build
+      target: ghidra
     environment:
       <<: *management-client
       ASGI_APP: modules.ghidra.runtime:app

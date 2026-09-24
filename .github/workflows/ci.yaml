@@ -30,5 +30,6 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
+          target: final
           push: false
           tags: mcp-bridge:ci
