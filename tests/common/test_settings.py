@@ -8,9 +8,9 @@ from pydantic import ValidationError
 from common.settings import (
     AnalysisSettings,
     BridgeSettings,
+    FileSettings,
     ManagementClientSettings,
     ManagementSettings,
-    FileSettings,
     GitHubPolicySettings,
     GitLabSettings,
 )
@@ -67,6 +67,13 @@ def test_bridge_settings_use_canonical_backends_by_default(monkeypatch) -> None:
         "analysis": "http://analysis:8000/mcp",
         "ghidra": "http://ghidra:8000/mcp",
     }
+
+
+def test_bridge_build_sha_uses_coolify_source_commit(monkeypatch) -> None:
+    monkeypatch.delenv("BUILD_SHA", raising=False)
+    monkeypatch.setenv("SOURCE_COMMIT", "abc123")
+
+    assert BridgeSettings().build_sha == "abc123"
 
 
 def test_gateway_oauth_bootstrap_is_typed(monkeypatch) -> None:
