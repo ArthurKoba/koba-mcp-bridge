@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading
 
-from common.account_client import ControlPlaneClient
+from common.management_client import ManagementClient
 from common.models import JsonObject
 from common.settings import GitHubPolicySettings
 
@@ -12,10 +12,10 @@ from .github_identity import GitHubPrettyIdentityClient
 class GitHubRuntimeContext:
     def __init__(
         self,
-        control_plane: ControlPlaneClient,
+        management: ManagementClient,
         policy: GitHubPolicySettings,
     ) -> None:
-        self.control_plane = control_plane
+        self.management = management
         self.policy = policy
         self._lock = threading.Lock()
         self._clients: dict[
@@ -24,10 +24,10 @@ class GitHubRuntimeContext:
         ] = {}
 
     def list_accounts(self, role: str | None = None) -> JsonObject:
-        return self.control_plane.list_accounts(provider="github", role=role).to_json()
+        return self.management.list_accounts(provider="github", role=role).to_json()
 
     def _client(self, account_id: str, role: str) -> GitHubPrettyIdentityClient:
-        account = self.control_plane.resolve_account(
+        account = self.management.resolve_account(
             account_id,
             provider="github",
             role=role,
@@ -48,7 +48,7 @@ class GitHubRuntimeContext:
         return self._client(account_id, "reviewer")
 
     def reviewer_available(self) -> bool:
-        return self.control_plane.list_accounts(provider="github", role="reviewer").count > 0
+        return self.management.list_accounts(provider="github", role="reviewer").count > 0
 
     def clear(self) -> None:
         with self._lock:
