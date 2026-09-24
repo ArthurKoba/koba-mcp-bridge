@@ -4,7 +4,7 @@ from collections.abc import Mapping
 
 import httpx
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import PlainTextResponse, Response
 
 _HOP_BY_HOP = {
     "connection",
@@ -29,29 +29,42 @@ class AdminProxy:
             for key, value in request.headers.items()
             if key.casefold() not in _HOP_BY_HOP | {"host", "content-length"}
         }
-        headers["x-forwarded-host"] = request.headers.get("host", "")
-        headers["x-forwarded-proto"] = request.url.scheme
+        headers["x-forwarded-host"] = request.headers.get(
+            "x-forwarded-host",
+            request.headers.get("host", ""),
+        )
+        headers["x-forwarded-proto"] = request.headers.get(
+            "x-forwarded-proto",
+            request.url.scheme,
+        )
         return headers
 
-    @staticmethod
-    def _response_headers(headers: Mapping[str, str]) -> dict[str, str]:
-        return {
+    def _response_headers(self, headers: Mapping[str, str]) -> dict[str, str]:
+        forwarded = {
             key: value
             for key, value in headers.items()
             if key.casefold() not in _HOP_BY_HOP | {"content-length"}
         }
+        location = forwarded.get("location")
+        if location is not None and location.startswith(self.base_url):
+            forwarded["location"] = location[len(self.base_url) :] or "/"
+        return forwarded
 
-    async def __call__(self, request: Request) -> Response:
+    async def handle(self, request: Request) -> Response:
         target = self.base_url + request.url.path
         if request.url.query:
             target += "?" + request.url.query
-        async with httpx.AsyncClient(follow_redirects=False, timeout=30) as client:
-            response = await client.request(
-                request.method,
-                target,
-                content=await request.body(),
-                headers=self._request_headers(request),
-            )
+        try:
+            async with httpx.AsyncClient(follow_redirects=False, timeout=30) as client:
+                response = await client.request(
+                    request.method,
+                    target,
+                    content=await request.body(),
+                    headers=self._request_headers(request),
+                )
+        except httpx.RequestError:
+            return PlainTextResponse("admin backend unavailable", status_code=502)
+
         return Response(
             content=response.content,
             status_code=response.status_code,
