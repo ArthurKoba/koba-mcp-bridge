@@ -16,7 +16,9 @@ from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import FileResponse, RedirectResponse, Response
 from starlette_admin import (
+    Breakpoints,
     CardRowWidget,
+    Col,
     CustomView,
     EnumField,
     PasswordField,
@@ -594,15 +596,42 @@ def _dashboard(engine: Engine, files: FileAdminStore) -> CustomView:
         icon="fa fa-home",
         widget=CardRowWidget(
             children=[
-                StatWidget(title="Active accounts", value_callback=count_accounts),
-                StatWidget(title="GitHub accounts", value_callback=count_github),
-                StatWidget(title="GitLab accounts", value_callback=count_gitlab),
-                StatWidget(title="MCP calls", value_callback=count_calls),
-                StatWidget(title="Errors", value_callback=count_errors),
-                StatWidget(title="Error rate (%)", value_callback=error_rate),
-                StatWidget(title="Average duration (ms)", value_callback=average_duration),
-                StatWidget(title="Stored files", value_callback=stored_files),
-                StatWidget(title="Storage used", value_callback=storage_used),
+                Col(
+                    StatWidget(title="Active accounts", value_callback=count_accounts),
+                    breakpoints=Breakpoints(default=12, sm=6, md=4, xl=3),
+                ),
+                Col(
+                    StatWidget(title="GitHub accounts", value_callback=count_github),
+                    breakpoints=Breakpoints(default=12, sm=6, md=4, xl=3),
+                ),
+                Col(
+                    StatWidget(title="GitLab accounts", value_callback=count_gitlab),
+                    breakpoints=Breakpoints(default=12, sm=6, md=4, xl=3),
+                ),
+                Col(
+                    StatWidget(title="MCP calls", value_callback=count_calls),
+                    breakpoints=Breakpoints(default=12, sm=6, md=4, xl=3),
+                ),
+                Col(
+                    StatWidget(title="Errors", value_callback=count_errors),
+                    breakpoints=Breakpoints(default=12, sm=6, md=4, xl=3),
+                ),
+                Col(
+                    StatWidget(title="Error rate (%)", value_callback=error_rate),
+                    breakpoints=Breakpoints(default=12, sm=6, md=4, xl=3),
+                ),
+                Col(
+                    StatWidget(title="Average duration (ms)", value_callback=average_duration),
+                    breakpoints=Breakpoints(default=12, sm=6, md=4, xl=3),
+                ),
+                Col(
+                    StatWidget(title="Stored files", value_callback=stored_files),
+                    breakpoints=Breakpoints(default=12, sm=6, md=4, xl=3),
+                ),
+                Col(
+                    StatWidget(title="Storage used", value_callback=storage_used),
+                    breakpoints=Breakpoints(default=12, sm=6, md=4, xl=3),
+                ),
             ]
         ),
     )
