@@ -43,6 +43,9 @@ async def test_admin_proxy_rewrites_internal_redirect(monkeypatch: pytest.Monkey
     monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: FakeClient())
 
     proxy = AdminProxy("http://control-plane:8000")
+    async def receive() -> dict[str, object]:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
     request = Request(
         {
             "type": "http",
@@ -55,7 +58,8 @@ async def test_admin_proxy_rewrites_internal_redirect(monkeypatch: pytest.Monkey
             "client": ("127.0.0.1", 1234),
             "server": ("mcp.koba-nexus.ru", 443),
             "http_version": "1.1",
-        }
+        },
+        receive=receive,
     )
 
     response = await proxy.handle(request)

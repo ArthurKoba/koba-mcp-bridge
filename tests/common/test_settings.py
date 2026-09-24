@@ -20,7 +20,7 @@ def test_provider_settings_parse_only_their_own_environment(monkeypatch) -> None
     monkeypatch.setenv("GITHUB_AGENT_PROTECTED_BRANCHES", " Main, release ")
     monkeypatch.setenv("GITHUB_AGENT_REQUIRED_CHECKS", "test, docker , lint")
     monkeypatch.setenv("GITLAB_PROTECTED_BRANCHES", "main,stable")
-    monkeypatch.setenv("GHIDRA_MCP_URL", " http://ghidra:8080/mcp ")
+    monkeypatch.setenv("GHIDRA_URL", " http://ghidra:8080/mcp ")
     monkeypatch.setenv("ANALYSIS_SCHEMA_CACHE_TTL_SECONDS", "45")
     monkeypatch.setenv("FILE_ROOT", "/tmp/mcp-files")
     monkeypatch.setenv("FILE_UPLOAD_CHUNK_BYTES", str(256 * 1024))
@@ -55,7 +55,7 @@ def test_bridge_settings_use_canonical_backends_by_default(monkeypatch) -> None:
         "FILES_URL",
         "CURL_URL",
         "ANALYSIS_URL",
-        "GHIDRA_MCP_URL",
+        "GHIDRA_URL",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -65,7 +65,7 @@ def test_bridge_settings_use_canonical_backends_by_default(monkeypatch) -> None:
         "files": "http://files:8000/mcp",
         "web": "http://curl:8000/mcp",
         "analysis": "http://analysis:8000/mcp",
-        "ghidra": "http://bridge:8081/mcp",
+        "ghidra": "http://ghidra:8000/mcp",
     }
 
 
