@@ -7,8 +7,8 @@ import mcp.types as mt
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools import ToolResult
 
-from .management_client import ManagementClient
 from .account_contracts import InvocationEvent
+from .management_client import ManagementClient
 
 
 class ToolTelemetryMiddleware(Middleware):
