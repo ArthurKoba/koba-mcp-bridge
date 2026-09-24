@@ -6,9 +6,16 @@ from datetime import UTC, datetime
 from common.account_contracts import AccountPublic, ResolvedAccount
 from common.models import JsonObject, json_object
 from management.domain.accounts import Account, Provider
+from management.domain.configuration import ManagementConfig
 from management.domain.telemetry import Invocation
 
-from .ports import AccountRepository, ConnectionVerifier, CredentialCipher, InvocationRepository
+from .ports import (
+    AccountRepository,
+    ConnectionVerifier,
+    CredentialCipher,
+    InvocationRepository,
+    ManagementConfigRepository,
+)
 
 
 class AccountService:
@@ -90,3 +97,14 @@ class TelemetryService:
 
     def cleanup(self) -> int:
         return self.repository.cleanup()
+
+
+class ManagementConfigService:
+    def __init__(self, repository: ManagementConfigRepository) -> None:
+        self.repository = repository
+
+    def get(self) -> ManagementConfig:
+        return self.repository.get()
+
+    def update(self, config: ManagementConfig) -> ManagementConfig:
+        return self.repository.save(config)

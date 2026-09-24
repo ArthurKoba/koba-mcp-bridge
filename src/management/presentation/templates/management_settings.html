@@ -1,0 +1,72 @@
+{% extends "layout.html" %}
+{% block header %}
+<div class="d-flex justify-content-between align-items-center">
+  <h1>Settings</h1>
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/admin/">Admin</a></li>
+    <li class="breadcrumb-item active">Settings</li>
+  </ol>
+</div>
+{% endblock %}
+{% block content %}
+<form method="post" action="/admin/settings">
+  {{ csrf_input(request) }}
+  <div class="row row-deck row-cards">
+    <div class="col-12 col-xl-6">
+      <div class="card h-100">
+        <div class="card-header"><h3 class="card-title">MCP call logging</h3></div>
+        <div class="card-body">
+          <label class="form-check form-switch mb-4">
+            <input class="form-check-input" type="checkbox" name="logging_enabled" {% if config.logging_enabled %}checked{% endif %}>
+            <span class="form-check-label">Logging enabled</span>
+          </label>
+          <label class="form-check form-switch mb-4">
+            <input class="form-check-input" type="checkbox" name="logging_capture_payloads" {% if config.logging_capture_payloads %}checked{% endif %}>
+            <span class="form-check-label">Capture arguments, results and errors</span>
+          </label>
+          <div class="mb-3">
+            <label class="form-label">Retention days</label>
+            <input class="form-control" type="number" min="1" max="3650" name="logging_retention_days" value="{{ config.logging_retention_days }}">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Maximum records</label>
+            <input class="form-control" type="number" min="100" max="1000000" name="logging_max_records" value="{{ config.logging_max_records }}">
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-xl-6">
+      <div class="card h-100">
+        <div class="card-header"><h3 class="card-title">Files maintenance</h3></div>
+        <div class="card-body">
+          <label class="form-check form-switch mb-4">
+            <input class="form-check-input" type="checkbox" name="file_auto_cleanup_enabled" {% if config.file_auto_cleanup_enabled %}checked{% endif %}>
+            <span class="form-check-label">Automatic cleanup enabled</span>
+          </label>
+          <div class="mb-3">
+            <label class="form-label">File retention days</label>
+            <input class="form-control" type="number" min="1" max="3650" name="file_retention_days" value="{{ config.file_retention_days }}">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Cleanup limit</label>
+            <input class="form-control" type="number" min="1" max="10000" name="file_cleanup_limit" value="{{ config.file_cleanup_limit }}">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Maintenance interval (minutes)</label>
+            <input class="form-control" type="number" min="1" max="1440" name="maintenance_interval_minutes" value="{{ config.maintenance_interval_minutes }}">
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12">
+      <div class="d-flex gap-2 justify-content-end">
+        <button class="btn btn-primary" type="submit">Save settings</button>
+      </div>
+    </div>
+  </div>
+</form>
+<form method="post" action="/admin/settings/cleanup-logs" class="mt-3">
+  {{ csrf_input(request) }}
+  <button class="btn" type="submit">Apply log retention now</button>
+</form>
+{% endblock %}

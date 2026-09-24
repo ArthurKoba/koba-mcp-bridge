@@ -4,7 +4,7 @@ import sqlite3
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import Boolean, Float, Integer, String, Text, create_engine, event
+from sqlalchemy import Boolean, Float, Integer, MetaData, String, Text, create_engine, event, inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.pool import ConnectionPoolEntry
@@ -112,3 +112,27 @@ def create_database(database_url: str) -> tuple[Engine, sessionmaker[Session]]:
             cursor.close()
 
     return engine, sessionmaker(bind=engine, expire_on_commit=False)
+
+
+def ensure_zero_state_schema(engine: Engine) -> bool:
+    """Create the current schema, resetting incompatible pre-production state."""
+    inspector = inspect(engine)
+    actual_tables = set(inspector.get_table_names())
+    expected_tables = set(Base.metadata.tables)
+    reset_required = actual_tables != expected_tables
+
+    if not reset_required:
+        for table_name, table in Base.metadata.tables.items():
+            actual_columns = {column["name"] for column in inspector.get_columns(table_name)}
+            expected_columns = {column.name for column in table.columns}
+            if actual_columns != expected_columns:
+                reset_required = True
+                break
+
+    if reset_required and actual_tables:
+        reflected = MetaData()
+        reflected.reflect(bind=engine)
+        reflected.drop_all(engine)
+
+    Base.metadata.create_all(engine)
+    return reset_required

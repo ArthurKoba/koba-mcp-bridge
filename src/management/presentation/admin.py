@@ -22,7 +22,6 @@ from starlette_admin import (
     Col,
     CustomView,
     EnumField,
-    Link,
     PasswordField,
     RowActionsDisplayType,
     StatWidget,
@@ -38,7 +37,11 @@ from starlette_admin.exceptions import ActionFailed
 from starlette_admin.fields import BaseField
 
 from common.settings import ManagementSettings
-from management.application.services import AccountService, TelemetryService
+from management.application.services import (
+    AccountService,
+    ManagementConfigService,
+    TelemetryService,
+)
 from management.domain.accounts import Account, AuthType, Provider
 from management.domain.configuration import ManagementConfig
 from management.infrastructure.crypto import FernetCredentialCipher
@@ -46,9 +49,9 @@ from management.infrastructure.database import (
     GitHubAccountRecord,
     GitLabAccountRecord,
     InvocationRecord,
-    ManagementConfigRecord,
 )
 from management.infrastructure.files import FileAdminStore
+from management.presentation.admin_ui import ManagementUiPlugin
 
 
 class ManagementAuthProvider(AuthProvider):
@@ -322,78 +325,59 @@ class InvocationView(ModelView):
         flash(request, f"Deleted {removed} invocation log records", "success")
 
 
-class ManagementConfigView(ModelView):
-    row_actions_display_type = RowActionsDisplayType.KEBAB
-    page_size = 1
-    page_size_options = [1]
-    fields = cast(
-        Sequence[BaseField],
-        (
-            "logging_enabled",
-            "logging_capture_payloads",
-            "logging_retention_days",
-            "logging_max_records",
-            "file_auto_cleanup_enabled",
-            "file_retention_days",
-            "file_cleanup_limit",
-            "maintenance_interval_minutes",
-        ),
-    )
-    actions = ("cleanup_logs",)
+class SettingsView(CustomView):
+    menu_label = "Settings"
+    icon = "fa fa-sliders"
+    path = "/settings"
 
-    def __init__(self, model: type[ManagementConfigRecord], telemetry: TelemetryService) -> None:
-        super().__init__(
-            model,
-            icon="fa fa-sliders",
-            menu_label="Settings",
-            display_name="Settings",
-            key="settings",
-        )
+    def __init__(
+        self,
+        config: ManagementConfigService,
+        telemetry: TelemetryService,
+    ) -> None:
+        super().__init__()
+        self.config = config
         self.telemetry = telemetry
 
-    def can_create(self, _request: Request) -> bool:
-        return False
+    @staticmethod
+    def _form_config(form: object) -> ManagementConfig:
+        get = getattr(form, "get")
+        contains = getattr(form, "__contains__")
+        return ManagementConfig(
+            logging_enabled=contains("logging_enabled"),
+            logging_capture_payloads=contains("logging_capture_payloads"),
+            logging_retention_days=int(str(get("logging_retention_days", "30"))),
+            logging_max_records=int(str(get("logging_max_records", "10000"))),
+            file_auto_cleanup_enabled=contains("file_auto_cleanup_enabled"),
+            file_retention_days=int(str(get("file_retention_days", "30"))),
+            file_cleanup_limit=int(str(get("file_cleanup_limit", "1000"))),
+            maintenance_interval_minutes=int(str(get("maintenance_interval_minutes", "60"))),
+        )
 
-    def can_delete(self, _request: Request) -> bool:
-        return False
+    @route("", methods=["GET", "POST"])
+    async def index(self, request: Request) -> Response:
+        if request.method == "POST":
+            form = await request.form()
+            try:
+                config = self._form_config(form)
+                await asyncio.to_thread(self.config.update, config)
+            except (TypeError, ValueError) as exc:
+                flash(request, f"Invalid settings: {exc}", "error")
+            else:
+                flash(request, "Settings saved", "success")
+                return RedirectResponse("/admin/settings", status_code=303)
+        config = await asyncio.to_thread(self.config.get)
+        return self.templates.TemplateResponse(
+            request=request,
+            name="management_settings.html",
+            context={"title": "Settings", "config": config},
+        )
 
-    async def before_edit(
-        self,
-        request: Request,
-        data: dict[str, object],
-        obj: ManagementConfigRecord,
-    ) -> None:
-        del request
-        values = {
-            "logging_enabled": data.get("logging_enabled", obj.logging_enabled),
-            "logging_capture_payloads": data.get(
-                "logging_capture_payloads", obj.logging_capture_payloads
-            ),
-            "logging_retention_days": data.get(
-                "logging_retention_days", obj.logging_retention_days
-            ),
-            "logging_max_records": data.get("logging_max_records", obj.logging_max_records),
-            "file_auto_cleanup_enabled": data.get(
-                "file_auto_cleanup_enabled", obj.file_auto_cleanup_enabled
-            ),
-            "file_retention_days": data.get("file_retention_days", obj.file_retention_days),
-            "file_cleanup_limit": data.get("file_cleanup_limit", obj.file_cleanup_limit),
-            "maintenance_interval_minutes": data.get(
-                "maintenance_interval_minutes", obj.maintenance_interval_minutes
-            ),
-        }
-        config = ManagementConfig.model_validate(values)
-        data.update(config.model_dump())
-
-    @action(
-        name="cleanup_logs",
-        text="Apply log retention now",
-        allow_empty_selection=True,
-        dedicated_button=True,
-    )
-    async def cleanup_logs(self, request: Request, _selection: object) -> None:
+    @route("/cleanup-logs", methods=["POST"])
+    async def cleanup_logs(self, request: Request) -> Response:
         removed = await asyncio.to_thread(self.telemetry.cleanup)
-        flash(request, f"Removed {removed} expired invocation log records", "success")
+        flash(request, f"Removed {removed} expired MCP call records", "success")
+        return RedirectResponse("/admin/settings", status_code=303)
 
 
 class FilesView(CustomView):
@@ -635,6 +619,7 @@ def build_admin(
     cipher: FernetCredentialCipher,
     accounts: AccountService,
     telemetry: TelemetryService,
+    config: ManagementConfigService,
     files: FileAdminStore,
 ) -> Admin:
     admin = Admin(
@@ -645,6 +630,7 @@ def build_admin(
         secret_key=settings.session_secret,
         index_view=_dashboard(engine, files),
         templates_dir=str(Path(__file__).with_name("templates")),
+        plugins=[ManagementUiPlugin()],
     )
     admin.add_view(FilesView(files))
     admin.add_view(
@@ -666,15 +652,5 @@ def build_admin(
         )
     )
     admin.add_view(InvocationView(InvocationRecord, telemetry))
-    settings_view = ManagementConfigView(ManagementConfigRecord, telemetry)
-    admin.add_view(settings_view)
-    if settings_view in admin._views:
-        admin._views.remove(settings_view)
-    admin.add_view(
-        Link(
-            menu_label="Settings",
-            icon="fa fa-sliders",
-            url="/admin/settings/edit/1",
-        )
-    )
+    admin.add_view(SettingsView(config, telemetry))
     return admin

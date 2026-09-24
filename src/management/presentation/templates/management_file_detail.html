@@ -1,15 +1,16 @@
 {% extends "layout.html" %}
+{% block header %}
+<div class="d-flex justify-content-between align-items-center">
+  <h1>File details</h1>
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/admin/">Admin</a></li>
+    <li class="breadcrumb-item"><a href="{{ base_url }}">Files</a></li>
+    <li class="breadcrumb-item active">Details</li>
+  </ol>
+</div>
+{% endblock %}
 {% block content %}
-  <div class="page-header d-print-none mb-3">
-    <div class="row align-items-center">
-      <div class="col"><h2 class="page-title">File details</h2></div>
-      <div class="col-auto">
-        <a class="btn btn-sm" href="{{ base_url }}">Back</a>
-        <a class="btn btn-sm btn-primary" href="{{ base_url }}/download/{{ info['file_id'] }}">Download</a>
-      </div>
-    </div>
-  </div>
-  <div class="card"><div class="card-body">
+  <div class="card"><div class="card-header"><div class="card-title">{{ info["name"] or info["file_id"] }}</div><div class="card-actions"><a class="btn" href="{{ base_url }}/download/{{ info['file_id'] }}">Download</a></div></div><div class="card-body">
     <dl class="row mb-0">
     {% for key, value in info.items() %}
       <dt class="col-sm-3 text-secondary">{{ key }}</dt>

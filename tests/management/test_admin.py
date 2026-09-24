@@ -8,7 +8,7 @@ from cryptography.fernet import Fernet
 pytest.importorskip("starlette_admin")
 
 from common.settings import FileSettings, ManagementSettings
-from management.application.services import AccountService, TelemetryService
+from management.application.services import AccountService, ManagementConfigService, TelemetryService
 from management.infrastructure.crypto import FernetCredentialCipher
 from management.infrastructure.database import Base, ManagementConfigRecord, create_database
 from management.infrastructure.files import FileAdminStore
@@ -16,6 +16,7 @@ from management.infrastructure.provider_checks import ProviderConnectionVerifier
 from management.infrastructure.repositories import (
     SqlAlchemyAccountRepository,
     SqlAlchemyInvocationRepository,
+    SqlAlchemyManagementConfigRepository,
 )
 from management.presentation.admin import build_admin
 
@@ -44,16 +45,17 @@ def test_starlette_admin_has_provider_logging_and_file_sections(tmp_path: Path) 
         ProviderConnectionVerifier(),
     )
     telemetry = TelemetryService(SqlAlchemyInvocationRepository(sessions))
+    config = ManagementConfigService(SqlAlchemyManagementConfigRepository(sessions))
     files = FileAdminStore(FileSettings(root=tmp_path / "files"))
 
-    admin = build_admin(engine, settings, cipher, accounts, telemetry, files)
+    admin = build_admin(engine, settings, cipher, accounts, telemetry, config, files)
 
     assert admin.base_url == "/admin"
     assert admin.index_view.path == "/"
     labels = {view.menu_label for view in admin.views if hasattr(view, "menu_label")}
     assert "GitHub Accounts" in labels
     assert "GitLab Accounts" in labels
-    assert "Invocations" in labels
+    assert "MCP Calls" in labels
     assert "Settings" in labels
     assert "Files" in labels
     engine.dispose()

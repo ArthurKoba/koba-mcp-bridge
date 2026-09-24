@@ -261,6 +261,19 @@ class SqlAlchemyManagementConfigRepository:
     def __init__(self, sessions: sessionmaker[Session]) -> None:
         self.sessions = sessions
 
+    @staticmethod
+    def _domain(record: ManagementConfigRecord) -> ManagementConfig:
+        return ManagementConfig(
+            logging_enabled=record.logging_enabled,
+            logging_capture_payloads=record.logging_capture_payloads,
+            logging_retention_days=record.logging_retention_days,
+            logging_max_records=record.logging_max_records,
+            file_auto_cleanup_enabled=record.file_auto_cleanup_enabled,
+            file_retention_days=record.file_retention_days,
+            file_cleanup_limit=record.file_cleanup_limit,
+            maintenance_interval_minutes=record.maintenance_interval_minutes,
+        )
+
     def get(self) -> ManagementConfig:
         with self.sessions.begin() as session:
             record = session.get(ManagementConfigRecord, 1)
@@ -268,13 +281,14 @@ class SqlAlchemyManagementConfigRepository:
                 record = ManagementConfigRecord(id=1)
                 session.add(record)
                 session.flush()
-            return ManagementConfig(
-                logging_enabled=record.logging_enabled,
-                logging_capture_payloads=record.logging_capture_payloads,
-                logging_retention_days=record.logging_retention_days,
-                logging_max_records=record.logging_max_records,
-                file_auto_cleanup_enabled=record.file_auto_cleanup_enabled,
-                file_retention_days=record.file_retention_days,
-                file_cleanup_limit=record.file_cleanup_limit,
-                maintenance_interval_minutes=record.maintenance_interval_minutes,
-            )
+            return self._domain(record)
+
+    def save(self, config: ManagementConfig) -> ManagementConfig:
+        with self.sessions.begin() as session:
+            record = session.get(ManagementConfigRecord, 1)
+            if record is None:
+                record = ManagementConfigRecord(id=1)
+                session.add(record)
+            for name, value in config.model_dump().items():
+                setattr(record, name, value)
+        return config

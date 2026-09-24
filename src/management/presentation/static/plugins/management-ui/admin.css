@@ -1,0 +1,64 @@
+/* One scale policy for every Starlette Admin page. */
+.page-header {
+  padding-top: .9rem;
+  padding-bottom: .55rem;
+}
+.page-header:has(> .container-xl:empty) {
+  display: none;
+}
+.page-body {
+  padding-top: .85rem;
+  padding-bottom: 1rem;
+}
+.page-header h1 {
+  margin: 0;
+  font-size: 1.45rem;
+  line-height: 1.25;
+}
+.card-header {
+  min-height: 2.8rem;
+  padding: .65rem .85rem;
+}
+.card-body {
+  padding: .85rem;
+}
+.btn {
+  --tblr-btn-padding-x: .65rem;
+  --tblr-btn-padding-y: .35rem;
+  --tblr-btn-font-size: .875rem;
+  --tblr-btn-line-height: 1.25;
+}
+.form-control,
+.form-select,
+.input-group-text {
+  min-height: 2.25rem;
+  padding: .35rem .6rem;
+  font-size: .875rem;
+  line-height: 1.25;
+}
+.form-label,
+.form-check-label {
+  font-size: .875rem;
+}
+.table {
+  font-size: .875rem;
+}
+.table > :not(caption) > * > * {
+  padding: .5rem .65rem;
+}
+.breadcrumb {
+  margin-bottom: 0;
+  font-size: .875rem;
+}
+.pagination .page-link {
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  padding: .35rem .55rem;
+}
+.navbar-vertical .nav-link {
+  padding-top: .45rem;
+  padding-bottom: .45rem;
+}
+.btn-list {
+  gap: .4rem;
+}

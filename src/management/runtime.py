@@ -10,9 +10,9 @@ from starlette.middleware import Middleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from common.settings import FileSettings, ManagementSettings
-from management.application.services import AccountService, TelemetryService
+from management.application.services import AccountService, ManagementConfigService, TelemetryService
 from management.infrastructure.crypto import FernetCredentialCipher
-from management.infrastructure.database import Base, create_database
+from management.infrastructure.database import create_database, ensure_zero_state_schema
 from management.infrastructure.files import FileAdminStore
 from management.infrastructure.provider_checks import ProviderConnectionVerifier
 from management.infrastructure.repositories import (
@@ -29,13 +29,15 @@ settings = ManagementSettings()
 settings.validate_bootstrap()
 settings.database_path.parent.mkdir(parents=True, exist_ok=True)
 engine, sessions = create_database(settings.database_url)
-Base.metadata.create_all(engine)
+if ensure_zero_state_schema(engine):
+    logger.warning("management schema changed; reset zero-state management database")
 
 cipher = FernetCredentialCipher(settings.encryption_key)
 account_repository = SqlAlchemyAccountRepository(sessions)
 invocation_repository = SqlAlchemyInvocationRepository(sessions)
 config_repository = SqlAlchemyManagementConfigRepository(sessions)
-config_repository.get()
+config_service = ManagementConfigService(config_repository)
+config_service.get()
 accounts = AccountService(account_repository, cipher, ProviderConnectionVerifier())
 telemetry = TelemetryService(invocation_repository)
 files = FileAdminStore(FileSettings())
@@ -45,7 +47,7 @@ async def _maintenance_loop() -> None:
     interval_seconds = 3600
     while True:
         try:
-            config = await asyncio.to_thread(config_repository.get)
+            config = await asyncio.to_thread(config_service.get)
             interval_seconds = config.maintenance_interval_minutes * 60
             await asyncio.to_thread(telemetry.cleanup)
             if config.file_auto_cleanup_enabled:
@@ -100,5 +102,5 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-admin = build_admin(engine, settings, cipher, accounts, telemetry, files)
+admin = build_admin(engine, settings, cipher, accounts, telemetry, config_service, files)
 admin.mount_to(app)

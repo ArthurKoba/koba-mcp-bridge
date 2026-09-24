@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 from cryptography.fernet import Fernet
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 
 from management.application.services import AccountService, TelemetryService
 from management.domain.accounts import Account, AuthType, Provider
@@ -16,6 +16,7 @@ from management.infrastructure.database import (
     GitLabAccountRecord,
     ManagementConfigRecord,
     create_database,
+    ensure_zero_state_schema,
 )
 from management.infrastructure.repositories import (
     SqlAlchemyAccountRepository,
@@ -212,3 +213,21 @@ def test_provider_contracts_are_separate() -> None:
             provider=Provider.GITHUB,
             auth_type=AuthType.GITHUB_APP,
         )
+
+
+def test_zero_state_schema_resets_incompatible_management_database(tmp_path: Path) -> None:
+    database = tmp_path / "legacy.sqlite3"
+    engine, _sessions = create_database(f"sqlite:///{database}")
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "CREATE TABLE github_accounts (id TEXT PRIMARY KEY, label TEXT NOT NULL)"
+        )
+
+    assert ensure_zero_state_schema(engine) is True
+
+    inspector = inspect(engine)
+    columns = {column["name"] for column in inspector.get_columns("github_accounts")}
+    assert "label" not in columns
+    assert columns == {column.name for column in GitHubAccountRecord.__table__.columns}
+    assert ensure_zero_state_schema(engine) is False
+    engine.dispose()

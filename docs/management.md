@@ -4,7 +4,7 @@ The private `management` runtime owns provider accounts, encrypted credentials, 
 
 ## Storage
 
-Management owns a persistent SQLite database at `/management/management.sqlite3` on the `management-data` volume. SQLAlchemy is the persistence adapter. The project is currently deployed against an empty database, so the schema is created from current metadata at startup; there is no legacy migration compatibility layer.
+Management owns a persistent SQLite database at `/management/management.sqlite3` on the `management-data` volume. SQLAlchemy is the persistence adapter. The project is currently deployed under a zero-state pre-production contract. The schema is created from current metadata at startup; if the on-disk management schema is incompatible with current metadata, management resets its own SQLite tables instead of carrying migration compatibility.
 
 Credentials are encrypted with Fernet before persistence. The master key is a deployment bootstrap secret and is never stored in SQLite.
 
