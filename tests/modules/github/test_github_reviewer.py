@@ -13,7 +13,6 @@ def _account() -> ResolvedAccount:
         alias="github-reviewer",
         provider="github",
         auth_type="github_app",
-        label="Reviewer",
         base_url="https://api.github.com",
         external_id="888",
         verify_tls=True,

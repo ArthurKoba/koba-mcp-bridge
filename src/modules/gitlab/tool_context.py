@@ -79,7 +79,6 @@ class GitLabRuntimeContext:
                     "auth_type": account.auth_type,
                     "verify_tls": account.verify_tls,
                     "ca_cert_pem": account.ca_cert_pem or "",
-                    "label": account.label or account.alias,
                 }
             )
             profile.bind_token(account.credential)

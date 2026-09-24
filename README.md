@@ -187,7 +187,7 @@ which can be either the stable account UUID or its unique human-readable alias.
 
 A GitLab account stores:
 
-- alias and optional display label;
+- alias;
 - arbitrary HTTP(S) `base_url`, including self-hosted GitLab and URL prefixes;
 - auth mode: `private_token`, `bearer` or `job_token`;
 - encrypted token;

@@ -106,7 +106,6 @@ def _profile(account_id: str, alias: str, url: str, token: str) -> GitLabProfile
         alias=alias,
         base_url=url,
         auth_type="private_token",
-        label=alias,
     )
     profile.bind_token(token)
     return profile
@@ -168,7 +167,6 @@ def test_runtime_context_caches_by_account_version(gitlab_server: str) -> None:
         alias="local",
         provider="gitlab",
         auth_type="private_token",
-        label="Local",
         base_url=gitlab_server,
         external_id=None,
         verify_tls=True,
@@ -218,7 +216,6 @@ def test_gitlab_account_list_exposes_potential_capabilities(gitlab_server: str) 
         alias="local",
         provider="gitlab",
         auth_type="private_token",
-        label="Local",
         base_url=gitlab_server,
         external_id=None,
         verify_tls=True,

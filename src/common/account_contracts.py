@@ -12,7 +12,6 @@ class AccountPublic(StrictModel):
     alias: str
     provider: Literal["github", "gitlab"]
     auth_type: str
-    label: str = ""
     base_url: str
     external_id: str | None = None
     verify_tls: bool = True

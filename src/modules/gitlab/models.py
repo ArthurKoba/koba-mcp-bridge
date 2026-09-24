@@ -16,7 +16,6 @@ class GitLabProfile(StrictModel):
     auth_type: Literal["private_token", "bearer", "job_token"]
     verify_tls: bool = True
     ca_cert_pem: str = ""
-    label: str = ""
 
     @field_validator("base_url")
     @classmethod
@@ -46,7 +45,6 @@ class GitLabProfile(StrictModel):
         return {
             "account_id": self.account_id,
             "alias": self.alias,
-            "label": self.label,
             "base_url": self.base_url,
             "api_url": self.api_url,
             "auth_type": self.auth_type,

@@ -17,10 +17,12 @@ from starlette.requests import Request
 from starlette.responses import FileResponse, RedirectResponse, Response
 from starlette_admin import (
     Breakpoints,
+    BooleanField,
     CardRowWidget,
     Col,
     CustomView,
     EnumField,
+    Link,
     PasswordField,
     RowActionsDisplayType,
     StatWidget,
@@ -34,7 +36,6 @@ from starlette_admin.auth import AdminUser, AuthProvider, LoginFailed
 from starlette_admin.contrib.sqla import Admin, ModelView
 from starlette_admin.exceptions import ActionFailed
 from starlette_admin.fields import BaseField
-from starlette_admin.theme import ClassMap, DefaultTheme
 
 from common.settings import ManagementSettings
 from management.application.services import AccountService, TelemetryService
@@ -48,24 +49,6 @@ from management.infrastructure.database import (
     ManagementConfigRecord,
 )
 from management.infrastructure.files import FileAdminStore
-
-
-class _CompactClasses(ClassMap):
-    classes = {
-        "list.search_button": "btn btn-sm",
-        "list.create_button": "btn btn-sm btn-primary ms-1",
-        "list.import_button": "btn btn-sm",
-        "list.columns_toggle": "btn btn-sm dropdown-toggle",
-        "list.goto_page_button": "btn btn-sm",
-        "filter.toggle_button": "btn btn-sm dropdown-toggle",
-        "action.button": "btn btn-sm",
-        "action.dropdown_toggle": "btn btn-sm dropdown-toggle",
-    }
-
-
-class _CompactTheme(DefaultTheme):
-    def get_class_map(self) -> ClassMap:
-        return _CompactClasses()
 
 
 class ManagementAuthProvider(AuthProvider):
@@ -115,9 +98,14 @@ class _BaseAccountView(ModelView):
         accounts: AccountService,
         *,
         icon: str,
-        label: str,
+        menu_label: str,
     ) -> None:
-        super().__init__(model, icon=icon, menu_label=label, display_name=label.rstrip("s"))
+        super().__init__(
+            model,
+            icon=icon,
+            menu_label=menu_label,
+            display_name=menu_label.rstrip("s"),
+        )
         self.cipher = cipher
         self.accounts = accounts
 
@@ -129,7 +117,6 @@ class _BaseAccountView(ModelView):
                 alias=record.alias,
                 provider=Provider.GITHUB,
                 auth_type=AuthType(record.auth_type),
-                label=record.label,
                 external_id=record.app_id,
                 enabled=record.enabled,
                 created_at=record.created_at,
@@ -141,7 +128,6 @@ class _BaseAccountView(ModelView):
             alias=record.alias,
             provider=Provider.GITLAB,
             auth_type=AuthType(record.auth_type),
-            label=record.label,
             base_url=record.base_url,
             verify_tls=record.verify_tls,
             ca_cert_pem=record.ca_cert_pem,
@@ -157,7 +143,6 @@ class _BaseAccountView(ModelView):
     ) -> None:
         obj.alias = account.alias
         obj.auth_type = account.auth_type.value
-        obj.label = account.label
         obj.enabled = account.enabled
         if self.provider is Provider.GITHUB:
             cast(GitHubAccountRecord, obj).app_id = account.external_id
@@ -227,9 +212,8 @@ class GitHubAccountView(_BaseAccountView):
                 ],
                 required=True,
             ),
-            "label",
             "app_id",
-            "enabled",
+            BooleanField("enabled", default=True),
             PasswordField(
                 "credential_input",
                 label="Token / private key",
@@ -246,7 +230,7 @@ class GitHubAccountView(_BaseAccountView):
             "updated_at",
         ),
     )
-    searchable_fields = ("alias", "label", "app_id")
+    searchable_fields = ("alias", "app_id")
 
 
 class GitLabAccountView(_BaseAccountView):
@@ -256,7 +240,6 @@ class GitLabAccountView(_BaseAccountView):
         (
             "id",
             "alias",
-            "label",
             "base_url",
             EnumField(
                 "auth_type",
@@ -269,7 +252,7 @@ class GitLabAccountView(_BaseAccountView):
             ),
             "verify_tls",
             TextAreaField("ca_cert_pem", label="Custom CA certificate PEM"),
-            "enabled",
+            BooleanField("enabled", default=True),
             PasswordField(
                 "credential_input",
                 label="Access token",
@@ -283,7 +266,7 @@ class GitLabAccountView(_BaseAccountView):
             "updated_at",
         ),
     )
-    searchable_fields = ("alias", "label", "base_url")
+    searchable_fields = ("alias", "base_url")
 
 
 class InvocationView(ModelView):
@@ -364,6 +347,7 @@ class ManagementConfigView(ModelView):
             icon="fa fa-sliders",
             menu_label="Settings",
             display_name="Settings",
+            key="settings",
         )
         self.telemetry = telemetry
 
@@ -660,7 +644,6 @@ def build_admin(
         auth_provider=ManagementAuthProvider(settings),
         secret_key=settings.session_secret,
         index_view=_dashboard(engine, files),
-        theme=_CompactTheme(),
         templates_dir=str(Path(__file__).with_name("templates")),
     )
     admin.add_view(FilesView(files))
@@ -670,7 +653,7 @@ def build_admin(
             cipher,
             accounts,
             icon="fa-brands fa-github",
-            label="GitHub Accounts",
+            menu_label="GitHub Accounts",
         )
     )
     admin.add_view(
@@ -679,9 +662,19 @@ def build_admin(
             cipher,
             accounts,
             icon="fa-brands fa-gitlab",
-            label="GitLab Accounts",
+            menu_label="GitLab Accounts",
         )
     )
     admin.add_view(InvocationView(InvocationRecord, telemetry))
-    admin.add_view(ManagementConfigView(ManagementConfigRecord, telemetry))
+    settings_view = ManagementConfigView(ManagementConfigRecord, telemetry)
+    admin.add_view(settings_view)
+    if settings_view in admin._views:
+        admin._views.remove(settings_view)
+    admin.add_view(
+        Link(
+            menu_label="Settings",
+            icon="fa fa-sliders",
+            url="/admin/settings/edit/1",
+        )
+    )
     return admin

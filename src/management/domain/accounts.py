@@ -28,7 +28,6 @@ class Account(StrictModel):
     alias: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
     provider: Provider
     auth_type: AuthType
-    label: str = Field(default="", max_length=256)
     base_url: str = Field(default="", max_length=2048)
     external_id: str = Field(default="", max_length=512)
     verify_tls: bool = True
@@ -42,7 +41,7 @@ class Account(StrictModel):
     def _normalize_alias(cls, value: str) -> str:
         return value.strip().casefold()
 
-    @field_validator("label", "base_url", "external_id", "ca_cert_pem")
+    @field_validator("base_url", "external_id", "ca_cert_pem")
     @classmethod
     def _strip_strings(cls, value: str) -> str:
         return value.strip()
@@ -88,7 +87,6 @@ class Account(StrictModel):
             "alias": self.alias,
             "provider": self.provider.value,
             "auth_type": self.auth_type.value,
-            "label": self.label,
             "base_url": self.base_url,
             "external_id": self.external_id or None,
             "verify_tls": self.verify_tls,

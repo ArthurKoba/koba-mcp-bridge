@@ -214,7 +214,6 @@ class _ListOnlyManagement:
             alias="github-user",
             provider="github",
             auth_type="github_token",
-            label="User token",
             base_url="https://api.github.com",
             external_id=None,
             verify_tls=True,

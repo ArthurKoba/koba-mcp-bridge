@@ -29,7 +29,6 @@ class SqlAlchemyAccountRepository:
             alias=record.alias,
             provider=Provider.GITHUB,
             auth_type=AuthType(record.auth_type),
-            label=record.label,
             base_url="https://api.github.com",
             external_id=record.app_id,
             verify_tls=True,
@@ -46,7 +45,6 @@ class SqlAlchemyAccountRepository:
             alias=record.alias,
             provider=Provider.GITLAB,
             auth_type=AuthType(record.auth_type),
-            label=record.label,
             base_url=record.base_url,
             external_id="",
             verify_tls=record.verify_tls,
@@ -123,7 +121,6 @@ class SqlAlchemyAccountRepository:
                     session.add(record)
                 record.alias = account.alias
                 record.auth_type = account.auth_type.value
-                record.label = account.label
                 record.app_id = account.external_id
                 record.enabled = account.enabled
             else:
@@ -133,7 +130,6 @@ class SqlAlchemyAccountRepository:
                     session.add(record)
                 record.alias = account.alias
                 record.auth_type = account.auth_type.value
-                record.label = account.label
                 record.base_url = account.base_url
                 record.verify_tls = account.verify_tls
                 record.ca_cert_pem = account.ca_cert_pem
