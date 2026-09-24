@@ -7,8 +7,8 @@ from common.runtime_annotations import (
 )
 from common.runtime_common import build_private_mcp, management_client, private_http_app
 from common.settings import (
-    ManagementClientSettings,
     GitHubPolicySettings,
+    ManagementClientSettings,
     PrivateRuntimeSettings,
 )
 
