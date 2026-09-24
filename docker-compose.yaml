@@ -1,16 +1,33 @@
 x-runtime: &runtime
-  image: ghcr.io/arthurkoba/mcp-bridge:latest
+  image: ${MCP_BRIDGE_IMAGE:-ghcr.io/arthurkoba/mcp-bridge:latest}
   restart: unless-stopped
 
 x-control-plane-client: &control-plane-client
   CONTROL_PLANE_URL: ${CONTROL_PLANE_URL:-http://control-plane:8000}
   CONTROL_PLANE_SERVICE_TOKEN: ${CONTROL_PLANE_SERVICE_TOKEN}
+  CONTROL_PLANE_TIMEOUT_SECONDS: ${CONTROL_PLANE_TIMEOUT_SECONDS:-10}
+
+x-private-service: &private-service
+  <<: *runtime
+  depends_on:
+    - control-plane
+
+x-file-settings: &file-settings
+  <<: *control-plane-client
+  FILE_ROOT: ${FILE_ROOT:-/files}
+  FILE_UPLOAD_MAX_BYTES: ${FILE_UPLOAD_MAX_BYTES:-8589934592}
+  FILE_UPLOAD_CHUNK_BYTES: ${FILE_UPLOAD_CHUNK_BYTES:-1048576}
+  FILE_MAX_EXTRACT_FILES: ${FILE_MAX_EXTRACT_FILES:-20000}
+  FILE_MAX_EXTRACT_BYTES: ${FILE_MAX_EXTRACT_BYTES:-17179869184}
+
+x-file-service: &file-service
+  <<: *private-service
+  volumes:
+    - files-data:${FILE_ROOT:-/files}
 
 services:
   control-plane:
     <<: *runtime
-    expose:
-      - "8000"
     command:
       - /app/.venv/bin/uvicorn
       - control_plane.runtime:app
@@ -19,7 +36,7 @@ services:
       - --port
       - "8000"
     environment:
-      CONTROL_PLANE_DATABASE_PATH: /control-plane/control-plane.sqlite3
+      CONTROL_PLANE_DATABASE_PATH: ${CONTROL_PLANE_DATABASE_PATH:-/control-plane/control-plane.sqlite3}
       CONTROL_PLANE_ENCRYPTION_KEY: ${CONTROL_PLANE_ENCRYPTION_KEY}
       CONTROL_PLANE_SERVICE_TOKEN: ${CONTROL_PLANE_SERVICE_TOKEN}
       CONTROL_PLANE_ADMIN_USERNAME: ${CONTROL_PLANE_ADMIN_USERNAME:-admin}
@@ -32,7 +49,7 @@ services:
   gateway:
     <<: *runtime
     ports:
-      - "8092:8000"
+      - "${GATEWAY_PORT:-8092}:8000"
     command:
       - /app/.venv/bin/uvicorn
       - bridge.server:app
@@ -41,33 +58,30 @@ services:
       - --port
       - "8000"
     environment:
-      OAUTH_ENABLED: "true"
+      OAUTH_ENABLED: ${OAUTH_ENABLED:-true}
       OAUTH_BASE_URL: ${OAUTH_BASE_URL:-https://mcp.koba-nexus.ru}
       GITHUB_OAUTH_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID}
       GITHUB_OAUTH_CLIENT_SECRET: ${GITHUB_OAUTH_CLIENT_SECRET}
       GITHUB_OAUTH_JWT_SIGNING_KEY: ${GITHUB_OAUTH_JWT_SIGNING_KEY}
       GITHUB_OAUTH_ALLOWED_USERS: ${GITHUB_OAUTH_ALLOWED_USERS}
       CONTROL_PLANE_URL: ${CONTROL_PLANE_URL:-http://control-plane:8000}
+      GITHUB_URL: ${GITHUB_URL:-http://github:8000/mcp}
+      GITLAB_URL: ${GITLAB_URL:-http://gitlab:8000/mcp}
+      FILES_URL: ${FILES_URL:-http://files:8000/mcp}
+      CURL_URL: ${CURL_URL:-http://curl:8000/mcp}
+      ANALYSIS_URL: ${ANALYSIS_URL:-http://analysis:8000/mcp}
       GHIDRA_MCP_URL: ${GHIDRA_MCP_URL:-http://bridge:8081/mcp}
       MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-mcp.koba-nexus.ru,localhost:*,127.0.0.1:*}
       MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-https://mcp.koba-nexus.ru}
+      FASTMCP_HOME: ${FASTMCP_HOME:-/data/fastmcp}
     volumes:
-      - fastmcp-data:/data/fastmcp
-    depends_on:
-      - control-plane
-      - github
-      - gitlab
-      - files
-      - curl
-      - analysis
+      - fastmcp-data:${FASTMCP_HOME:-/data/fastmcp}
     networks:
       - default
       - coolify
 
   github:
-    <<: *runtime
-    expose:
-      - "8000"
+    <<: *private-service
     command:
       - /app/.venv/bin/uvicorn
       - modules.github.runtime:app
@@ -77,13 +91,12 @@ services:
       - "8000"
     environment:
       <<: *control-plane-client
-    depends_on:
-      - control-plane
+      GITHUB_AGENT_PROTECTED_BRANCHES: ${GITHUB_AGENT_PROTECTED_BRANCHES:-main,master}
+      GITHUB_AGENT_REQUIRED_CHECKS: ${GITHUB_AGENT_REQUIRED_CHECKS:-test,docker}
+      GITHUB_AGENT_REQUIRED_REVIEWERS: ${GITHUB_AGENT_REQUIRED_REVIEWERS:-}
 
   gitlab:
-    <<: *runtime
-    expose:
-      - "8000"
+    <<: *private-service
     command:
       - /app/.venv/bin/uvicorn
       - modules.gitlab.runtime:app
@@ -93,13 +106,11 @@ services:
       - "8000"
     environment:
       <<: *control-plane-client
-    depends_on:
-      - control-plane
+      GITLAB_PROTECTED_BRANCHES: ${GITLAB_PROTECTED_BRANCHES:-main,master}
+      GITLAB_REGISTRY_CACHE_TTL_SECONDS: ${GITLAB_REGISTRY_CACHE_TTL_SECONDS:-60}
 
   files:
-    <<: *runtime
-    expose:
-      - "8000"
+    <<: *file-service
     command:
       - /app/.venv/bin/uvicorn
       - modules.files.runtime:app
@@ -108,17 +119,10 @@ services:
       - --port
       - "8000"
     environment:
-      <<: *control-plane-client
-      FILE_ROOT: /files
-    volumes:
-      - files-data:/files
-    depends_on:
-      - control-plane
+      <<: *file-settings
 
   curl:
-    <<: *runtime
-    expose:
-      - "8000"
+    <<: *file-service
     command:
       - /app/.venv/bin/uvicorn
       - modules.curl.runtime:app
@@ -127,17 +131,11 @@ services:
       - --port
       - "8000"
     environment:
-      <<: *control-plane-client
-      FILE_ROOT: /files
-    volumes:
-      - files-data:/files
-    depends_on:
-      - control-plane
+      <<: *file-settings
+      CURL_BINARY: ${CURL_BINARY:-}
 
   analysis:
-    <<: *runtime
-    expose:
-      - "8000"
+    <<: *private-service
     command:
       - /app/.venv/bin/uvicorn
       - modules.analysis.runtime:app
@@ -147,15 +145,11 @@ services:
       - "8000"
     environment:
       <<: *control-plane-client
-      FILE_ROOT: /files
       GHIDRA_MCP_URL: ${GHIDRA_MCP_URL:-http://bridge:8081/mcp}
-    volumes:
-      - files-data:/files
+      ANALYSIS_SCHEMA_CACHE_TTL_SECONDS: ${ANALYSIS_SCHEMA_CACHE_TTL_SECONDS:-30}
     networks:
       - default
       - coolify
-    depends_on:
-      - control-plane
 
 volumes:
   control-plane-data:
