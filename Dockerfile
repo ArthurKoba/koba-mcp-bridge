@@ -36,4 +36,4 @@ RUN chmod 0755 /usr/local/bin/bridge-entrypoint \
 EXPOSE 8000
 
 ENTRYPOINT ["/usr/local/bin/bridge-entrypoint"]
-CMD ["/app/.venv/bin/uvicorn", "bridge.server:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["/app/.venv/bin/mcp-serve"]

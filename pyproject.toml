@@ -21,6 +21,9 @@ dependencies = [
   "uvicorn>=0.35,<1",
 ]
 
+[project.scripts]
+mcp-serve = "common.asgi:main"
+
 [dependency-groups]
 dev = [
   "mypy>=1.18,<2",

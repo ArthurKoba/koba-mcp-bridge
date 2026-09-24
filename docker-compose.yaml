@@ -27,14 +27,8 @@ x-file-service: &file-service
 services:
   control-plane:
     <<: *runtime
-    command:
-      - /app/.venv/bin/uvicorn
-      - control_plane.runtime:app
-      - --host
-      - 0.0.0.0
-      - --port
-      - "8000"
     environment:
+      ASGI_APP: control_plane.runtime:app
       CONTROL_PLANE_DATABASE_PATH: ${CONTROL_PLANE_DATABASE_PATH:-/control-plane/control-plane.sqlite3}
       CONTROL_PLANE_ENCRYPTION_KEY: ${CONTROL_PLANE_ENCRYPTION_KEY}
       CONTROL_PLANE_SERVICE_TOKEN: ${CONTROL_PLANE_SERVICE_TOKEN}
@@ -49,14 +43,8 @@ services:
     <<: *runtime
     ports:
       - "${GATEWAY_PORT:-8092}:8000"
-    command:
-      - /app/.venv/bin/uvicorn
-      - bridge.server:app
-      - --host
-      - 0.0.0.0
-      - --port
-      - "8000"
     environment:
+      ASGI_APP: bridge.server:app
       OAUTH_ENABLED: ${OAUTH_ENABLED:-true}
       OAUTH_BASE_URL: ${OAUTH_BASE_URL:-https://mcp.koba-nexus.ru}
       GITHUB_OAUTH_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID}
@@ -80,69 +68,39 @@ services:
 
   github:
     <<: *private-service
-    command:
-      - /app/.venv/bin/uvicorn
-      - modules.github.runtime:app
-      - --host
-      - 0.0.0.0
-      - --port
-      - "8000"
     environment:
       <<: *control-plane-client
+      ASGI_APP: modules.github.runtime:app
       GITHUB_AGENT_PROTECTED_BRANCHES: ${GITHUB_AGENT_PROTECTED_BRANCHES:-main,master}
       GITHUB_AGENT_REQUIRED_CHECKS: ${GITHUB_AGENT_REQUIRED_CHECKS:-test,docker}
       GITHUB_AGENT_REQUIRED_REVIEWERS: ${GITHUB_AGENT_REQUIRED_REVIEWERS:-}
 
   gitlab:
     <<: *private-service
-    command:
-      - /app/.venv/bin/uvicorn
-      - modules.gitlab.runtime:app
-      - --host
-      - 0.0.0.0
-      - --port
-      - "8000"
     environment:
       <<: *control-plane-client
+      ASGI_APP: modules.gitlab.runtime:app
       GITLAB_PROTECTED_BRANCHES: ${GITLAB_PROTECTED_BRANCHES:-main,master}
       GITLAB_REGISTRY_CACHE_TTL_SECONDS: ${GITLAB_REGISTRY_CACHE_TTL_SECONDS:-60}
 
   files:
     <<: *file-service
-    command:
-      - /app/.venv/bin/uvicorn
-      - modules.files.runtime:app
-      - --host
-      - 0.0.0.0
-      - --port
-      - "8000"
     environment:
       <<: *file-settings
+      ASGI_APP: modules.files.runtime:app
 
   curl:
     <<: *file-service
-    command:
-      - /app/.venv/bin/uvicorn
-      - modules.curl.runtime:app
-      - --host
-      - 0.0.0.0
-      - --port
-      - "8000"
     environment:
       <<: *file-settings
+      ASGI_APP: modules.curl.runtime:app
       CURL_BINARY: ${CURL_BINARY:-}
 
   analysis:
     <<: *private-service
-    command:
-      - /app/.venv/bin/uvicorn
-      - modules.analysis.runtime:app
-      - --host
-      - 0.0.0.0
-      - --port
-      - "8000"
     environment:
       <<: *control-plane-client
+      ASGI_APP: modules.analysis.runtime:app
       GHIDRA_MCP_URL: ${GHIDRA_MCP_URL:-http://bridge:8081/mcp}
       ANALYSIS_SCHEMA_CACHE_TTL_SECONDS: ${ANALYSIS_SCHEMA_CACHE_TTL_SECONDS:-30}
     networks:

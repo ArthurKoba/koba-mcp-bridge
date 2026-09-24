@@ -67,6 +67,17 @@ class ProcessSettings(BaseSettings):
     )
 
 
+class AsgiServerSettings(ProcessSettings):
+    app: str = Field("bridge.server:app", validation_alias="ASGI_APP")
+    host: str = Field("0.0.0.0", validation_alias="ASGI_HOST")
+    port: int = Field(8000, ge=1, le=65535, validation_alias="ASGI_PORT")
+
+    @field_validator("app", "host", mode="before")
+    @classmethod
+    def _strip_values(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+
 class PrivateRuntimeSettings(ProcessSettings):
     allowed_hosts: Annotated[tuple[str, ...], NoDecode] = Field(
         _DEFAULT_PRIVATE_HOSTS,
