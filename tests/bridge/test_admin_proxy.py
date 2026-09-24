@@ -4,9 +4,7 @@ import httpx
 import pytest
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import RedirectResponse
 from starlette.routing import Route
-from starlette.testclient import TestClient
 
 from bridge.admin_proxy import AdminProxy
 
