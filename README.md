@@ -169,17 +169,14 @@ only the facade, terminology mapping, validation and result-envelope normalizati
 ## Account management
 
 GitHub and GitLab accounts are managed by the private `management` runtime. The
-management service owns a persistent SQLite database through SQLAlchemy and Alembic. Provider
-runtimes never read the database directly; they use an authenticated internal HTTP API.
+management service owns a persistent SQLite database through SQLAlchemy. The current zero-state schema is created directly at startup; provider runtimes never read the database directly and use an authenticated internal HTTP API.
 
 Account metadata and credentials are separate concerns. Credentials are encrypted before
 they are written to SQLite using a deployment Fernet master key. Plaintext credentials
 are returned only to authenticated private runtimes for the explicitly selected
 `account_id`; they are never exposed by MCP tools or the admin list/detail views.
 
-Starlette Admin is owned by the private management runtime and reverse-proxied by the gateway at `/admin` on the same public origin. It provides
-account creation/editing, write-only credential replacement, connection verification and a
-small account/invocation dashboard.
+Starlette Admin is owned by the private management runtime and reverse-proxied by the gateway at `/admin` on the same public origin. GitHub and GitLab accounts have separate management surfaces. The console also provides write-only credential replacement, connection verification, MCP call logging controls/history, and Files inspection/upload/download/cleanup.
 
 See [docs/management.md](docs/management.md).
 
@@ -197,21 +194,13 @@ A GitLab account stores:
 - TLS verification flag and optional custom CA certificate PEM.
 
 There is no process-global current GitLab account. Concurrent agents can safely use
-different accounts or servers without switching shared process state.
+different accounts or servers without switching shared process state. GitLab tool registration is also static. `accounts` lists configured identities and potential capability classes; `account_capabilities` reports PAT scopes when GitLab exposes them and can additionally report project-level access for a selected project.
 
 ## GitHub provider accounts
 
-GitHub provider identities are also explicit accounts. GitHub App accounts use one of two
-roles:
+GitHub provider identities are explicit accounts with no application-defined role. An account can authenticate either as a GitHub App (`github_app`) or with a personal/user token (`github_token`). GitHub App accounts store the App ID as `external_id` and encrypt the App private key; token accounts encrypt the token and do not require an App ID. Repository installation access remains GitHub's source of truth for App accounts.
 
-- `development` — mutation/repository workflow identity;
-- `reviewer` — independent read/review identity.
-
-The account record stores the GitHub App ID as `external_id`; the encrypted credential
-stores the App private key. Repository installation access remains GitHub's source of truth.
-
-All account-scoped GitHub tools require `account_id`. `github_accounts` is the
-discovery surface for configured identities.
+All account-scoped GitHub tools require `account_id`. Tool registration is static: an account being absent, disabled, or under-privileged never removes tools from the catalog; the individual call returns the provider/runtime error instead. `github_accounts` lists configured identities with potential capability classes, while `github_account_capabilities` reports provider-visible account permissions and can additionally inspect repository-effective rights.
 
 GitHub Enterprise Server API URLs are intentionally not enabled by the current account
 contract. GitHub provider accounts target `https://api.github.com`.
@@ -232,12 +221,9 @@ Dynamic provider account credentials do not live in deployment environment varia
 
 ## Invocation telemetry
 
-Private runtimes register a lightweight FastMCP middleware. Each tool call may append a
-best-effort event to the management service containing module/tool name, selected account,
-provider, duration, status and error type. Argument values are not stored.
+Private runtimes register a lightweight FastMCP middleware. Each tool call may append a best-effort event containing module/tool name, selected account, provider, duration, status, error details and bounded argument/result payloads. Sensitive structured fields such as authorization headers, cookies, tokens, passwords, secrets and private keys are redacted before transport.
 
-Telemetry uses a bounded background task set and does not block a successful tool call if
-the management service is slow or unavailable.
+The management Settings page can disable logging, disable payload capture, configure retention/max records and trigger cleanup. Telemetry uses a bounded background task set and does not block a successful tool call if the management service is slow or unavailable.
 
 ## Project status
 

@@ -13,6 +13,7 @@ from .gitlab_client import GitLabClient
 def register_gitlab_profile_tools(
     mcp: FastMCP,
     accounts_factory: Callable[[], JsonObject],
+    account_capabilities_factory: Callable[[str, str], JsonObject],
     client_factory: Callable[[str], GitLabClient],
     read_annotations: ToolAnnotations,
 ) -> None:
@@ -25,6 +26,14 @@ def register_gitlab_profile_tools(
     def account_status(account_id: str) -> JsonObject:
         """Verify one explicit GitLab account and report the authenticated user."""
         return client_factory(account_id).profile_status()
+
+    @mcp.tool(title="GitLab account capabilities", annotations=read_annotations)
+    def account_capabilities(
+        account_id: str,
+        project: str = "",
+    ) -> JsonObject:
+        """Inspect token/account scope and optional project-effective rights."""
+        return account_capabilities_factory(account_id, project.strip())
 
     @mcp.tool(title="GitLab list projects", annotations=read_annotations)
     def list_projects(

@@ -37,9 +37,11 @@ class GitHubAgentError(RuntimeError):
 
 @dataclass
 class GitHubAppClient:
-    app_id: str
-    private_key: str
+    app_id: str = ""
+    private_key: str = ""
     account_id: str = ""
+    token: str = ""
+    auth_type: str = "github_app"
     _installation_ids: dict[str, int] = field(default_factory=dict)
     _tokens: dict[int, tuple[str, float]] = field(default_factory=dict)
     repository_cache_ttl_seconds: float = 30.0
@@ -283,6 +285,9 @@ class GitHubAppClient:
             return token
 
     def _installation_token(self, repository: str) -> str:
+        if self.token:
+            self._assert_allowed(repository)
+            return self.token
         return self._installation_token_for_id(self._installation_id(repository))
 
     def _repo_request(
@@ -337,7 +342,45 @@ class GitHubAppClient:
         return installation_ids
 
     def list_repositories(self) -> JsonObject:
-        """List every repository currently granted to this GitHub App installation."""
+        """List repositories available to the configured GitHub identity."""
+        if self.token:
+            repositories: list[JsonObject] = []
+            page = 1
+            while True:
+                _, result = self._request(
+                    "GET",
+                    (
+                        f"{_GITHUB_API}/user/repos?"
+                        "affiliation=owner,collaborator,organization_member"
+                        f"&per_page=100&page={page}"
+                    ),
+                    token=self.token,
+                )
+                if not isinstance(result, list):
+                    raise GitHubAgentError("unexpected GitHub repository list response")
+                for raw_item in result:
+                    item = json_object(raw_item, context="GitHub repository item")
+                    full_name = json_str(item.get("full_name"))
+                    if not full_name:
+                        continue
+                    repositories.append({
+                        "full_name": full_name,
+                        "private": json_bool(item.get("private")),
+                        "default_branch": json_str(item.get("default_branch")),
+                        "archived": json_bool(item.get("archived")),
+                        "fork": json_bool(item.get("fork")),
+                        "permissions": json_member_object(item, "permissions"),
+                    })
+                if len(result) < 100:
+                    break
+                page += 1
+            repositories.sort(key=lambda item: str(item["full_name"]).casefold())
+            return {
+                "auth_type": self.auth_type,
+                "count": len(repositories),
+                "repositories": repositories,
+            }
+
         repositories: list[JsonObject] = []
         seen: set[str] = set()
         for installation_id in self._installation_ids_from_github():
@@ -349,71 +392,33 @@ class GitHubAppClient:
                     f"{_GITHUB_API}/installation/repositories?per_page=100&page={page}",
                     token=token,
                 )
-                try:
-                    response = json_object(
-                        result,
-                        context="GitHub installation repository response",
-                    )
-                    items = json_member_array(
-                        response,
-                        "repositories",
-                        required=True,
-                    )
-                except ValueError as exc:
-                    raise GitHubAgentError(
-                        "installation repository response has no repositories"
-                    ) from exc
-
+                response = json_object(result, context="GitHub installation repository response")
+                items = json_member_array(response, "repositories", required=True)
                 for raw_item in items:
-                    try:
-                        item = json_object(
-                            raw_item,
-                            context="GitHub installation repository item",
-                        )
-                        full_name = json_str(item.get("full_name"))
-                    except ValueError as exc:
-                        raise GitHubAgentError(
-                            "unexpected installation repository item"
-                        ) from exc
+                    item = json_object(raw_item, context="GitHub installation repository item")
+                    full_name = json_str(item.get("full_name"))
                     if not full_name or full_name.casefold() in seen:
                         continue
                     seen.add(full_name.casefold())
-                    cache_key = full_name.casefold()
-                    self._installation_ids[cache_key] = installation_id
-
-                    metadata: JsonObject = {
-                        "repository": full_name,
-                        "default_branch": json_str(item.get("default_branch")),
+                    self._installation_ids[full_name.casefold()] = installation_id
+                    repositories.append({
+                        "full_name": full_name,
                         "private": json_bool(item.get("private")),
+                        "default_branch": json_str(item.get("default_branch")),
                         "archived": json_bool(item.get("archived")),
                         "fork": json_bool(item.get("fork")),
-                    }
-                    if self.repository_cache_ttl_seconds > 0:
-                        with self._cache_lock:
-                            self._repository_cache[cache_key] = (
-                                time.monotonic() + self.repository_cache_ttl_seconds,
-                                metadata,
-                            )
-                    permissions = json_member_object(item, "permissions")
-                    repositories.append(
-                        {
-                            "full_name": full_name,
-                            "private": json_bool(item.get("private")),
-                            "default_branch": json_str(item.get("default_branch")),
-                            "archived": json_bool(item.get("archived")),
-                            "fork": json_bool(item.get("fork")),
-                            "permissions": permissions,
-                            "installation_id": installation_id,
-                        }
-                    )
+                        "permissions": json_member_object(item, "permissions"),
+                        "installation_id": installation_id,
+                    })
                 if len(items) < 100:
                     break
                 page += 1
         repositories.sort(key=lambda item: str(item["full_name"]).casefold())
         return {
+            "auth_type": self.auth_type,
             "app_id": self.app_id,
             "count": len(repositories),
-            "repositories": json_array(repositories, context="GitHub repositories"),
+            "repositories": repositories,
         }
 
     def _repository_metadata(
@@ -454,11 +459,15 @@ class GitHubAppClient:
     def status(self, repository: str) -> JsonObject:
         repository = self._assert_allowed(repository)
         result = self._repository_metadata(repository)
-        return {
+        response: JsonObject = {
             "repository": str(result["repository"]),
             "default_branch": str(result["default_branch"]),
             "private": bool(result["private"]),
-            "app_id": self.app_id,
-            "installation_id": self._installation_id(repository),
+            "auth_type": self.auth_type,
             "status": "ok",
         }
+        if self.token:
+            return response
+        response["app_id"] = self.app_id
+        response["installation_id"] = self._installation_id(repository)
+        return response

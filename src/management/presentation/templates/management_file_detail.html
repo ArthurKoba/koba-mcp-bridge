@@ -1,0 +1,13 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container-xl">
+  <div class="page-header d-print-none"><div class="row align-items-center"><div class="col"><h2 class="page-title">File details</h2></div><div class="col-auto"><a class="btn" href="{{ base_url }}">Back</a></div></div></div>
+  <div class="card"><div class="card-body">
+    <dl class="row">
+    {% for key, value in info.items() %}
+      <dt class="col-sm-3">{{ key }}</dt><dd class="col-sm-9"><pre class="mb-2 text-wrap">{{ value | tojson(indent=2) if value is mapping or value is sequence and value is not string else value }}</pre></dd>
+    {% endfor %}
+    </dl>
+  </div></div>
+</div>
+{% endblock %}

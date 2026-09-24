@@ -4,7 +4,6 @@
 mcp-bridge/
 ├── .github/
 ├── docs/
-├── migrations/                 # Alembic management schema
 ├── src/
 │   ├── bridge/                 # public gateway only
 │   ├── common/                 # shared contracts/settings/runtime primitives
@@ -24,7 +23,6 @@ mcp-bridge/
 │   ├── common/
 │   ├── management/
 │   └── modules/
-├── alembic.ini
 ├── Dockerfile
 ├── docker-compose.yaml
 ├── docker-entrypoint.sh

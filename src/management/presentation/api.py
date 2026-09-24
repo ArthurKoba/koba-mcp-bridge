@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from common.account_contracts import AccountList, InvocationEvent
 from common.models import JsonObject
 from management.application.services import AccountService, TelemetryService
-from management.domain.accounts import AccountRole, Provider
+from management.domain.accounts import Provider
 from management.domain.telemetry import Invocation
 
 
@@ -35,25 +35,19 @@ def build_internal_router(services: ApiServices) -> APIRouter:
     @router.get("/accounts")
     def list_accounts(
         provider: Annotated[Provider | None, Query()] = None,
-        role: Annotated[AccountRole | None, Query()] = None,
         _authorized: None = Depends(authorize),
     ) -> JsonObject:
-        accounts = services.accounts.list(provider=provider, role=role)
+        accounts = services.accounts.list(provider=provider)
         return AccountList(accounts=accounts, count=len(accounts)).to_json()
 
     @router.get("/accounts/{selector}/resolve")
     def resolve_account(
         selector: str,
         provider: Provider,
-        role: Annotated[AccountRole | None, Query()] = None,
         _authorized: None = Depends(authorize),
     ) -> JsonObject:
         try:
-            return services.accounts.resolve(
-                selector,
-                provider=provider,
-                role=role,
-            ).model_dump(mode="json")
+            return services.accounts.resolve(selector, provider=provider).model_dump(mode="json")
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 

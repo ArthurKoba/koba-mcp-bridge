@@ -4,48 +4,28 @@ Status: accepted
 
 ## Context
 
-GitHub and GitLab provider identities were previously resolved from deployment secret
-paths. That made account discovery part of secret storage, coupled provider runtimes to a
-specific secret backend, and made multi-account selection awkward. GitLab also needs
-first-class self-hosted instances with per-account URL/TLS configuration.
-
-MCP Bridge is a modular application whose private runtimes are separate processes. Sharing
-one SQLite file directly between provider containers would create hidden persistence
-ownership and couple provider code to SQLAlchemy.
+Provider identities were previously coupled to deployment secret paths and fixed semantic roles. GitLab also needs first-class self-hosted instances, while GitHub credentials may represent either an App or a token-backed user/account. Management additionally needs operational visibility into MCP calls and persistent Files without introducing another infrastructure service.
 
 ## Decision
 
-MCP Bridge owns a private `management` runtime in the same source repository.
+MCP Bridge owns one private `management` runtime inside the modular monolith.
 
-- SQLite is the persistence engine and only the management process opens it.
-- SQLAlchemy is the persistence adapter and Alembic is the migration authority.
-- Provider credentials are encrypted with Fernet before persistence; the master key is a
-  deployment bootstrap secret and is never stored in SQLite.
-- GitHub and GitLab runtimes use a provider-neutral authenticated HTTP client to list and
-  resolve accounts. They never import management implementation or SQLAlchemy models.
-- Every provider operation selects an explicit `account_id`; both stable UUID and unique
-  human-readable alias are valid selectors.
-- GitHub accounts are GitHub App identities with `development` or `reviewer` roles.
-- GitLab accounts are token identities with per-account `base_url`, TLS verification and
-  optional custom CA PEM, including self-hosted installations under a URL prefix.
-- Starlette Admin is an outer presentation adapter for account management and basic
-  telemetry. It is not part of domain/application contracts.
-- FastMCP middleware records bounded, best-effort invocation metadata without argument
-  values. Telemetry failure must not delay or fail MCP tool execution.
-- Deployment environment contains bootstrap/configuration only; dynamic provider accounts
-  are data, not environment variables.
+- Only management opens the SQLite database; SQLAlchemy is the persistence adapter.
+- The active deployment starts from an empty database, so current metadata creates the schema directly and no legacy migration compatibility is maintained.
+- GitHub and GitLab use separate persistence/admin models. There is no account-role field.
+- GitHub supports `github_app` and `github_token` accounts and targets the public GitHub API.
+- GitLab supports token authentication with per-account `base_url`, TLS verification and optional custom CA PEM.
+- Provider credentials are encrypted with Fernet and plaintext is resolved only for an explicit provider/account selection over the authenticated internal API.
+- Every provider operation selects an explicit `account_id`; UUID and provider-local alias are valid selectors.
+- Starlette Admin is a presentation adapter for accounts, invocation logs, runtime settings and Files administration.
+- FastMCP middleware emits bounded, secret-redacted call payloads best-effort. Logging and payload capture are runtime-configurable and retention is enforced automatically.
+- Files administration reuses the canonical Files `FileStore` over the shared `files-data` volume, including reference-aware cleanup.
+- Deployment environment contains bootstrap/configuration only; dynamic provider accounts are application data.
 
 ## Consequences
 
-Provider account management no longer depends on Infisical. Account onboarding and
-credential replacement happen through the private admin surface. Provider runtimes now
-require the management service to resolve credentials, but management outages do not make
-telemetry a blocking dependency for calls that already have their account client cached.
+Provider account management no longer depends on Infisical. Account onboarding and credential replacement happen through Admin. Account semantics match each provider instead of forcing one shared form.
 
-SQLite is sufficient for the expected account/telemetry scale and keeps deployment small.
-If storage requirements outgrow SQLite, the repository/application ports allow replacing
-SQLAlchemy's database backend without changing provider MCP contracts.
+SQLite is sufficient for the expected management scale. If requirements outgrow it, application ports keep provider runtimes independent from the persistence implementation.
 
-GitHub Enterprise Server API URLs are intentionally not supported by this first account
-contract; GitHub provider accounts currently target `https://api.github.com`. Self-hosted
-GitLab is explicitly supported.
+GitHub Enterprise Server API URLs are not enabled by the current contract. Self-hosted GitLab is explicitly supported.

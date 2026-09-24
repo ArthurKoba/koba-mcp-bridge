@@ -1,0 +1,47 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container-xl">
+  <div class="page-header d-print-none"><h2 class="page-title">Files</h2></div>
+  <div class="card mb-3"><div class="card-body">
+    <form method="get" class="row g-2 mb-3">
+      <div class="col"><input class="form-control" name="q" value="{{ query }}" placeholder="Search by id or name"></div>
+      <div class="col-auto"><button class="btn btn-primary" type="submit">Search</button></div>
+    </form>
+    <form method="post" action="{{ base_url }}/upload" enctype="multipart/form-data" class="row g-2 align-items-center">
+      {{ csrf_input(request) }}
+      <div class="col"><input class="form-control" type="file" name="file" required></div>
+      <div class="col-auto"><button class="btn btn-primary" type="submit">Upload</button></div>
+    </form>
+  </div></div>
+  <div class="card mb-3"><div class="table-responsive">
+    <table class="table table-vcenter card-table">
+      <thead><tr><th>Name</th><th>Type</th><th>Size</th><th>Created</th><th>Refs</th><th>ID</th><th></th></tr></thead>
+      <tbody>
+      {% for item in listing.items %}
+        <tr>
+          <td>{{ item.name }}</td><td>{{ item.mime_type }}</td><td>{{ item.size_display }}</td><td>{{ item.created_at }}</td><td>{{ item.reference_count }}</td>
+          <td><code>{{ item.file_id }}</code></td>
+          <td class="text-nowrap">
+            <a class="btn btn-sm" href="{{ base_url }}/detail/{{ item.file_id }}">Inspect</a>
+            <a class="btn btn-sm" href="{{ base_url }}/download/{{ item.file_id }}">Download</a>
+            <form method="post" action="{{ base_url }}/delete" style="display:inline">
+              {{ csrf_input(request) }}<input type="hidden" name="file_id" value="{{ item.file_id }}">
+              <button class="btn btn-sm btn-danger" type="submit" onclick="return confirm('Delete this unreferenced file?')">Delete</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}<tr><td colspan="7" class="text-secondary">No files.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div></div>
+  <div class="card"><div class="card-header"><h3 class="card-title">Cleanup</h3></div><div class="card-body">
+    <form method="post" action="{{ base_url }}/cleanup" class="row g-2 align-items-end">
+      {{ csrf_input(request) }}
+      <div class="col-md-3"><label class="form-label">Older than days</label><input class="form-control" type="number" min="1" max="3650" name="retention_days" value="30"></div>
+      <div class="col-md-3"><label class="form-label">Limit</label><input class="form-control" type="number" min="1" max="10000" name="limit" value="1000"></div>
+      <div class="col-md-3"><label class="form-check"><input class="form-check-input" type="checkbox" name="dry_run" checked><span class="form-check-label">Preview only</span></label></div>
+      <div class="col-md-3"><button class="btn btn-warning" type="submit">Run cleanup</button></div>
+    </form>
+  </div></div>
+</div>
+{% endblock %}

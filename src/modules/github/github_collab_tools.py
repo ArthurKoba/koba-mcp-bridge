@@ -125,5 +125,5 @@ def register_github_collab_tools(
         repository: str,
         number: int,
     ) -> JsonObject:
-        """Verify configured independent reviewer approvals before merge."""
+        """Verify configured required approvals before merge."""
         return client_factory(account_id).assert_required_reviews(repository, number)

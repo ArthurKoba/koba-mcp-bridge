@@ -7,12 +7,11 @@ from common.settings import GitHubPolicySettings
 from modules.github.github_identity import GitHubPrettyIdentityClient
 
 
-def _account(role: str = "reviewer") -> ResolvedAccount:
+def _account() -> ResolvedAccount:
     return ResolvedAccount(
         id="11111111-1111-1111-1111-111111111111",
         alias="github-reviewer",
         provider="github",
-        role=role,
         auth_type="github_app",
         label="Reviewer",
         base_url="https://api.github.com",

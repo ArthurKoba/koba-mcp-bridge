@@ -1,6 +1,6 @@
 # GitHub history and policy surface
 
-The development GitHub App exposes controlled history maintenance without requiring workflow-file mutation or additional `Workflows` permission.
+The selected GitHub account exposes controlled history maintenance without requiring workflow-file mutation or additional `Workflows` permission.
 
 ## Commit identity observability
 
@@ -11,7 +11,7 @@ The development GitHub App exposes controlled history maintenance without requir
 - verification state/reason, with signature/payload material on the detailed commit response;
 - tree SHA on the detailed commit response.
 
-The reviewer read surface receives the same richer commit observations, but no history mutation tool is registered for the reviewer App.
+The reviewer read surface receives the same richer commit observations, but no history mutation tool is registered on the review-oriented tool surface. The caller still selects the account explicitly.
 
 ## Branch policy observability
 

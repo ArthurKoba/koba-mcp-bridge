@@ -131,7 +131,7 @@ class ReservedBranchClient(GitHubActionsClient):
         raise AssertionError(f"unexpected request: {method} {path}")
 
 
-def _agent_client() -> ReservedBranchClient:
+def _agent_client(_account_id: str) -> ReservedBranchClient:
     return ReservedBranchClient()
 
 

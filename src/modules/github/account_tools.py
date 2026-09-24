@@ -10,10 +10,19 @@ from common.models import JsonObject
 
 def register_github_account_tools(
     mcp: FastMCP,
-    list_accounts: Callable[[str | None], JsonObject],
+    list_accounts: Callable[[], JsonObject],
+    account_capabilities: Callable[[str, str], JsonObject],
     read_annotations: ToolAnnotations,
 ) -> None:
     @mcp.tool(title="GitHub accounts", annotations=read_annotations)
-    def github_accounts(role: str | None = None) -> JsonObject:
-        """List configured GitHub accounts without exposing credentials."""
-        return list_accounts(role)
+    def github_accounts() -> JsonObject:
+        """List configured GitHub accounts and their potential capability classes."""
+        return list_accounts()
+
+    @mcp.tool(title="GitHub account capabilities", annotations=read_annotations)
+    def github_account_capabilities(
+        account_id: str,
+        repository: str = "",
+    ) -> JsonObject:
+        """Inspect account-level permissions and optional repository-effective rights."""
+        return account_capabilities(account_id, repository)

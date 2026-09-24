@@ -112,12 +112,7 @@ class GitHubHistoryMixin:
         permissions = json_member_object(token_payload, "permissions")
         return {key: json_str(value) for key, value in permissions.items()}
 
-    def capabilities(
-        self,
-        repository: str,
-        *,
-        reviewer_available: bool = False,
-    ) -> JsonObject:
+    def capabilities(self, repository: str) -> JsonObject:
         repository = self._history_host()._assert_allowed(repository)
         _, repo = self._history_host()._repo_request(
             repository,
@@ -127,27 +122,50 @@ class GitHubHistoryMixin:
         if not isinstance(repo, dict):
             raise GitHubAgentError("unexpected repository response")
 
-        permissions = self._installation_permissions(repository)
-        contents_write = permissions.get("contents") == "write"
+        if self._history_host().token:
+            repository_permissions = json_member_object(repo, "permissions")
+            push = bool(repository_permissions.get("push") or repository_permissions.get("admin"))
+            permissions: JsonObject = {
+                "repository_push": push,
+                "repository_admin": bool(repository_permissions.get("admin")),
+                "repository_maintain": bool(repository_permissions.get("maintain")),
+                "contents": "write" if push else "read",
+                "workflows": "unknown",
+                "pull_requests": "unknown",
+                "issues": "unknown",
+                "actions": "unknown",
+                "checks": "unknown",
+            }
+            app_id: str | None = None
+            installation_id: int | None = None
+            contents_write = push
+        else:
+            installation_permissions = self._installation_permissions(repository)
+            contents_write = installation_permissions.get("contents") == "write"
+            permissions = {
+                "contents": installation_permissions.get("contents", "none"),
+                "workflows": installation_permissions.get("workflows", "none"),
+                "pull_requests": installation_permissions.get("pull_requests", "none"),
+                "issues": installation_permissions.get("issues", "none"),
+                "actions": installation_permissions.get("actions", "none"),
+                "checks": installation_permissions.get("checks", "none"),
+            }
+            app_id = self.app_id
+            installation_id = self._history_host()._installation_id(repository)
+
         return {
             "repository": repository,
             "allowed_repository": True,
-            "app_id": self.app_id,
-            "installation_id": self._history_host()._installation_id(repository),
+            "auth_type": self._history_host().auth_type,
+            "app_id": app_id,
+            "installation_id": installation_id,
             "agent_identity": self._agent_app_identity(),
             "repository_metadata": {
                 "default_branch": json_str(repo.get("default_branch")),
                 "fork": json_bool(repo.get("fork")),
                 "archived": json_bool(repo.get("archived")),
             },
-            "permissions": {
-                "contents": permissions.get("contents", "none"),
-                "workflows": permissions.get("workflows", "none"),
-                "pull_requests": permissions.get("pull_requests", "none"),
-                "issues": permissions.get("issues", "none"),
-                "actions": permissions.get("actions", "none"),
-                "checks": permissions.get("checks", "none"),
-            },
+            "permissions": permissions,
             "capabilities": {
                 "branch_delete": contents_write,
                 "force_ref_update": contents_write,
@@ -160,7 +178,6 @@ class GitHubHistoryMixin:
                 ),
                 "reserved_branch_mutation_allowed": False,
             },
-            "reviewer_available": reviewer_available,
         }
 
     def _git_commit_object(self, repository: str, sha: str) -> JsonObject:

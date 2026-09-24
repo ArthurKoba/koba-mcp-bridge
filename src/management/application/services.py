@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 from common.account_contracts import AccountPublic, ResolvedAccount
 from common.models import JsonObject, json_object
-from management.domain.accounts import Account, AccountRole, Provider
+from management.domain.accounts import Account, Provider
 from management.domain.telemetry import Invocation
 
 from .ports import AccountRepository, ConnectionVerifier, CredentialCipher, InvocationRepository
@@ -22,62 +22,53 @@ class AccountService:
         self.cipher = cipher
         self.verifier = verifier
 
-    def list(
-        self,
-        *,
-        provider: Provider | None = None,
-        role: AccountRole | None = None,
-    ) -> list[AccountPublic]:
+    def list(self, *, provider: Provider | None = None) -> list[AccountPublic]:
         return [
             AccountPublic.model_validate(account.public())
-            for account in self.repository.list(provider=provider, role=role)
+            for account in self.repository.list(provider=provider, enabled_only=False)
         ]
 
-    def get(
-        self,
-        selector: str,
-        *,
-        provider: Provider | None = None,
-        role: AccountRole | None = None,
-    ) -> Account:
-        return self.repository.get(selector, provider=provider, role=role)
+    def get(self, selector: str, *, provider: Provider) -> Account:
+        return self.repository.get(selector, provider=provider)
 
-    def resolve(
-        self,
-        selector: str,
-        *,
-        provider: Provider,
-        role: AccountRole | None = None,
-    ) -> ResolvedAccount:
-        account = self.repository.get(selector, provider=provider, role=role)
-        credential = self.cipher.decrypt(self.repository.credential(account.id))
-        return ResolvedAccount.model_validate(
-            {**account.public(), "credential": credential}
+    def resolve(self, selector: str, *, provider: Provider) -> ResolvedAccount:
+        account = self.repository.get(selector, provider=provider)
+        credential = self.cipher.decrypt(
+            self.repository.credential(account.id, provider=provider)
         )
+        return ResolvedAccount.model_validate({**account.public(), "credential": credential})
 
     def create(self, account: Account, *, credential: str) -> Account:
-        if not credential.strip():
+        secret = credential.strip()
+        if not secret:
             raise ValueError("credential is required")
-        encrypted = self.cipher.encrypt(credential.strip())
-        return self.repository.save(account, encrypted_credential=encrypted)
+        return self.repository.save(
+            account,
+            encrypted_credential=self.cipher.encrypt(secret),
+        )
 
     def update(self, account: Account) -> Account:
         account.updated_at = datetime.now(UTC)
         return self.repository.save(account)
 
-    def replace_credential(self, selector: str, credential: str) -> None:
-        account = self.repository.get(selector, enabled_only=False)
-        if not credential.strip():
+    def set_credential(self, account_id: str, credential: str, *, provider: Provider) -> None:
+        secret = credential.strip()
+        if not secret:
             raise ValueError("credential is required")
-        self.repository.set_credential(account.id, self.cipher.encrypt(credential.strip()))
+        self.repository.set_credential(
+            account_id,
+            self.cipher.encrypt(secret),
+            provider=provider,
+        )
 
-    def delete(self, selector: str) -> None:
-        account = self.repository.get(selector, enabled_only=False)
-        self.repository.delete(account.id)
+    def delete(self, account_id: str, *, provider: Provider) -> None:
+        self.repository.delete(account_id, provider=provider)
 
-    def verify(self, selector: str) -> JsonObject:
-        account = self.repository.get(selector)
-        credential = self.cipher.decrypt(self.repository.credential(account.id))
+    def verify(self, selector: str, *, provider: Provider) -> JsonObject:
+        account = self.repository.get(selector, provider=provider)
+        credential = self.cipher.decrypt(
+            self.repository.credential(account.id, provider=provider)
+        )
         return json_object(
             self.verifier.verify(account, credential),
             context="connection verification result",
@@ -93,3 +84,9 @@ class TelemetryService:
 
     def recent(self, *, limit: int = 100) -> Sequence[Invocation]:
         return self.repository.recent(limit=limit)
+
+    def clear(self) -> int:
+        return self.repository.clear()
+
+    def cleanup(self) -> int:
+        return self.repository.cleanup()

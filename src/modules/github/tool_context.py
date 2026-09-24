@@ -23,16 +23,52 @@ class GitHubRuntimeContext:
             tuple[str, GitHubPrettyIdentityClient],
         ] = {}
 
-    def list_accounts(self, role: str | None = None) -> JsonObject:
-        return self.management.list_accounts(provider="github", role=role).to_json()
+    def list_accounts(self) -> JsonObject:
+        result = self.management.list_accounts(provider="github").to_json()
+        accounts = result.get("accounts")
+        if isinstance(accounts, list):
+            for account in accounts:
+                if not isinstance(account, dict):
+                    continue
+                auth_type = str(account.get("auth_type", ""))
+                account["potential_capabilities"] = self._potential_capabilities(auth_type)
+                account["permission_scope"] = "repository-dependent"
+        return result
 
-    def _client(self, account_id: str, role: str) -> GitHubPrettyIdentityClient:
-        account = self.management.resolve_account(
-            account_id,
-            provider="github",
-            role=role,
-        )
-        key = (role, account.id)
+    @staticmethod
+    def _potential_capabilities(auth_type: str) -> list[str]:
+        capabilities = [
+            "repository_read",
+            "repository_write",
+            "issues",
+            "pull_requests",
+            "reviews",
+            "actions",
+            "checks",
+            "git_history",
+        ]
+        if auth_type == "github_app":
+            capabilities.append("installation_scoped_access")
+        else:
+            capabilities.append("user_token_scoped_access")
+        return capabilities
+
+    def account_capabilities(
+        self,
+        account_id: str,
+        repository: str = "",
+    ) -> JsonObject:
+        client = self._client(account_id)
+        result = client.account_capabilities()
+        result["potential_capabilities"] = self._potential_capabilities(client.auth_type)
+        result["permission_scope"] = "repository-dependent"
+        if repository.strip():
+            result["repository"] = client.capabilities(repository.strip())
+        return result
+
+    def _client(self, account_id: str) -> GitHubPrettyIdentityClient:
+        account = self.management.resolve_account(account_id, provider="github")
+        key = ("github", account.id)
         with self._lock:
             cached = self._clients.get(key)
             if cached is not None and cached[0] == account.updated_at:
@@ -41,14 +77,8 @@ class GitHubRuntimeContext:
             self._clients[key] = (account.updated_at, client)
             return client
 
-    def development_client(self, account_id: str) -> GitHubPrettyIdentityClient:
-        return self._client(account_id, "development")
-
-    def reviewer_client(self, account_id: str) -> GitHubPrettyIdentityClient:
-        return self._client(account_id, "reviewer")
-
-    def reviewer_available(self) -> bool:
-        return self.management.list_accounts(provider="github", role="reviewer").count > 0
+    def client(self, account_id: str) -> GitHubPrettyIdentityClient:
+        return self._client(account_id)
 
     def clear(self) -> None:
         with self._lock:

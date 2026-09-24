@@ -230,7 +230,7 @@ class RecordingHistoryClient(GitHubActionsClient):
         raise AssertionError(f"unexpected request: {method} {path}")
 
 
-def _agent_client() -> RecordingHistoryClient:
+def _agent_client(_account_id: str) -> RecordingHistoryClient:
     return RecordingHistoryClient()
 
 
@@ -275,7 +275,7 @@ def test_commit_observability_includes_git_and_github_identity() -> None:
 
 def test_capabilities_report_permissions_identity_and_policy() -> None:
     client = RecordingHistoryClient()
-    result = client.capabilities("ArthurKoba/example", reviewer_available=True)
+    result = client.capabilities("ArthurKoba/example")
 
     assert result["allowed_repository"] is True
     assert result["permissions"]["contents"] == "write"
@@ -284,7 +284,6 @@ def test_capabilities_report_permissions_identity_and_policy() -> None:
     assert result["capabilities"]["history_identity_rewrite"] is True
     assert result["agent_identity"]["login"] == "koba-ai-agent[bot]"
     assert result["bridge_policy"]["reserved_branches"] == ["production"]
-    assert result["reviewer_available"] is True
 
 
 def test_rewrite_dry_run_builds_mapping_without_moving_ref() -> None:

@@ -16,7 +16,7 @@
 - Analysis terminology aliases with new names preferred and legacy Ghidra argument names accepted as fallback;
 - architecture tests preventing provider-to-provider imports and provider code from leaking into `bridge`/`common`;
 - one production `docker-compose.yaml` at repository root;
-- persistent `files-data`, `fastmcp-data` and `control-plane-data` volumes.
+- persistent `files-data`, `fastmcp-data` and `management-data` volumes.
 
 ## Remaining
 

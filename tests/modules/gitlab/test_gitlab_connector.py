@@ -55,6 +55,34 @@ class _GitLabHandler(BaseHTTPRequestHandler):
         if path == "/api/v4/projects":
             self._json(200, [{"id": 123, "path_with_namespace": "group/project"}])
             return
+        if path == "/api/v4/personal_access_tokens/self":
+            if not self._identity():
+                self._json(401, {"message": "Unauthorized"})
+                return
+            self._json(
+                200,
+                {
+                    "id": 10,
+                    "active": True,
+                    "scopes": ["api", "read_repository"],
+                    "expires_at": None,
+                },
+            )
+            return
+        if path == "/api/v4/projects/group%2Fproject":
+            self._json(
+                200,
+                {
+                    "id": 123,
+                    "path_with_namespace": "group/project",
+                    "visibility": "private",
+                    "permissions": {
+                        "project_access": {"access_level": 40},
+                        "group_access": {"access_level": 30},
+                    },
+                },
+            )
+            return
         self._json(404, {"message": "not found", "path": path})
 
 
@@ -119,7 +147,7 @@ class _FakeControlPlane:
         self.accounts = accounts
         self.resolve_calls = 0
 
-    def list_accounts(self, *, provider=None, role=None):
+    def list_accounts(self, *, provider=None):
         public = [
             AccountPublic.model_validate(account.model_dump(exclude={"credential"}))
             for account in self.accounts.values()
@@ -127,7 +155,7 @@ class _FakeControlPlane:
         ]
         return AccountList(accounts=public, count=len(public))
 
-    def resolve_account(self, selector: str, *, provider: str, role=None):
+    def resolve_account(self, selector: str, *, provider: str):
         self.resolve_calls += 1
         account = self.accounts[selector]
         assert account.provider == provider
@@ -139,7 +167,6 @@ def test_runtime_context_caches_by_account_version(gitlab_server: str) -> None:
         id="acc",
         alias="local",
         provider="gitlab",
-        role="general",
         auth_type="private_token",
         label="Local",
         base_url=gitlab_server,
@@ -168,3 +195,43 @@ def test_runtime_context_caches_by_account_version(gitlab_server: str) -> None:
     )
     third = context.client("local")
     assert third is not first
+
+
+def test_gitlab_account_capabilities_report_pat_scopes_and_project_access(
+    gitlab_server: str,
+) -> None:
+    client = GitLabClient(_profile("a", "alice", gitlab_server, "token-a"))
+
+    result = client.account_capabilities("group/project")
+
+    assert result["provider_permissions_known"] is True
+    assert result["provider_permissions"]["scopes"] == ["api", "read_repository"]
+    assert result["project"]["access"]["project_access"] == {
+        "access_level": 40,
+        "access_level_name": "maintainer",
+    }
+
+
+def test_gitlab_account_list_exposes_potential_capabilities(gitlab_server: str) -> None:
+    account = ResolvedAccount(
+        id="acc",
+        alias="local",
+        provider="gitlab",
+        auth_type="private_token",
+        label="Local",
+        base_url=gitlab_server,
+        external_id=None,
+        verify_tls=True,
+        ca_cert_pem=None,
+        enabled=True,
+        created_at="2026-09-23T00:00:00+00:00",
+        updated_at="2026-09-23T00:00:00+00:00",
+        credential="token-a",
+    )
+    context = GitLabRuntimeContext(_FakeControlPlane({"local": account}), GitLabSettings())
+
+    result = context.accounts()
+
+    listed = result["accounts"][0]
+    assert listed["permission_scope"] == "project-dependent"
+    assert "personal_access_token_scoped_access" in listed["potential_capabilities"]

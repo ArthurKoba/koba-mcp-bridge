@@ -299,7 +299,7 @@ async def test_dispatch_workflow_is_exposed_on_fastmcp_surface() -> None:
 
     register_github_actions_tools(
         server,
-        lambda: client,
+        lambda _account_id: client,
         read,
         write,
         destructive,

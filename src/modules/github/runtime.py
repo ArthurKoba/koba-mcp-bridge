@@ -27,45 +27,48 @@ _context = GitHubRuntimeContext(_management, GitHubPolicySettings())
 
 mcp = build_private_mcp("github", _management)
 
-register_github_account_tools(mcp, _context.list_accounts, READ_EXTERNAL)
+register_github_account_tools(
+    mcp,
+    _context.list_accounts,
+    _context.account_capabilities,
+    READ_EXTERNAL,
+)
 register_github_core_tools(
     mcp,
-    _context.development_client,
+    _context.client,
     READ_EXTERNAL,
     WRITE_EXTERNAL,
     DESTRUCTIVE_EXTERNAL,
 )
 register_github_workflow_tools(
     mcp,
-    _context.development_client,
+    _context.client,
     READ_EXTERNAL,
     WRITE_EXTERNAL,
     DESTRUCTIVE_EXTERNAL,
 )
 register_github_review_tools(
     mcp,
-    _context.development_client,
+    _context.client,
     READ_EXTERNAL,
     WRITE_EXTERNAL,
 )
 register_github_collab_tools(
     mcp,
-    _context.development_client,
+    _context.client,
     READ_EXTERNAL,
     WRITE_EXTERNAL,
 )
 register_github_actions_tools(
     mcp,
-    _context.development_client,
+    _context.client,
     READ_EXTERNAL,
     WRITE_EXTERNAL,
     DESTRUCTIVE_EXTERNAL,
-    reviewer_client_factory=_context.reviewer_client,
-    reviewer_available=_context.reviewer_available,
 )
 register_github_reviewer_tools(
     mcp,
-    _context.reviewer_client,
+    _context.client,
     READ_EXTERNAL,
     WRITE_EXTERNAL,
 )

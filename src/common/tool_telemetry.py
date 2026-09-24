@@ -9,10 +9,11 @@ from fastmcp.tools import ToolResult
 
 from .account_contracts import InvocationEvent
 from .management_client import ManagementClient
+from .telemetry_payloads import render_error, render_payload
 
 
 class ToolTelemetryMiddleware(Middleware):
-    """Record MCP tool execution metadata without storing argument values."""
+    """Record bounded, secret-redacted MCP calls into the management service."""
 
     _MAX_PENDING_EVENTS = 128
 
@@ -56,6 +57,7 @@ class ToolTelemetryMiddleware(Middleware):
         account_id = self._account_id(context)
         provider = self.module if self.module in {"github", "gitlab"} else ""
         request_id = self._request_id(context)
+        arguments_json = render_payload(context.message.arguments or {})
         try:
             result = await call_next(context)
         except Exception as exc:
@@ -69,6 +71,8 @@ class ToolTelemetryMiddleware(Middleware):
                     status="error",
                     duration_ms=(time.monotonic() - started) * 1000,
                     error_type=type(exc).__name__,
+                    arguments_json=arguments_json,
+                    error_message=render_error(exc),
                 )
             )
             raise
@@ -81,6 +85,8 @@ class ToolTelemetryMiddleware(Middleware):
                 provider=provider,
                 status="success",
                 duration_ms=(time.monotonic() - started) * 1000,
+                arguments_json=arguments_json,
+                result_json=render_payload(result),
             )
         )
         return result

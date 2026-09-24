@@ -30,7 +30,7 @@ flowchart TB
 - `common` — provider-neutral runtime contracts, settings, HTTP primitives and management client.
 - `management.domain` — account and telemetry domain models.
 - `management.application` — use cases and repository/crypto/verifier ports.
-- `management.infrastructure` — SQLAlchemy, SQLite, Alembic, encryption and provider verification adapters.
+- `management.infrastructure` — SQLAlchemy, SQLite, encryption, Files administration and provider verification adapters.
 - `management.presentation` — private FastAPI and Starlette Admin adapters.
 - `modules.github` — GitHub-specific API capabilities.
 - `modules.gitlab` — GitLab-specific API capabilities.

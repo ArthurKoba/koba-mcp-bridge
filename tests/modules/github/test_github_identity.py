@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from common.account_contracts import AccountList, AccountPublic
+from common.settings import GitHubPolicySettings
 from modules.github.github_identity import GitHubPrettyIdentityClient
+from modules.github.tool_context import GitHubRuntimeContext
 
 
 class RecordingPrettyClient(GitHubPrettyIdentityClient):
@@ -35,7 +38,11 @@ class RecordingPrettyClient(GitHubPrettyIdentityClient):
     ) -> tuple[int, object]:
         del token
         if method == "GET" and url.endswith("/app"):
-            return 200, {"slug": self.slug, "name": self.app_name}
+            return 200, {
+                "slug": self.slug,
+                "name": self.app_name,
+                "permissions": {"contents": "write", "pull_requests": "write"},
+            }
         if method == "GET" and "/users/" in url:
             return 200, {"id": self.bot_id, "login": f"{self.slug}[bot]", "type": "Bot"}
 
@@ -180,3 +187,50 @@ def test_reviewer_display_identity_uses_reviewer_app_name() -> None:
     assert identity["display_name"] == "Koba AI Reviewer"
     assert identity["name"] == "Koba AI Reviewer"
     assert identity["login"] == "koba-ai-reviewer[bot]"
+
+
+def test_account_capabilities_report_github_app_permission_ceiling() -> None:
+    client = RecordingPrettyClient(
+        app_name="Koba AI Agent",
+        slug="koba-ai-agent",
+        bot_id=330168119,
+    )
+
+    result = client.account_capabilities()
+
+    assert result["auth_type"] == "github_app"
+    assert result["provider_permissions_known"] is True
+    assert result["provider_permissions"] == {
+        "contents": "write",
+        "pull_requests": "write",
+    }
+
+
+class _ListOnlyManagement:
+    def list_accounts(self, *, provider: str | None = None) -> AccountList:
+        assert provider == "github"
+        account = AccountPublic(
+            id="account-1",
+            alias="github-user",
+            provider="github",
+            auth_type="github_token",
+            label="User token",
+            base_url="https://api.github.com",
+            external_id=None,
+            verify_tls=True,
+            ca_cert_pem=None,
+            enabled=True,
+            created_at="2026-09-24T00:00:00+00:00",
+            updated_at="2026-09-24T00:00:00+00:00",
+        )
+        return AccountList(accounts=[account], count=1)
+
+
+def test_github_account_list_exposes_potential_capabilities() -> None:
+    context = GitHubRuntimeContext(_ListOnlyManagement(), GitHubPolicySettings())
+
+    result = context.list_accounts()
+
+    listed = result["accounts"][0]
+    assert listed["permission_scope"] == "repository-dependent"
+    assert "user_token_scoped_access" in listed["potential_capabilities"]

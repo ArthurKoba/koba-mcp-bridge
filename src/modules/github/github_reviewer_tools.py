@@ -17,16 +17,16 @@ def register_github_reviewer_tools(
     read_annotations: ToolAnnotations,
     write_annotations: ToolAnnotations,
 ) -> None:
-    """Register a narrow read/review surface for an independent reviewer GitHub App."""
+    """Register a review-oriented surface for any explicitly selected GitHub account."""
 
     @mcp.tool(title="GitHub reviewer list repositories", annotations=read_annotations)
     def github_reviewer_list_repositories(account_id: str) -> JsonObject:
-        """List repositories currently granted to the reviewer GitHub App installation."""
+        """List repositories currently granted to the selected GitHub account."""
         return client_factory(account_id).list_repositories()
 
     @mcp.tool(title="GitHub reviewer status", annotations=read_annotations)
     def github_reviewer_status(account_id: str, repository: str) -> JsonObject:
-        """Verify the independent reviewer App installation for one repository."""
+        """Verify the selected GitHub account for one repository."""
         return client_factory(account_id).status(repository)
 
     @mcp.tool(title="GitHub reviewer get file", annotations=read_annotations)
@@ -93,7 +93,7 @@ def register_github_reviewer_tools(
         per_page: int = 50,
         page: int = 1,
     ) -> JsonObject:
-        """Read commit history for independent review."""
+        """Read commit history for review."""
         return client_factory(account_id).list_commits(repository, ref, path, per_page, page)
 
     @mcp.tool(title="GitHub reviewer get commit", annotations=read_annotations)
@@ -109,7 +109,7 @@ def register_github_reviewer_tools(
         per_page: int = 30,
         page: int = 1,
     ) -> JsonObject:
-        """Search code inside one repository installed for the reviewer App."""
+        """Search code inside one repository accessible to the selected account."""
         return client_factory(account_id).search_code(repository, query, per_page, page)
 
     @mcp.tool(title="GitHub reviewer list pull requests", annotations=read_annotations)

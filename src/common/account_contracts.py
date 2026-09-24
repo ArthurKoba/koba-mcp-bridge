@@ -11,7 +11,6 @@ class AccountPublic(StrictModel):
     id: str
     alias: str
     provider: Literal["github", "gitlab"]
-    role: Literal["development", "reviewer", "general"]
     auth_type: str
     label: str = ""
     base_url: str
@@ -44,3 +43,6 @@ class InvocationEvent(StrictModel):
     status: Literal["success", "error"]
     duration_ms: float = Field(ge=0)
     error_type: str = ""
+    arguments_json: str = ""
+    result_json: str = ""
+    error_message: str = ""

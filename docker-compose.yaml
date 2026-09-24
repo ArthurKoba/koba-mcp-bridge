@@ -32,7 +32,7 @@ services:
     environment:
       ASGI_APP: management.runtime:app
       ASGI_FORWARDED_ALLOW_IPS: "*"
-      MANAGEMENT_DATABASE_PATH: ${MANAGEMENT_DATABASE_PATH:-/control-plane/control-plane.sqlite3}
+      MANAGEMENT_DATABASE_PATH: ${MANAGEMENT_DATABASE_PATH:-/management/management.sqlite3}
       MANAGEMENT_ENCRYPTION_KEY: ${MANAGEMENT_ENCRYPTION_KEY}
       MANAGEMENT_SERVICE_TOKEN: ${MANAGEMENT_SERVICE_TOKEN}
       MANAGEMENT_ADMIN_USERNAME: ${MANAGEMENT_ADMIN_USERNAME:-admin}
@@ -40,7 +40,8 @@ services:
       MANAGEMENT_SESSION_SECRET: ${MANAGEMENT_SESSION_SECRET}
       MANAGEMENT_SESSION_HTTPS_ONLY: ${MANAGEMENT_SESSION_HTTPS_ONLY:-true}
     volumes:
-      - control-plane-data:/control-plane
+      - management-data:/management
+      - files-data:/files
 
   gateway:
     <<: *runtime
@@ -114,9 +115,9 @@ services:
       - coolify
 
 volumes:
-  control-plane-data:
+  management-data:
     external: true
-    name: control-plane-data
+    name: management-data
   files-data:
     external: true
     name: files-data

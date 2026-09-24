@@ -123,7 +123,7 @@ class RecordingGraphClient(GitHubActionsClient):
         raise AssertionError(f"unexpected request: {method} {path}")
 
 
-def _agent_client() -> RecordingGraphClient:
+def _agent_client(_account_id: str) -> RecordingGraphClient:
     return RecordingGraphClient()
 
 

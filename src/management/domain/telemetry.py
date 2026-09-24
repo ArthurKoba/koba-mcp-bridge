@@ -19,4 +19,7 @@ class Invocation(StrictModel):
     status: Literal["success", "error"]
     duration_ms: float = Field(ge=0)
     error_type: str = ""
+    arguments_json: str = ""
+    result_json: str = ""
+    error_message: str = ""
     occurred_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

@@ -21,6 +21,7 @@ async def test_github_runtime_surface_is_isolated() -> None:
     names = await _tool_names(github)
 
     assert "github_accounts" in names
+    assert "github_account_capabilities" in names
     assert "github_agent_status" in names
     assert "github_agent_create_pull_request" in names
     assert "github_agent_workflow_runs" in names
@@ -35,6 +36,7 @@ async def test_gitlab_runtime_surface_is_isolated() -> None:
 
     assert "accounts" in names
     assert "account_status" in names
+    assert "account_capabilities" in names
     assert "create_merge_request" in names
     assert "github_agent_status" not in names
     assert "file_status" not in names

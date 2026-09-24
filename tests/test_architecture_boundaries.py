@@ -199,3 +199,48 @@ def test_provider_tools_use_explicit_account_id() -> None:
                         f"{function.name} first={first!r}"
                     )
     assert violations == []
+
+
+def test_provider_tool_catalog_is_not_conditionally_registered() -> None:
+    violations: list[str] = []
+
+    def visit(node: ast.AST, path: Path, conditional: bool = False) -> None:
+        now_conditional = conditional or isinstance(
+            node,
+            (ast.If, ast.For, ast.AsyncFor, ast.While, ast.Try, ast.Match),
+        )
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            is_tool = any(
+                isinstance(decorator, ast.Call)
+                and isinstance(decorator.func, ast.Attribute)
+                and decorator.func.attr == "tool"
+                for decorator in node.decorator_list
+            )
+            if is_tool and conditional:
+                violations.append(
+                    f"{path.relative_to(_SRC)}:{node.lineno} {node.name} is conditional"
+                )
+        for child in ast.iter_child_nodes(node):
+            visit(child, path, now_conditional)
+
+    for provider in ("github", "gitlab"):
+        root = _SRC / "modules" / provider
+        for path in sorted(root.glob("*tools.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            visit(tree, path)
+
+    assert violations == []
+
+
+def test_github_actions_tools_use_one_account_selected_client_factory() -> None:
+    path = _SRC / "modules" / "github" / "github_actions_tools.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    registrar = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "register_github_actions_tools"
+    )
+    parameters = [argument.arg for argument in registrar.args.args]
+    assert "client_factory" in parameters
+    assert "reviewer_client_factory" not in parameters
+    assert "reviewer_available" not in parameters

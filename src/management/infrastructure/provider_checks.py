@@ -19,26 +19,32 @@ class ProviderConnectionVerifier:
         return self._verify_gitlab(account, credential)
 
     @staticmethod
-    def _verify_github(account: Account, private_key: str) -> dict[str, object]:
-        if account.auth_type is not AuthType.GITHUB_APP:
+    def _verify_github(account: Account, credential: str) -> dict[str, object]:
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "mcp-bridge-management",
+            "X-GitHub-Api-Version": "2026-03-10",
+        }
+        endpoint = "/user"
+        if account.auth_type is AuthType.GITHUB_APP:
+            if not account.external_id.isdigit():
+                raise ValueError("GitHub App external_id must be numeric APP_ID")
+            now = int(time.time())
+            token = jwt.encode(
+                {"iat": now - 60, "exp": now + 9 * 60, "iss": account.external_id},
+                credential.replace("\\n", "\n"),
+                algorithm="RS256",
+            )
+            headers["Authorization"] = f"Bearer {token}"
+            endpoint = "/app"
+        elif account.auth_type is AuthType.GITHUB_TOKEN:
+            headers["Authorization"] = f"Bearer {credential.strip()}"
+        else:
             raise ValueError("unsupported GitHub auth type")
-        if not account.external_id.isdigit():
-            raise ValueError("GitHub App external_id must be numeric APP_ID")
-        now = int(time.time())
-        token = jwt.encode(
-            {"iat": now - 60, "exp": now + 9 * 60, "iss": account.external_id},
-            private_key.replace("\\n", "\n"),
-            algorithm="RS256",
-        )
         request = urllib.request.Request(
-            account.base_url.rstrip("/") + "/app",
+            account.base_url.rstrip("/") + endpoint,
             method="GET",
-            headers={
-                "Accept": "application/vnd.github+json",
-                "Authorization": f"Bearer {token}",
-                "User-Agent": "mcp-bridge-management",
-                "X-GitHub-Api-Version": "2026-03-10",
-            },
+            headers=headers,
         )
         try:
             with urllib.request.urlopen(request, timeout=15) as response:
@@ -53,7 +59,9 @@ class ProviderConnectionVerifier:
             "ok": True,
             "provider": "github",
             "account": account.alias,
-            "app_id": account.external_id,
+            "auth_type": account.auth_type.value,
+            "app_id": account.external_id or None,
+            "login": data.get("login"),
             "slug": data.get("slug"),
             "name": data.get("name"),
         }

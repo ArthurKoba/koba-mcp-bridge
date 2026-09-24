@@ -1,100 +1,75 @@
-# Account management
+# MCP management
 
-The management service is the private account, credential and lightweight telemetry
-service for MCP Bridge. It is part of the same source repository and runs as its own
-container so provider runtimes do not share a SQLite connection or encryption key.
-
-## Responsibilities
-
-The management service owns only:
-
-- GitHub and GitLab account metadata;
-- encrypted provider credentials;
-- account lookup by UUID or human-readable alias;
-- connection verification;
-- recent MCP invocation metadata;
-- the private Starlette Admin interface.
-
-It does not implement GitHub or GitLab repository operations. Those remain in their
-provider modules.
+The private `management` runtime owns provider accounts, encrypted credentials, MCP invocation history, Files administration and the Starlette Admin console. Provider runtimes never open the management database directly.
 
 ## Storage
 
-Production storage is one persistent SQLite database on the historical
-`/control-plane` data mount. SQLAlchemy is the persistence adapter and Alembic is the
-schema migration authority. The database is owned only by the `management` process.
+Management owns a persistent SQLite database at `/management/management.sqlite3` on the `management-data` volume. SQLAlchemy is the persistence adapter. The project is currently deployed against an empty database, so the schema is created from current metadata at startup; there is no legacy migration compatibility layer.
 
-The storage path and `control-plane-data` volume name are retained during the live
-migration so existing data does not need to move again merely for naming cleanup.
+Credentials are encrypted with Fernet before persistence. The master key is a deployment bootstrap secret and is never stored in SQLite.
 
-Credential plaintext is encrypted with Fernet before persistence. The Fernet master key is
-a deployment bootstrap secret and is never stored in SQLite.
+## Provider accounts
 
-## Account model
+Account roles do not exist. Every account has a stable UUID and a provider-local unique alias. MCP calls select accounts explicitly by UUID or alias.
 
-Every account has a stable UUID and a unique alias. MCP clients use `account_id`; the
-selector may be the UUID or the alias.
+### GitHub
 
-GitHub accounts use `github_app` authentication and a role of `development` or
-`reviewer`. `external_id` stores the GitHub App ID and the encrypted credential stores
-the App private key.
+GitHub has a dedicated account table and admin view. The public API URL is fixed to `https://api.github.com`. Supported auth types are:
 
-GitLab accounts use the `general` role and one of `private_token`, `bearer` or
-`job_token`. `base_url` is stored per account, so gitlab.com and self-hosted GitLab
-instances use the same contract. TLS verification and an optional CA certificate PEM are
-also per account.
+- `github_app`: App ID plus encrypted private-key PEM;
+- `github_token`: encrypted PAT/user token, with no App ID requirement.
+
+### GitLab
+
+GitLab has a separate account table and admin view. Each account stores its own `base_url`, so `gitlab.com` and self-hosted instances use the same runtime contract. Supported auth types are `private_token`, `bearer` and `job_token`; TLS verification and an optional custom CA PEM are per account.
+
+## MCP account selection and permissions
+
+Provider tool catalogs are static. Adding, disabling or removing an account never adds or removes GitHub/GitLab tools. Account-scoped calls always accept `account_id`; if the selector is missing, disabled, inaccessible or insufficiently privileged, that call returns a runtime/provider error.
+
+Discovery is explicit:
+
+- GitHub: `github_accounts` lists all configured identities (including disabled accounts) and potential capability classes; `github_account_capabilities` reports GitHub-App permission ceilings and optionally repository-effective permissions. User-token account-global permissions are reported as unknown when GitHub does not expose a reliable global map.
+- GitLab: `accounts` lists all configured identities (including disabled accounts) and potential capability classes; `account_capabilities` reports PAT scopes when the server exposes `/personal_access_tokens/self` and optionally project-level access. Other token types are explicitly reported as project/resource dependent.
+
+These capability tools are informational. Provider authorization remains authoritative at invocation time.
 
 ## Internal API
 
-Provider runtimes authenticate with `MANAGEMENT_SERVICE_TOKEN`. The internal API lets
-runtimes list public account metadata, resolve one credential for an explicit provider and
-role, and append telemetry events. It never exposes an account-management mutation API to
-MCP runtimes.
+Private runtimes authenticate with `MANAGEMENT_SERVICE_TOKEN`. The internal API lists public account metadata, resolves one credential for an explicit provider/account selector, and accepts invocation events. It does not expose account mutation to MCP runtimes.
 
 ## Admin
 
-Starlette Admin is mounted at `/admin` inside the private management runtime and
-reverse-proxied by the public gateway at the same `/admin` path. Admin login is
-configured with deployment bootstrap settings. The credential field is write-only in the
-UI: existing ciphertext and plaintext are excluded from list/detail surfaces; leaving the
-field blank while editing keeps the existing credential. The admin home dashboard shows
-active/GitHub/GitLab account counts, total MCP calls, errors and average duration.
+The gateway exposes the private Starlette Admin surface at `/admin` on the main MCP origin. The console contains:
 
-## Telemetry
+- separate GitHub Accounts and GitLab Accounts sections;
+- write-only credential replacement and connection tests;
+- MCP invocation history including captured arguments/results/errors;
+- Settings for logging enable/disable, payload capture, retention/max-record limits, Files auto-cleanup and maintenance cadence;
+- a Files section for search/inspection, upload, download, guarded deletion, cleanup preview and manual cleanup.
 
-FastMCP middleware records only:
+## Invocation logging
 
-- request id when available;
-- module and tool name;
-- selected account id;
-- provider;
-- success/error;
-- duration;
-- exception type on failure.
+Tool-call logging is best-effort and never makes a successful MCP call depend on management availability. Payload capture is bounded and can be disabled independently. Sensitive structured fields such as authorization headers, cookies, tokens, passwords, secrets, private keys and API keys are redacted before an event is sent to management.
 
-Tool argument values are deliberately not persisted.
+Retention is enforced both while appending events and by the periodic management maintenance task. Logs can also be cleared or retention can be applied immediately from Admin.
+
+## Files lifecycle
+
+Management mounts the same `files-data` volume used by the Files/Curl runtimes and uses the canonical `FileStore`, not a second storage implementation. Automatic cleanup is disabled by default and only removes old unreferenced files. The same cleanup can be previewed and triggered manually from Admin.
 
 ## Coolify bootstrap
 
-The old Infisical provider/account registry is removed. Configure the management bootstrap
-and gateway OAuth secrets in the deployment environment:
+Dynamic provider credentials do not belong in deployment environment variables. Production bootstrap requires:
 
 ```text
+MANAGEMENT_DATABASE_PATH=/management/management.sqlite3
 MANAGEMENT_ENCRYPTION_KEY=<Fernet key>
 MANAGEMENT_SERVICE_TOKEN=<random internal token>
 MANAGEMENT_ADMIN_USERNAME=admin
 MANAGEMENT_ADMIN_PASSWORD=<strong password>
 MANAGEMENT_SESSION_SECRET=<random session secret>
 MANAGEMENT_SESSION_HTTPS_ONLY=true
-
-GITHUB_OAUTH_CLIENT_ID=<gateway OAuth app id>
-GITHUB_OAUTH_CLIENT_SECRET=<gateway OAuth secret>
-GITHUB_OAUTH_JWT_SIGNING_KEY=<gateway signing key>
-GITHUB_OAUTH_ALLOWED_USERS=<comma-separated logins>
 ```
 
-After deployment, create provider accounts through the private admin UI instead of adding
-provider credentials to Coolify environment variables.
-
-The public deployment uses a single origin, `https://mcp.koba-nexus.ru`. No separate
-admin subdomain is required.
+Gateway OAuth remains deployment configuration (`GITHUB_OAUTH_*`). Provider accounts are created through `/admin`.

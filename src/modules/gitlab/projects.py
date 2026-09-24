@@ -25,6 +25,62 @@ class GitLabProjectClient(GitLabApiClient):
             "status": "ok",
         }
 
+    def account_capabilities(self, project: str = "") -> JsonObject:
+        """Return provider-visible account scope and optional project access details."""
+        result: JsonObject = {
+            "account": self.profile.public(),
+            "auth_type": self.profile.auth_type,
+            "provider_permissions_known": False,
+            "provider_permissions": {},
+        }
+
+        if self.profile.auth_type == "private_token":
+            token_response = self.request(
+                "GET",
+                "/personal_access_tokens/self",
+                allowed_errors={401, 403, 404},
+            )
+            if token_response.status < 400 and isinstance(token_response.data, dict):
+                scopes = token_response.data.get("scopes")
+                result["provider_permissions_known"] = isinstance(scopes, list)
+                result["provider_permissions"] = {
+                    "scopes": scopes if isinstance(scopes, list) else [],
+                    "active": token_response.data.get("active"),
+                    "expires_at": token_response.data.get("expires_at"),
+                }
+            else:
+                result["note"] = (
+                    "GitLab did not expose PAT self-inspection for this server/token; "
+                    "effective rights remain project/resource dependent."
+                )
+        else:
+            result["note"] = (
+                "This GitLab auth type has no reliable account-global permission map; "
+                "effective rights are project/resource dependent."
+            )
+
+        if project:
+            project_result = self.project_status(project)["project"]
+            permissions = project_result.get("permissions")
+            access: JsonObject = {}
+            if isinstance(permissions, dict):
+                for source in ("project_access", "group_access"):
+                    raw = permissions.get(source)
+                    if isinstance(raw, dict):
+                        level = raw.get("access_level")
+                        access[source] = {
+                            "access_level": level,
+                            "access_level_name": _access_level_name(level),
+                        }
+            result["project"] = {
+                "selector": project,
+                "id": project_result.get("id"),
+                "path_with_namespace": project_result.get("path_with_namespace"),
+                "visibility": project_result.get("visibility"),
+                "access": access,
+            }
+        return result
+
     def list_projects(
         self,
         search: str = "",
@@ -78,3 +134,17 @@ def _header_int(headers: dict[str, str], name: str) -> int | None:
         return int(raw)
     except ValueError:
         return None
+
+
+def _access_level_name(value: object) -> str:
+    levels = {
+        0: "no_access",
+        5: "minimal_access",
+        10: "guest",
+        15: "planner",
+        20: "reporter",
+        30: "developer",
+        40: "maintainer",
+        50: "owner",
+    }
+    return levels.get(value, "unknown") if isinstance(value, int) else "unknown"

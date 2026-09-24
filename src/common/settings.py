@@ -214,7 +214,7 @@ class ManagementClientSettings(ProcessSettings):
 
 class ManagementSettings(ProcessSettings):
     database_path: Path = Field(
-        Path("/control-plane/control-plane.sqlite3"),
+        Path("/management/management.sqlite3"),
         validation_alias="MANAGEMENT_DATABASE_PATH",
     )
     encryption_key: str = Field("", validation_alias="MANAGEMENT_ENCRYPTION_KEY")

@@ -7,11 +7,11 @@ class FernetCredentialCipher:
     def __init__(self, key: str) -> None:
         value = key.strip().encode("ascii")
         if not value:
-            raise ValueError("CONTROL_PLANE_ENCRYPTION_KEY is required")
+            raise ValueError("MANAGEMENT_ENCRYPTION_KEY is required")
         try:
             self._fernet = Fernet(value)
         except (ValueError, TypeError) as exc:
-            raise ValueError("CONTROL_PLANE_ENCRYPTION_KEY must be a Fernet key") from exc
+            raise ValueError("MANAGEMENT_ENCRYPTION_KEY must be a Fernet key") from exc
 
     def encrypt(self, plaintext: str) -> str:
         return self._fernet.encrypt(plaintext.encode("utf-8")).decode("ascii")

@@ -67,13 +67,10 @@ class ManagementClient:
         self,
         *,
         provider: str | None = None,
-        role: str | None = None,
     ) -> AccountList:
         query: dict[str, str] = {}
         if provider:
             query["provider"] = provider
-        if role:
-            query["role"] = role
         data = self._request("GET", "/internal/accounts", query=query)
         return AccountList.model_validate(data)
 
@@ -82,14 +79,11 @@ class ManagementClient:
         selector: str,
         *,
         provider: str,
-        role: str | None = None,
     ) -> ResolvedAccount:
         value = selector.strip()
         if not value:
             raise ValueError("account_id is required")
         query = {"provider": provider}
-        if role:
-            query["role"] = role
         path = "/internal/accounts/" + urllib.parse.quote(value, safe="") + "/resolve"
         data = self._request("GET", path, query=query)
         return ResolvedAccount.model_validate(data)
