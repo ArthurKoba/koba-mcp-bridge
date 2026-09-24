@@ -7,9 +7,9 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 
 from common.account_contracts import AccountList, InvocationEvent
 from common.models import JsonObject
-from control_plane.application.services import AccountService, TelemetryService
-from control_plane.domain.accounts import AccountRole, Provider
-from control_plane.domain.telemetry import Invocation
+from management.application.services import AccountService, TelemetryService
+from management.domain.accounts import AccountRole, Provider
+from management.domain.telemetry import Invocation
 
 
 class ApiServices:

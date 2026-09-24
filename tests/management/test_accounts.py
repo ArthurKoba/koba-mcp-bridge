@@ -5,12 +5,12 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 from sqlalchemy import select
 
-from control_plane.application.services import AccountService, TelemetryService
-from control_plane.domain.accounts import Account, AccountRole, AuthType, Provider
-from control_plane.domain.telemetry import Invocation
-from control_plane.infrastructure.crypto import FernetCredentialCipher
-from control_plane.infrastructure.database import AccountRecord, Base, create_database
-from control_plane.infrastructure.repositories import (
+from management.application.services import AccountService, TelemetryService
+from management.domain.accounts import Account, AccountRole, AuthType, Provider
+from management.domain.telemetry import Invocation
+from management.infrastructure.crypto import FernetCredentialCipher
+from management.infrastructure.database import AccountRecord, Base, create_database
+from management.infrastructure.repositories import (
     SqlAlchemyAccountRepository,
     SqlAlchemyInvocationRepository,
 )

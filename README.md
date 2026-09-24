@@ -31,7 +31,7 @@ own packages.
 src/
 ├── bridge/
 ├── common/
-├── control_plane/
+├── management/
 └── modules/
     ├── github/
     ├── gitlab/
@@ -166,10 +166,10 @@ to the canonical Ghidra argument keys and calls the original Ghidra tool.
 This keeps one implementation of the actual analysis behavior: Ghidra. MCP Bridge owns
 only the facade, terminology mapping, validation and result-envelope normalization.
 
-## Account control plane
+## Account management
 
-GitHub and GitLab accounts are managed by the private `control-plane` runtime. The
-control plane owns a persistent SQLite database through SQLAlchemy and Alembic. Provider
+GitHub and GitLab accounts are managed by the private `management` runtime. The
+management service owns a persistent SQLite database through SQLAlchemy and Alembic. Provider
 runtimes never read the database directly; they use an authenticated internal HTTP API.
 
 Account metadata and credentials are separate concerns. Credentials are encrypted before
@@ -177,11 +177,11 @@ they are written to SQLite using a deployment Fernet master key. Plaintext crede
 are returned only to authenticated private runtimes for the explicitly selected
 `account_id`; they are never exposed by MCP tools or the admin list/detail views.
 
-Starlette Admin is owned by the private control-plane runtime and reverse-proxied by the gateway at `/admin` on the same public origin. It provides
+Starlette Admin is owned by the private management runtime and reverse-proxied by the gateway at `/admin` on the same public origin. It provides
 account creation/editing, write-only credential replacement, connection verification and a
 small account/invocation dashboard.
 
-See [docs/control-plane.md](docs/control-plane.md).
+See [docs/management.md](docs/management.md).
 
 ## GitLab connector
 
@@ -233,16 +233,16 @@ Dynamic provider account credentials do not live in deployment environment varia
 ## Invocation telemetry
 
 Private runtimes register a lightweight FastMCP middleware. Each tool call may append a
-best-effort event to the control plane containing module/tool name, selected account,
+best-effort event to the management service containing module/tool name, selected account,
 provider, duration, status and error type. Argument values are not stored.
 
 Telemetry uses a bounded background task set and does not block a successful tool call if
-the control plane is slow or unavailable.
+the management service is slow or unavailable.
 
 ## Project status
 
 The bridge is operational as an authenticated MCP gateway with isolated provider runtimes,
-a persistent account control plane, explicit multi-account GitHub/GitLab selection, Files
+a persistent account management service, explicit multi-account GitHub/GitLab selection, Files
 storage, structured curl and the Analysis facade over native Ghidra.
 
 ## License

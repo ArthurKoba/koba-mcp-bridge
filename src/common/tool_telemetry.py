@@ -7,8 +7,8 @@ import mcp.types as mt
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools import ToolResult
 
-from .account_client import ControlPlaneClient
 from .account_contracts import InvocationEvent
+from .management_client import ManagementClient
 
 
 class ToolTelemetryMiddleware(Middleware):
@@ -16,9 +16,9 @@ class ToolTelemetryMiddleware(Middleware):
 
     _MAX_PENDING_EVENTS = 128
 
-    def __init__(self, module: str, control_plane: ControlPlaneClient) -> None:
+    def __init__(self, module: str, management: ManagementClient) -> None:
         self.module = module
-        self.control_plane = control_plane
+        self.management = management
         self._tasks: set[asyncio.Task[None]] = set()
 
     @staticmethod
@@ -36,7 +36,7 @@ class ToolTelemetryMiddleware(Middleware):
 
     async def _record(self, event: InvocationEvent) -> None:
         try:
-            await asyncio.to_thread(self.control_plane.record_invocation, event)
+            await asyncio.to_thread(self.management.record_invocation, event)
         except Exception:
             return
 

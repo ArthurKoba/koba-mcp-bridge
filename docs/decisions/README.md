@@ -6,7 +6,7 @@ This directory is intentionally lightweight. Add an ADR when a decision would ot
 
 Accepted ADRs:
 
-- [ADR 0001: Provider account control plane](0001-account-control-plane.md)
+- [ADR 0001: Provider account management](0001-account-management.md)
 
 Remaining ADR candidates:
 

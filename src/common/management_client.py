@@ -7,20 +7,20 @@ import urllib.request
 
 from .account_contracts import AccountList, InvocationEvent, ResolvedAccount
 from .models import JsonObject, json_loads, json_object
-from .settings import ControlPlaneClientSettings
+from .settings import ManagementClientSettings
 
 
-class ControlPlaneClientError(RuntimeError):
+class ManagementClientError(RuntimeError):
     pass
 
 
-class ControlPlaneClient:
-    def __init__(self, settings: ControlPlaneClientSettings) -> None:
+class ManagementClient:
+    def __init__(self, settings: ManagementClientSettings) -> None:
         self.url = settings.url.rstrip("/")
         self.service_token = settings.service_token
         self.timeout_seconds = settings.timeout_seconds
         if not self.url:
-            raise ValueError("CONTROL_PLANE_URL is required")
+            raise ValueError("MANAGEMENT_URL is required")
 
     def _request(
         self,
@@ -49,18 +49,18 @@ class ControlPlaneClient:
                 raw = response.read()
         except urllib.error.HTTPError as exc:
             detail = exc.read()[:2048].decode("utf-8", "replace")
-            raise ControlPlaneClientError(
-                f"control-plane HTTP {exc.code}: {detail}"
+            raise ManagementClientError(
+                f"management HTTP {exc.code}: {detail}"
             ) from exc
         except urllib.error.URLError as exc:
-            raise ControlPlaneClientError(
-                f"control-plane transport error: {exc.reason}"
+            raise ManagementClientError(
+                f"management transport error: {exc.reason}"
             ) from exc
         if not expect_body or not raw:
             return {}
         return json_object(
-            json_loads(raw, context="control-plane response"),
-            context="control-plane response",
+            json_loads(raw, context="management response"),
+            context="management response",
         )
 
     def list_accounts(

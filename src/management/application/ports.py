@@ -3,8 +3,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
-from control_plane.domain.accounts import Account, AccountRole, Provider
-from control_plane.domain.telemetry import Invocation
+from management.domain.accounts import Account, AccountRole, Provider
+from management.domain.telemetry import Invocation
 
 
 class AccountRepository(Protocol):

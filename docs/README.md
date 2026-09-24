@@ -5,7 +5,7 @@ Current documentation map:
 - [Architecture overview](architecture/overview.md)
 - [Component catalog](architecture/components.md)
 - [Repository map](repository-map.md)
-- [Account control plane](control-plane.md)
+- [Account management](management.md)
 - [Roadmap](roadmap.md)
 - [Architecture decisions](decisions/README.md)
 - [GitHub Actions](github-actions.md)

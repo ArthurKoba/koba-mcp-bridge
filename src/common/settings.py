@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 _DEFAULT_PRIVATE_HOSTS = (
@@ -127,7 +127,10 @@ class BridgeSettings(ProcessSettings):
         "http://ghidra:8000/mcp",
         validation_alias="GHIDRA_URL",
     )
-    build_sha: str = Field("unknown", validation_alias="BUILD_SHA")
+    build_sha: str = Field(
+        "unknown",
+        validation_alias=AliasChoices("BUILD_SHA", "SOURCE_COMMIT"),
+    )
     build_time: str = Field("unknown", validation_alias="BUILD_TIME")
     allowed_hosts: Annotated[tuple[str, ...], NoDecode] = Field(
         _DEFAULT_PUBLIC_HOSTS,
@@ -189,14 +192,14 @@ class BridgeSettings(ProcessSettings):
         )
 
 
-class ControlPlaneClientSettings(ProcessSettings):
-    url: str = Field("http://control-plane:8000", validation_alias="CONTROL_PLANE_URL")
-    service_token: str = Field("", validation_alias="CONTROL_PLANE_SERVICE_TOKEN")
+class ManagementClientSettings(ProcessSettings):
+    url: str = Field("http://management:8000", validation_alias="MANAGEMENT_URL")
+    service_token: str = Field("", validation_alias="MANAGEMENT_SERVICE_TOKEN")
     timeout_seconds: float = Field(
         10,
         gt=0,
         le=60,
-        validation_alias="CONTROL_PLANE_TIMEOUT_SECONDS",
+        validation_alias="MANAGEMENT_TIMEOUT_SECONDS",
     )
 
     @field_validator("url", "service_token", mode="before")
@@ -205,19 +208,19 @@ class ControlPlaneClientSettings(ProcessSettings):
         return value.strip() if isinstance(value, str) else value
 
 
-class ControlPlaneSettings(ProcessSettings):
+class ManagementSettings(ProcessSettings):
     database_path: Path = Field(
         Path("/control-plane/control-plane.sqlite3"),
-        validation_alias="CONTROL_PLANE_DATABASE_PATH",
+        validation_alias="MANAGEMENT_DATABASE_PATH",
     )
-    encryption_key: str = Field("", validation_alias="CONTROL_PLANE_ENCRYPTION_KEY")
-    service_token: str = Field("", validation_alias="CONTROL_PLANE_SERVICE_TOKEN")
-    admin_username: str = Field("admin", validation_alias="CONTROL_PLANE_ADMIN_USERNAME")
-    admin_password: str = Field("", validation_alias="CONTROL_PLANE_ADMIN_PASSWORD")
-    session_secret: str = Field("", validation_alias="CONTROL_PLANE_SESSION_SECRET")
+    encryption_key: str = Field("", validation_alias="MANAGEMENT_ENCRYPTION_KEY")
+    service_token: str = Field("", validation_alias="MANAGEMENT_SERVICE_TOKEN")
+    admin_username: str = Field("admin", validation_alias="MANAGEMENT_ADMIN_USERNAME")
+    admin_password: str = Field("", validation_alias="MANAGEMENT_ADMIN_PASSWORD")
+    session_secret: str = Field("", validation_alias="MANAGEMENT_SESSION_SECRET")
     session_https_only: bool = Field(
         True,
-        validation_alias="CONTROL_PLANE_SESSION_HTTPS_ONLY",
+        validation_alias="MANAGEMENT_SESSION_HTTPS_ONLY",
     )
 
     @field_validator(
@@ -236,7 +239,7 @@ class ControlPlaneSettings(ProcessSettings):
     @classmethod
     def _absolute_database_path(cls, value: Path) -> Path:
         if not value.is_absolute():
-            raise ValueError("CONTROL_PLANE_DATABASE_PATH must be absolute")
+            raise ValueError("MANAGEMENT_DATABASE_PATH must be absolute")
         return value.resolve(strict=False)
 
     @property
@@ -247,15 +250,15 @@ class ControlPlaneSettings(ProcessSettings):
         missing = [
             name
             for name, value in (
-                ("CONTROL_PLANE_ENCRYPTION_KEY", self.encryption_key),
-                ("CONTROL_PLANE_SERVICE_TOKEN", self.service_token),
-                ("CONTROL_PLANE_ADMIN_PASSWORD", self.admin_password),
-                ("CONTROL_PLANE_SESSION_SECRET", self.session_secret),
+                ("MANAGEMENT_ENCRYPTION_KEY", self.encryption_key),
+                ("MANAGEMENT_SERVICE_TOKEN", self.service_token),
+                ("MANAGEMENT_ADMIN_PASSWORD", self.admin_password),
+                ("MANAGEMENT_SESSION_SECRET", self.session_secret),
             )
             if not value
         ]
         if missing:
-            raise ValueError("missing control-plane bootstrap settings: " + ", ".join(missing))
+            raise ValueError("missing management bootstrap settings: " + ", ".join(missing))
 
 
 class AnalysisSettings(ProcessSettings):

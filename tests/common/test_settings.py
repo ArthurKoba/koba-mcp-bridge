@@ -8,11 +8,11 @@ from pydantic import ValidationError
 from common.settings import (
     AnalysisSettings,
     BridgeSettings,
-    ControlPlaneClientSettings,
-    ControlPlaneSettings,
     FileSettings,
     GitHubPolicySettings,
     GitLabSettings,
+    ManagementClientSettings,
+    ManagementSettings,
 )
 
 
@@ -69,6 +69,13 @@ def test_bridge_settings_use_canonical_backends_by_default(monkeypatch) -> None:
     }
 
 
+def test_bridge_build_sha_uses_coolify_source_commit(monkeypatch) -> None:
+    monkeypatch.delenv("BUILD_SHA", raising=False)
+    monkeypatch.setenv("SOURCE_COMMIT", "abc123")
+
+    assert BridgeSettings().build_sha == "abc123"
+
+
 def test_gateway_oauth_bootstrap_is_typed(monkeypatch) -> None:
     monkeypatch.setenv("GITHUB_OAUTH_CLIENT_ID", " client ")
     monkeypatch.setenv("GITHUB_OAUTH_CLIENT_SECRET", " secret ")
@@ -83,39 +90,39 @@ def test_gateway_oauth_bootstrap_is_typed(monkeypatch) -> None:
     assert settings.oauth_allowed_users == ("arthurkoba", "reviewerbot")
 
 
-def test_control_plane_client_settings_allow_import_without_bootstrap(monkeypatch) -> None:
-    monkeypatch.delenv("CONTROL_PLANE_SERVICE_TOKEN", raising=False)
-    settings = ControlPlaneClientSettings()
-    assert settings.url == "http://control-plane:8000"
+def test_management_client_settings_allow_import_without_bootstrap(monkeypatch) -> None:
+    monkeypatch.delenv("MANAGEMENT_SERVICE_TOKEN", raising=False)
+    settings = ManagementClientSettings()
+    assert settings.url == "http://management:8000"
     assert settings.service_token == ""
 
 
-def test_control_plane_settings_validate_bootstrap(monkeypatch, tmp_path: Path) -> None:
+def test_management_settings_validate_bootstrap(monkeypatch, tmp_path: Path) -> None:
     db = tmp_path / "control.sqlite3"
-    monkeypatch.setenv("CONTROL_PLANE_DATABASE_PATH", str(db))
-    monkeypatch.setenv("CONTROL_PLANE_ENCRYPTION_KEY", "key")
-    monkeypatch.setenv("CONTROL_PLANE_SERVICE_TOKEN", "service")
-    monkeypatch.setenv("CONTROL_PLANE_ADMIN_PASSWORD", "admin")
-    monkeypatch.setenv("CONTROL_PLANE_SESSION_SECRET", "session")
+    monkeypatch.setenv("MANAGEMENT_DATABASE_PATH", str(db))
+    monkeypatch.setenv("MANAGEMENT_ENCRYPTION_KEY", "key")
+    monkeypatch.setenv("MANAGEMENT_SERVICE_TOKEN", "service")
+    monkeypatch.setenv("MANAGEMENT_ADMIN_PASSWORD", "admin")
+    monkeypatch.setenv("MANAGEMENT_SESSION_SECRET", "session")
 
-    settings = ControlPlaneSettings()
+    settings = ManagementSettings()
     settings.validate_bootstrap()
 
     assert settings.database_path == db
     assert settings.database_url == f"sqlite:///{db}"
 
 
-def test_control_plane_settings_reject_missing_bootstrap(monkeypatch) -> None:
+def test_management_settings_reject_missing_bootstrap(monkeypatch) -> None:
     for name in (
-        "CONTROL_PLANE_ENCRYPTION_KEY",
-        "CONTROL_PLANE_SERVICE_TOKEN",
-        "CONTROL_PLANE_ADMIN_PASSWORD",
-        "CONTROL_PLANE_SESSION_SECRET",
+        "MANAGEMENT_ENCRYPTION_KEY",
+        "MANAGEMENT_SERVICE_TOKEN",
+        "MANAGEMENT_ADMIN_PASSWORD",
+        "MANAGEMENT_SESSION_SECRET",
     ):
         monkeypatch.delenv(name, raising=False)
 
-    with pytest.raises(ValueError, match="missing control-plane bootstrap settings"):
-        ControlPlaneSettings().validate_bootstrap()
+    with pytest.raises(ValueError, match="missing management bootstrap settings"):
+        ManagementSettings().validate_bootstrap()
 
 
 def test_file_settings_are_frozen_and_validate_limits() -> None:

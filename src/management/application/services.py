@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 
 from common.account_contracts import AccountPublic, ResolvedAccount
 from common.models import JsonObject, json_object
-from control_plane.domain.accounts import Account, AccountRole, Provider
-from control_plane.domain.telemetry import Invocation
+from management.domain.accounts import Account, AccountRole, Provider
+from management.domain.telemetry import Invocation
 
 from .ports import AccountRepository, ConnectionVerifier, CredentialCipher, InvocationRepository
 

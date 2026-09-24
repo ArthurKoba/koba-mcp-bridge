@@ -1,7 +1,7 @@
 # Architecture overview
 
 MCP Bridge is a small public gateway that composes independent private modules and one
-private account control plane.
+private account management service.
 
 ```mermaid
 flowchart TB
@@ -12,7 +12,7 @@ flowchart TB
     GW --> FI[files]
     GW --> WE[web]\n    WE --> CU[curl runtime]\n    GW --> AN[analysis]
 
-    GH --> CP[control-plane]
+    GH --> CP[management]
     GL --> CP
     FI --> CP
     CU --> CP
@@ -27,11 +27,11 @@ flowchart TB
 ## Source ownership
 
 - `bridge` — public OAuth boundary and routing only.
-- `common` — provider-neutral runtime contracts, settings, HTTP primitives and control-plane client.
-- `control_plane.domain` — account and telemetry domain models.
-- `control_plane.application` — use cases and repository/crypto/verifier ports.
-- `control_plane.infrastructure` — SQLAlchemy, SQLite, Alembic, encryption and provider verification adapters.
-- `control_plane.presentation` — private FastAPI and Starlette Admin adapters.
+- `common` — provider-neutral runtime contracts, settings, HTTP primitives and management client.
+- `management.domain` — account and telemetry domain models.
+- `management.application` — use cases and repository/crypto/verifier ports.
+- `management.infrastructure` — SQLAlchemy, SQLite, Alembic, encryption and provider verification adapters.
+- `management.presentation` — private FastAPI and Starlette Admin adapters.
 - `modules.github` — GitHub-specific API capabilities.
 - `modules.gitlab` — GitLab-specific API capabilities.
 - `modules.files` — persistent content-addressed Files data plane.
@@ -40,7 +40,7 @@ flowchart TB
 
 Provider modules never import each other. GitHub and GitLab do not know SQLAlchemy or
 SQLite; they depend on the provider-neutral account contract through the private
-control-plane client.
+management client.
 
 ## Configuration and composition roots
 
@@ -48,14 +48,14 @@ Process environment is an infrastructure input. Each ASGI runtime creates typed 
 and composes its dependencies once at startup. Provider/application code does not read
 process environment while handling requests.
 
-Dynamic GitHub/GitLab accounts are not deployment settings. They live in the control-plane
+Dynamic GitHub/GitLab accounts are not deployment settings. They live in the management
 account repository and are selected explicitly by `account_id` on MCP calls. Deployment
 environment contains only bootstrap values such as internal service auth, encryption key,
 admin auth, gateway OAuth and runtime policies.
 
 ## Data ownership
 
-Only the `control-plane` process opens its SQLite database. Provider runtimes resolve
+Only the `management` process opens its SQLite database. Provider runtimes resolve
 account metadata/credentials over authenticated private HTTP. Only the `files`/`curl`
 runtimes mount the Files data plane. This keeps persistence ownership explicit even though
 all source code remains in one repository.
@@ -73,7 +73,7 @@ all source code remains in one repository.
 /admin
 ```
 
-The control-plane `/internal/*` API remains private. Its Starlette Admin UI is exposed only through the authenticated public origin at `/admin`.
+The management `/internal/*` API remains private. Its Starlette Admin UI is exposed only through the authenticated public origin at `/admin`.
 
 Raw Ghidra remains an independent backend and is also exposed directly through `/ghidra/mcp`. Analysis adapts its live MCP catalog and
 normalizes every call back to canonical Ghidra tool names and argument keys.

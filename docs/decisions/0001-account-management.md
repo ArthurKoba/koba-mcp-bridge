@@ -1,4 +1,4 @@
-# ADR 0001: Provider account control plane
+# ADR 0001: Provider account management
 
 Status: accepted
 
@@ -15,14 +15,14 @@ ownership and couple provider code to SQLAlchemy.
 
 ## Decision
 
-MCP Bridge owns a private `control-plane` runtime in the same source repository.
+MCP Bridge owns a private `management` runtime in the same source repository.
 
-- SQLite is the persistence engine and only the control-plane process opens it.
+- SQLite is the persistence engine and only the management process opens it.
 - SQLAlchemy is the persistence adapter and Alembic is the migration authority.
 - Provider credentials are encrypted with Fernet before persistence; the master key is a
   deployment bootstrap secret and is never stored in SQLite.
 - GitHub and GitLab runtimes use a provider-neutral authenticated HTTP client to list and
-  resolve accounts. They never import control-plane implementation or SQLAlchemy models.
+  resolve accounts. They never import management implementation or SQLAlchemy models.
 - Every provider operation selects an explicit `account_id`; both stable UUID and unique
   human-readable alias are valid selectors.
 - GitHub accounts are GitHub App identities with `development` or `reviewer` roles.
@@ -39,7 +39,7 @@ MCP Bridge owns a private `control-plane` runtime in the same source repository.
 
 Provider account management no longer depends on Infisical. Account onboarding and
 credential replacement happen through the private admin surface. Provider runtimes now
-require the control plane to resolve credentials, but control-plane outages do not make
+require the management service to resolve credentials, but management outages do not make
 telemetry a blocking dependency for calls that already have their account client cached.
 
 SQLite is sufficient for the expected account/telemetry scale and keeps deployment small.

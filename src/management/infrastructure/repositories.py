@@ -5,8 +5,8 @@ from collections.abc import Sequence
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from control_plane.domain.accounts import Account, AccountRole, AuthType, Provider
-from control_plane.domain.telemetry import Invocation
+from management.domain.accounts import Account, AccountRole, AuthType, Provider
+from management.domain.telemetry import Invocation
 
 from .database import AccountRecord, InvocationRecord
 

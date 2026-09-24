@@ -9,7 +9,7 @@ import urllib.request
 import jwt
 
 from common.models import json_loads, json_object
-from control_plane.domain.accounts import Account, AuthType, Provider
+from management.domain.accounts import Account, AuthType, Provider
 
 
 class ProviderConnectionVerifier:
@@ -36,7 +36,7 @@ class ProviderConnectionVerifier:
             headers={
                 "Accept": "application/vnd.github+json",
                 "Authorization": f"Bearer {token}",
-                "User-Agent": "mcp-bridge-control-plane",
+                "User-Agent": "mcp-bridge-management",
                 "X-GitHub-Api-Version": "2026-03-10",
             },
         )
@@ -63,7 +63,7 @@ class ProviderConnectionVerifier:
         parsed = urllib.parse.urlsplit(account.base_url)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             raise ValueError("GitLab base_url must be an http(s) origin")
-        headers = {"Accept": "application/json", "User-Agent": "mcp-bridge-control-plane"}
+        headers = {"Accept": "application/json", "User-Agent": "mcp-bridge-management"}
         if account.auth_type is AuthType.PRIVATE_TOKEN:
             headers["PRIVATE-TOKEN"] = token
         elif account.auth_type is AuthType.BEARER:

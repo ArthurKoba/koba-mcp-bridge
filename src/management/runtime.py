@@ -4,20 +4,20 @@ from fastapi import FastAPI
 from starlette.middleware import Middleware
 from starlette.middleware.sessions import SessionMiddleware
 
-from common.settings import ControlPlaneSettings
-from control_plane.application.services import AccountService, TelemetryService
-from control_plane.infrastructure.crypto import FernetCredentialCipher
-from control_plane.infrastructure.database import create_database
-from control_plane.infrastructure.migrations import run_migrations
-from control_plane.infrastructure.provider_checks import ProviderConnectionVerifier
-from control_plane.infrastructure.repositories import (
+from common.settings import ManagementSettings
+from management.application.services import AccountService, TelemetryService
+from management.infrastructure.crypto import FernetCredentialCipher
+from management.infrastructure.database import create_database
+from management.infrastructure.migrations import run_migrations
+from management.infrastructure.provider_checks import ProviderConnectionVerifier
+from management.infrastructure.repositories import (
     SqlAlchemyAccountRepository,
     SqlAlchemyInvocationRepository,
 )
-from control_plane.presentation.admin import build_admin
-from control_plane.presentation.api import ApiServices, build_internal_router
+from management.presentation.admin import build_admin
+from management.presentation.api import ApiServices, build_internal_router
 
-settings = ControlPlaneSettings()
+settings = ManagementSettings()
 settings.validate_bootstrap()
 settings.database_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -31,7 +31,7 @@ accounts = AccountService(account_repository, cipher, ProviderConnectionVerifier
 telemetry = TelemetryService(invocation_repository)
 
 app = FastAPI(
-    title="MCP Control Plane",
+    title="MCP Management",
     docs_url=None,
     redoc_url=None,
     middleware=[

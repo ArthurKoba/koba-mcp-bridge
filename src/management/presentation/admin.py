@@ -26,15 +26,15 @@ from starlette_admin.contrib.sqla import Admin, ModelView
 from starlette_admin.exceptions import ActionFailed
 from starlette_admin.fields import BaseField
 
-from common.settings import ControlPlaneSettings
-from control_plane.application.services import AccountService
-from control_plane.domain.accounts import Account, AccountRole, AuthType, Provider
-from control_plane.infrastructure.crypto import FernetCredentialCipher
-from control_plane.infrastructure.database import AccountRecord, InvocationRecord
+from common.settings import ManagementSettings
+from management.application.services import AccountService
+from management.domain.accounts import Account, AccountRole, AuthType, Provider
+from management.infrastructure.crypto import FernetCredentialCipher
+from management.infrastructure.database import AccountRecord, InvocationRecord
 
 
-class ControlPlaneAuthProvider(AuthProvider):
-    def __init__(self, settings: ControlPlaneSettings) -> None:
+class ManagementAuthProvider(AuthProvider):
+    def __init__(self, settings: ManagementSettings) -> None:
         super().__init__()
         self.settings = settings
 
@@ -50,10 +50,10 @@ class ControlPlaneAuthProvider(AuthProvider):
         valid_password = hmac.compare_digest(password, self.settings.admin_password)
         if not (valid_user and valid_password):
             raise LoginFailed("Invalid username or password")
-        request.session["control_plane_admin"] = self.settings.admin_username
+        request.session["management_admin"] = self.settings.admin_username
 
     async def authenticate(self, request: Request) -> AdminUser | None:
-        username = request.session.get("control_plane_admin")
+        username = request.session.get("management_admin")
         if not isinstance(username, str) or not username:
             return None
         return AdminUser(username=username)
@@ -304,15 +304,15 @@ def _scalar(engine: Engine, statement: Executable) -> int:
 
 def build_admin(
     engine: Engine,
-    settings: ControlPlaneSettings,
+    settings: ManagementSettings,
     cipher: FernetCredentialCipher,
     accounts: AccountService,
 ) -> Admin:
     admin = Admin(
         engine,
-        title="MCP Control Plane",
+        title="MCP Management",
         base_url="/admin",
-        auth_provider=ControlPlaneAuthProvider(settings),
+        auth_provider=ManagementAuthProvider(settings),
         secret_key=settings.session_secret,
         index_view=_dashboard(engine),
     )
