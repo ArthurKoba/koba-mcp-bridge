@@ -3,9 +3,9 @@ from __future__ import annotations
 from common.runtime_annotations import READ_ONLY_LOCAL, WRITE_EXTERNAL
 from common.runtime_common import build_private_mcp, management_client, private_http_app
 from common.settings import (
-    ManagementClientSettings,
     CurlSettings,
     FileSettings,
+    ManagementClientSettings,
     PrivateRuntimeSettings,
 )
 from modules.files.file_store import FileStore
