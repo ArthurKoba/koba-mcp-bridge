@@ -9,10 +9,10 @@ from common.settings import (
     AnalysisSettings,
     BridgeSettings,
     FileSettings,
-    ManagementClientSettings,
-    ManagementSettings,
     GitHubPolicySettings,
     GitLabSettings,
+    ManagementClientSettings,
+    ManagementSettings,
 )
 
 
