@@ -31,8 +31,8 @@ services:
 
   gateway:
     <<: *runtime
-    expose:
-      - "8000"
+    ports:
+      - "8092:8000"
     command:
       - /app/.venv/bin/uvicorn
       - bridge.server:app
