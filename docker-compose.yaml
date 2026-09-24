@@ -14,7 +14,6 @@ x-private-service: &private-service
 
 x-file-settings: &file-settings
   <<: *control-plane-client
-  FILE_ROOT: ${FILE_ROOT:-/files}
   FILE_UPLOAD_MAX_BYTES: ${FILE_UPLOAD_MAX_BYTES:-8589934592}
   FILE_UPLOAD_CHUNK_BYTES: ${FILE_UPLOAD_CHUNK_BYTES:-1048576}
   FILE_MAX_EXTRACT_FILES: ${FILE_MAX_EXTRACT_FILES:-20000}
@@ -23,7 +22,7 @@ x-file-settings: &file-settings
 x-file-service: &file-service
   <<: *private-service
   volumes:
-    - files-data:${FILE_ROOT:-/files}
+    - files-data:/files
 
 services:
   control-plane:
@@ -73,9 +72,8 @@ services:
       GHIDRA_MCP_URL: ${GHIDRA_MCP_URL:-http://bridge:8081/mcp}
       MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-mcp.koba-nexus.ru,localhost:*,127.0.0.1:*}
       MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-https://mcp.koba-nexus.ru}
-      FASTMCP_HOME: ${FASTMCP_HOME:-/data/fastmcp}
     volumes:
-      - fastmcp-data:${FASTMCP_HOME:-/data/fastmcp}
+      - fastmcp-data:/data/fastmcp
     networks:
       - default
       - coolify
