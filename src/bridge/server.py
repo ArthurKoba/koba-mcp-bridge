@@ -244,5 +244,5 @@ app.mount("/analysis", _http_app(analysis_surface))
 app.mount("/ghidra", _http_app(ghidra_surface))
 
 _admin_proxy = AdminProxy(_control_plane_settings.url)
-app.add_route("/admin", _admin_proxy, methods=_ADMIN_METHODS)
-app.add_route("/admin/{path:path}", _admin_proxy, methods=_ADMIN_METHODS)
+app.add_route("/admin", _admin_proxy.handle, methods=_ADMIN_METHODS)
+app.add_route("/admin/{path:path}", _admin_proxy.handle, methods=_ADMIN_METHODS)
