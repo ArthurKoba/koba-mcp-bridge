@@ -16,7 +16,7 @@ from common.runtime_annotations import (
     READ_EXTERNAL,
     READ_ONLY_LOCAL,
 )
-from common.settings import BridgeSettings, ControlPlaneClientSettings
+from common.settings import BridgeSettings, ManagementClientSettings
 
 from . import __version__
 from .admin_proxy import AdminProxy
@@ -84,7 +84,7 @@ def _public_facade(name: str, backend_name: str, backend_url: str) -> FastMCP:
 
 
 _settings = BridgeSettings()
-_control_plane_settings = ControlPlaneClientSettings()
+_management_settings = ManagementClientSettings()
 _oauth_allowed_users = frozenset(_settings.oauth_allowed_users)
 _auth, _auth_middleware = _build_auth(_settings)
 _BACKENDS = _settings.backends
@@ -210,7 +210,7 @@ def bridge_capabilities() -> JsonObject:
             "backend-map",
             "backend-signatures",
             "generic-forwarding",
-            "account-control-plane",
+            "account-management",
             "multi-account-github",
             "multi-account-gitlab",
             "files",
@@ -243,6 +243,6 @@ app.mount("/web", _http_app(web_surface))
 app.mount("/analysis", _http_app(analysis_surface))
 app.mount("/ghidra", _http_app(ghidra_surface))
 
-_admin_proxy = AdminProxy(_control_plane_settings.url)
+_admin_proxy = AdminProxy(_management_settings.url)
 app.add_route("/admin", _admin_proxy.handle, methods=_ADMIN_METHODS)
 app.add_route("/admin/{path:path}", _admin_proxy.handle, methods=_ADMIN_METHODS)
