@@ -15,6 +15,7 @@ _DEFAULT_PRIVATE_HOSTS = (
     "files:*",
     "curl:*",
     "analysis:*",
+    "ghidra:*",
 )
 _DEFAULT_PRIVATE_ORIGINS = (
     "http://localhost:*",
@@ -123,8 +124,8 @@ class BridgeSettings(ProcessSettings):
         validation_alias="ANALYSIS_URL",
     )
     ghidra_url: str = Field(
-        "http://bridge:8081/mcp",
-        validation_alias="GHIDRA_MCP_URL",
+        "http://ghidra:8000/mcp",
+        validation_alias="GHIDRA_URL",
     )
     build_sha: str = Field("unknown", validation_alias="BUILD_SHA")
     build_time: str = Field("unknown", validation_alias="BUILD_TIME")
@@ -177,7 +178,7 @@ class BridgeSettings(ProcessSettings):
             "files": self.files_url or "http://files:8000/mcp",
             "web": self.curl_url or "http://curl:8000/mcp",
             "analysis": self.analysis_url or "http://analysis:8000/mcp",
-            "ghidra": self.ghidra_url or "http://bridge:8081/mcp",
+            "ghidra": self.ghidra_url or "http://ghidra:8000/mcp",
         }
 
     @property
@@ -258,12 +259,27 @@ class ControlPlaneSettings(ProcessSettings):
 
 
 class AnalysisSettings(ProcessSettings):
-    backend_url: str = Field("", validation_alias="GHIDRA_MCP_URL")
+    backend_url: str = Field(
+        "http://ghidra:8000/mcp",
+        validation_alias="GHIDRA_URL",
+    )
     schema_cache_ttl_seconds: float = Field(
         30,
         ge=0,
         le=3600,
         validation_alias="ANALYSIS_SCHEMA_CACHE_TTL_SECONDS",
+    )
+
+    @field_validator("backend_url", mode="before")
+    @classmethod
+    def _strip_backend_url(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+
+class GhidraSettings(ProcessSettings):
+    backend_url: str = Field(
+        "http://bridge:8081/mcp",
+        validation_alias="GHIDRA_MCP_URL",
     )
 
     @field_validator("backend_url", mode="before")

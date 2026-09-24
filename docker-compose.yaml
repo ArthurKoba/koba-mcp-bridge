@@ -57,15 +57,11 @@ services:
       FILES_URL: ${FILES_URL:-http://files:8000/mcp}
       CURL_URL: ${CURL_URL:-http://curl:8000/mcp}
       ANALYSIS_URL: ${ANALYSIS_URL:-http://analysis:8000/mcp}
-      GHIDRA_MCP_URL: ${GHIDRA_MCP_URL:-http://bridge:8081/mcp}
+      GHIDRA_URL: ${GHIDRA_URL:-http://ghidra:8000/mcp}
       MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-mcp.koba-nexus.ru,localhost:*,127.0.0.1:*}
       MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-https://mcp.koba-nexus.ru}
     volumes:
       - fastmcp-data:/data/fastmcp
-    networks:
-      - default
-      - coolify
-
   github:
     <<: *private-service
     environment:
@@ -101,8 +97,15 @@ services:
     environment:
       <<: *control-plane-client
       ASGI_APP: modules.analysis.runtime:app
-      GHIDRA_MCP_URL: ${GHIDRA_MCP_URL:-http://bridge:8081/mcp}
+      GHIDRA_URL: ${GHIDRA_URL:-http://ghidra:8000/mcp}
       ANALYSIS_SCHEMA_CACHE_TTL_SECONDS: ${ANALYSIS_SCHEMA_CACHE_TTL_SECONDS:-30}
+
+  ghidra:
+    <<: *private-service
+    environment:
+      <<: *control-plane-client
+      ASGI_APP: modules.ghidra.runtime:app
+      GHIDRA_MCP_URL: ${GHIDRA_MCP_URL:-http://bridge:8081/mcp}
     networks:
       - default
       - coolify
