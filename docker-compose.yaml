@@ -1,5 +1,7 @@
 x-runtime: &runtime
-  image: ${MCP_BRIDGE_IMAGE:-ghcr.io/arthurkoba/mcp-bridge:latest}
+  build:
+    context: .
+    dockerfile: Dockerfile
   restart: unless-stopped
 
 x-control-plane-client: &control-plane-client
