@@ -39,7 +39,7 @@ services:
       MANAGEMENT_SESSION_SECRET: ${MANAGEMENT_SESSION_SECRET:-${CONTROL_PLANE_SESSION_SECRET:-}}
       MANAGEMENT_SESSION_HTTPS_ONLY: ${MANAGEMENT_SESSION_HTTPS_ONLY:-${CONTROL_PLANE_SESSION_HTTPS_ONLY:-true}}
     volumes:
-      - management-data:/control-plane
+      - control-plane-data:/control-plane
 
   gateway:
     <<: *runtime
