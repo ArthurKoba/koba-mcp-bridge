@@ -25,8 +25,8 @@ COPY alembic.ini ./alembic.ini
 COPY migrations ./migrations
 
 RUN uv sync --no-dev \
-    && mkdir -p /data/fastmcp /files/objects/sha256 /files/tmp /management /home/bridge \
-    && chown -R 1000:1000 /data /files /management /home/bridge
+    && mkdir -p /data/fastmcp /files/objects/sha256 /files/tmp /control-plane /home/bridge \
+    && chown -R 1000:1000 /data /files /control-plane /home/bridge
 
 COPY docker-entrypoint.sh /usr/local/bin/bridge-entrypoint
 RUN chmod 0755 /usr/local/bin/bridge-entrypoint \
