@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 _DEFAULT_PRIVATE_HOSTS = (
@@ -127,7 +127,10 @@ class BridgeSettings(ProcessSettings):
         "http://ghidra:8000/mcp",
         validation_alias="GHIDRA_URL",
     )
-    build_sha: str = Field("unknown", validation_alias="BUILD_SHA")
+    build_sha: str = Field(
+        "unknown",
+        validation_alias=AliasChoices("BUILD_SHA", "SOURCE_COMMIT"),
+    )
     build_time: str = Field("unknown", validation_alias="BUILD_TIME")
     allowed_hosts: Annotated[tuple[str, ...], NoDecode] = Field(
         _DEFAULT_PUBLIC_HOSTS,
