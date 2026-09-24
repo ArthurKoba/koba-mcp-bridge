@@ -40,4 +40,5 @@ def test_starlette_admin_mount_contract(tmp_path: Path) -> None:
     admin = build_admin(engine, settings, cipher, accounts)
 
     assert admin.base_url == "/admin"
+    assert admin.index_view.path == "/"
     engine.dispose()
