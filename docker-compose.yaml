@@ -50,8 +50,6 @@ services:
     build:
       <<: *build
       target: gateway
-    ports:
-      - "${GATEWAY_PORT:-8092}:8000"
     environment:
       ASGI_APP: bridge.server:app
       OAUTH_ENABLED: ${OAUTH_ENABLED:-true}
