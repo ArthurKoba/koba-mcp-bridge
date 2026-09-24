@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from common.settings import (
     AnalysisSettings,
+    AsgiServerSettings,
     BridgeSettings,
     FileSettings,
     GitHubPolicySettings,
@@ -14,6 +15,12 @@ from common.settings import (
     ManagementClientSettings,
     ManagementSettings,
 )
+
+
+def test_asgi_server_settings_parse_forwarded_allow_ips(monkeypatch) -> None:
+    monkeypatch.setenv("ASGI_FORWARDED_ALLOW_IPS", "*")
+
+    assert AsgiServerSettings().forwarded_allow_ips == "*"
 
 
 def test_provider_settings_parse_only_their_own_environment(monkeypatch) -> None:

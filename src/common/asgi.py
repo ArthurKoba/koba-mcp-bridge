@@ -7,7 +7,13 @@ from common.settings import AsgiServerSettings
 
 def main() -> None:
     settings = AsgiServerSettings()
-    uvicorn.run(settings.app, host=settings.host, port=settings.port)
+    uvicorn.run(
+        settings.app,
+        host=settings.host,
+        port=settings.port,
+        proxy_headers=True,
+        forwarded_allow_ips=settings.forwarded_allow_ips,
+    )
 
 
 if __name__ == "__main__":

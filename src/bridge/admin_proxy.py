@@ -25,15 +25,20 @@ class AdminProxy:
 
     @staticmethod
     def _request_headers(request: Request) -> dict[str, str]:
+        stripped = {
+            "host",
+            "content-length",
+            "x-forwarded-host",
+            "x-forwarded-proto",
+        }
         headers = {
             key: value
             for key, value in request.headers.items()
-            if key.casefold() not in _HOP_BY_HOP | {"host", "content-length"}
+            if key.casefold() not in _HOP_BY_HOP | stripped
         }
-        headers["x-forwarded-host"] = request.headers.get(
-            "x-forwarded-host",
-            request.headers.get("host", ""),
-        )
+        public_host = request.headers.get("host", "")
+        headers["host"] = public_host
+        headers["x-forwarded-host"] = public_host
         headers["x-forwarded-proto"] = request.headers.get(
             "x-forwarded-proto",
             request.url.scheme,
